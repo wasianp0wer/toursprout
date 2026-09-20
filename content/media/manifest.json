@@ -121,5 +121,23 @@
       "license": "Generated for this prototype; not an archival recording",
       "creator": "macOS speech synthesis, voice Samantha"
     }
+  },
+  "court-1863.jpg": {
+    "file": "court-1863.jpg",
+    "credit": {
+      "source": "Library of Congress",
+      "url": "http://www.loc.gov/item/2013651898/",
+      "license": "No known restrictions on publication",
+      "creator": "Fairfax Court House, Va. \u2014 1863-01-01"
+    }
+  },
+  "court-1918.jpg": {
+    "file": "court-1918.jpg",
+    "credit": {
+      "source": "Library of Congress",
+      "url": "http://www.loc.gov/item/2016826367/",
+      "license": "No known restrictions on publication",
+      "creator": "Fairfax Court House, [Fairfax, Virginia] \u2014 1918-01-01"
+    }
   }
 }

@@ -51,6 +51,24 @@ import { TourStore } from '../core/tour-store';
         </article>
       }
 
+      @if (store.hasRephotos()) {
+        <div class="rephoto-control">
+          <label for="rephoto-opacity">Then and now</label>
+          <div class="slider-row">
+            <span>now</span>
+            <input
+              id="rephoto-opacity"
+              data-rephoto-opacity
+              type="range"
+              min="0" max="1" step="0.01"
+              [value]="store.rephotoOpacity()"
+              (input)="onOpacity($event)"
+            />
+            <span>then</span>
+          </div>
+        </div>
+      }
+
       <footer class="controls">
         <button type="button" data-prev [disabled]="!store.hasPrevious()" (click)="store.previous()">
           Previous
@@ -65,6 +83,10 @@ import { TourStore } from '../core/tour-store';
 export class StopPanel {
   protected readonly store = inject(TourStore);
   protected readonly api = inject(TourApi);
+
+  protected onOpacity(event: Event): void {
+    this.store.setRephotoOpacity(Number((event.target as HTMLInputElement).value));
+  }
 
   protected readonly position = computed(
     () => `${this.store.currentIndex() + 1} of ${this.store.stops().length}`,

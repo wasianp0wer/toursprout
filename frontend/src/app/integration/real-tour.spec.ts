@@ -127,4 +127,76 @@ describe('the real Fairfax tour', () => {
       }
     }
   });
+
+  it('the courthouse carries rephotos from more than one era', () => {
+    store.goTo(0);
+    const rephotos = store.overlaysForCurrentStop().filter((o) => o.kind === 'rephoto');
+    expect(rephotos.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('every rephoto has a geoQuad anchor with a real size', () => {
+    for (let i = 0; i < 6; i++) {
+      store.goTo(i);
+      for (const ov of store.overlaysForCurrentStop()) {
+        if (ov.kind !== 'rephoto') continue;
+        expect(ov.anchor.type).toBe('geoQuad');
+        const a = ov.anchor as Extract<typeof ov.anchor, { type: 'geoQuad' }>;
+        expect(a.widthM).toBeGreaterThan(0);
+        expect(a.heightM).toBeGreaterThan(0);
+        expect(a.headingDeg).toBeGreaterThanOrEqual(0);
+        expect(a.headingDeg).toBeLessThan(360);
+      }
+    }
+  });
+
+  it('every rephoto stands within a short walk of its stop', () => {
+    for (const stop of store.stops()) {
+      for (const ov of stop.overlays) {
+        if (ov.kind !== 'rephoto') continue;
+        const a = ov.anchor as Extract<typeof ov.anchor, { type: 'geoQuad' }>;
+        expect(Math.abs(a.lng - stop.location.lng)).toBeLessThan(0.002);
+        expect(Math.abs(a.lat - stop.location.lat)).toBeLessThan(0.002);
+      }
+    }
+  });
+
+  it('every rephoto credits a named archive and the matched item', () => {
+    for (const stop of store.stops()) {
+      for (const ov of stop.overlays) {
+        if (ov.kind !== 'rephoto') continue;
+        expect(ov.credit.source).toContain('Library of Congress');
+        expect(ov.credit.creator?.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('archive credits name the matched item, not just the archive', () => {
+    store.goTo(0);
+    const rephoto = store.overlaysForCurrentStop().find((o) => o.kind === 'rephoto')!;
+    expect(rephoto.credit.creator).toMatch(/Fairfax/i);
+  });
+
+  it('walking to a stop advances the tour, as the panorama would', () => {
+    store.goTo(0);
+    store.updateViewerPosition(store.stops()[2].location);
+    expect(store.currentIndex()).toBe(2);
+  });
+
+  it('every stop except the last exposes a bearing to walk toward', () => {
+    for (let i = 0; i < 5; i++) {
+      store.goTo(i);
+      store.updateViewerPosition(store.stops()[i].location);
+      expect(store.bearingToNextStop()).not.toBeNull();
+    }
+    store.goTo(5);
+    store.updateViewerPosition(store.stops()[5].location);
+    expect(store.bearingToNextStop()).toBeNull();
+  });
+
+  it('the comparison slider is offered only where there is something to compare', () => {
+    store.goTo(0);
+    expect(store.hasRephotos()).toBe(true);
+    store.goTo(1);
+    expect(store.hasRephotos()).toBe(false);
+  });
 });

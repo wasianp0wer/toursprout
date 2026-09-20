@@ -43,6 +43,38 @@ make serve      # builds the frontend, serves everything on :8000
 Then open <http://localhost:8000>. FastAPI serves both the API and the built
 Angular bundle, so there is one process and no proxy.
 
+## Walking and comparing
+
+**Walk it.** Ground arrows in the panorama are real navigation: the one leading
+toward the next stop is highlighted, and following it walks the street image by
+image. Come within 30 m of a stop and the tour advances itself. A green
+destination marker shows where the next stop is when the arrow is out of view.
+`Next` and `Previous` still skip instantly if you would rather not walk.
+
+**Compare then and now.** The Fairfax County Historic Courthouse carries two
+Library of Congress photographs — 1863, with Union cavalry and a soldier in the
+cupola, and about 1918 — standing in the world where the building is. A slider
+in the stop panel fades between the photograph and the present view.
+
+Rephotography is demonstrated at the courthouse because that is where the
+archive actually is. Targeted searching found essentially no Old Town Fairfax
+imagery for the other five stops; the mechanism is general, the content is not.
+
+**Aligning a photograph.** Georeferencing by eye needs a browser, so open the
+app with `?align=1`:
+
+| Key | Effect |
+| --- | --- |
+| ← → ↑ ↓ | move the photograph on the ground |
+| PgUp / PgDn | raise and lower it |
+| `+` / `-` | resize, preserving aspect ratio |
+| `[` / `]` | rotate its heading |
+
+The panel shows the live anchor and copies it as JSON. Paste the result into
+the stop's `rephotos[].anchor` in `content/source/stops.json`, then
+`make content`. **The committed anchors are starting estimates and have not
+been aligned against the real view** — that needs someone at a browser.
+
 ## Tests
 
 ```sh

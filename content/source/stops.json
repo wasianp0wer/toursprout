@@ -38,6 +38,46 @@
           "court"
         ]
       }
+    ],
+    "rephotos": [
+      {
+        "id": "court-1863",
+        "title": "Fairfax Court House, 1863",
+        "query": "Fairfax Court House",
+        "terms": [
+          "fairfax",
+          "court"
+        ],
+        "preferDate": "1863",
+        "anchor": {
+          "type": "geoQuad",
+          "lng": -77.30736,
+          "lat": 38.84569,
+          "altitude": 8.0,
+          "headingDeg": 200,
+          "widthM": 30,
+          "heightM": 24
+        }
+      },
+      {
+        "id": "court-1918",
+        "title": "Fairfax Court House, about 1918",
+        "query": "Fairfax Court House",
+        "terms": [
+          "fairfax",
+          "court"
+        ],
+        "preferDate": "1918",
+        "anchor": {
+          "type": "geoQuad",
+          "lng": -77.30736,
+          "lat": 38.84569,
+          "altitude": 5.0,
+          "headingDeg": 200,
+          "widthM": 14,
+          "heightM": 11
+        }
+      }
     ]
   },
   {

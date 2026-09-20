@@ -84,3 +84,16 @@ test('attribution for OpenStreetMap and Mapillary is always visible', async ({ p
 test('selecting a stop on the map moves the tour', async ({ page }) => {
   await expect(page.locator('.maplibregl-canvas')).toBeVisible({ timeout: 20_000 });
 });
+
+test('the courthouse offers a then/now comparison', async ({ page }) => {
+  await expect(page.locator('[data-rephoto-opacity]')).toBeVisible();
+});
+
+test('the comparison slider is absent on a stop with no rephoto', async ({ page }) => {
+  await page.locator('[data-next]').click();
+  await expect(page.locator('[data-rephoto-opacity]')).toHaveCount(0);
+});
+
+test('alignment mode stays off unless asked for', async ({ page }) => {
+  await expect(page.locator('[data-align-panel]')).toHaveCount(0);
+});

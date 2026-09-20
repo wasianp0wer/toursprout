@@ -108,7 +108,12 @@ export class PanoramaPane {
             heightM: o.anchor.heightM,
           }];
         });
-      this.viewer.setRephotos(rephotos);
+      // Alignment mode nudges the first rephoto live, so the author sees the
+      // effect of each keypress without a reload.
+      const override = this.store.alignmentOverride();
+      this.viewer.setRephotos(
+        override ? rephotos.map((r, i) => (i === 0 ? { ...r, ...override } : r)) : rephotos,
+      );
     });
 
     effect(() => this.viewer.setRephotoOpacity(this.store.rephotoOpacity()));

@@ -124,3 +124,21 @@ Also note `ng serve` exhausts the file-descriptor limit here
 (`Watchpack Error: EMFILE: too many open files`). The backend serves the built
 Angular bundle instead, so the whole app runs from one process on port 8000
 with no dev-server watcher and no proxy hop.
+
+
+## `three` must stay the copy mapillary-js already depends on.
+
+Rephotos are rendered with three.js through `viewer.addCustomRenderer()`. The
+version used is `three@0.134.0`, hoisted into the top-level `node_modules` as a
+mapillary-js dependency — it is deliberately **not** a direct dependency.
+
+Installing three separately produces two copies sharing one WebGL context,
+which fails in ways that are hard to attribute: materials silently not
+rendering, `instanceof` checks failing across copies, disposal freeing the
+wrong resources. Verify with:
+
+```sh
+cd frontend && npm ls three
+```
+
+Expect exactly one entry, nested under `mapillary-js`.

@@ -110,4 +110,37 @@ describe('StopPanel', () => {
     store.load(tour([overlay()]));
     expect(render().querySelector('.overlay-detail')).toBeNull();
   });
+
+  const REPHOTO = {
+    id: 'court-1863', kind: 'rephoto' as const,
+    anchor: { type: 'geoQuad' as const, lng: -77.3, lat: 38.8, altitude: 6,
+              headingDeg: 200, widthM: 18, heightM: 14 },
+    title: 'Fairfax Court House, 1863', body: null, mediaId: 'court-1863.jpg',
+    credit: CREDIT,
+  };
+
+  it('shows no comparison slider when the stop has no rephoto', () => {
+    store.load(tour([overlay()]));
+    expect(render().querySelector('[data-rephoto-opacity]')).toBeNull();
+  });
+
+  it('shows the comparison slider when the stop has a rephoto', () => {
+    store.load(tour([REPHOTO as never]));
+    expect(render().querySelector('[data-rephoto-opacity]')).not.toBeNull();
+  });
+
+  it('labels the slider ends then and now', () => {
+    store.load(tour([REPHOTO as never]));
+    const text = render().textContent ?? '';
+    expect(text).toContain('then');
+    expect(text).toContain('now');
+  });
+
+  it('moving the slider updates the store', () => {
+    store.load(tour([REPHOTO as never]));
+    const slider = render().querySelector<HTMLInputElement>('[data-rephoto-opacity]')!;
+    slider.value = '0.25';
+    slider.dispatchEvent(new Event('input'));
+    expect(store.rephotoOpacity()).toBeCloseTo(0.25, 3);
+  });
 });

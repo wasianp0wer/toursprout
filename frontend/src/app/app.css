@@ -6,7 +6,7 @@
   grid-template-areas: "pano panel" "map panel" "attr attr";
   height: 100vh;
 }
-.panorama-slot { grid-area: pano; min-height: 0; }
+.panorama-slot { grid-area: pano; min-height: 0; position: relative; }
 .map-slot { grid-area: map; min-height: 0; border-top: 1px solid #333944; }
 .panel-slot { grid-area: panel; min-height: 0; border-left: 1px solid #333944; }
 .attribution {

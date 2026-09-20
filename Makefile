@@ -31,6 +31,7 @@ serve: build
 content:
 	cd backend && uv run python ../content/scripts/probe_coverage.py
 	cd backend && uv run python ../content/scripts/fetch_media.py
+	cd backend && uv run python ../content/scripts/fetch_rephotos.py
 	cd backend && uv run python ../content/scripts/make_narration.py
 	cd backend && uv run python ../content/scripts/build_tour.py
 

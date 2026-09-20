@@ -83,6 +83,19 @@ def main() -> int:
                 "credit": manifest[narration_id]["credit"],
             })
 
+        for spec in src.get("rephotos", []):
+            media_id = f"{spec['id']}.jpg"
+            if media_id not in manifest:
+                sys.exit(f"missing rephoto {media_id}; run fetch_rephotos.py first")
+            overlays.append({
+                "id": spec["id"],
+                "kind": "rephoto",
+                "anchor": spec["anchor"],
+                "title": spec["title"],
+                "mediaId": media_id,
+                "credit": manifest[media_id]["credit"],
+            })
+
         stops.append({
             "id": src["id"],
             "order": src["order"],

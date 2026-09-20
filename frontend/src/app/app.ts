@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { AlignMode, alignModeEnabled } from './align/align-mode';
 import { ConfigStore } from './core/config-store';
 import { TourApi } from './core/tour-api';
 import { TourStore } from './core/tour-store';
@@ -10,7 +11,7 @@ const TOUR_ID = 'fairfax-old-town';
 
 @Component({
   selector: 'app-root',
-  imports: [MapPane, PanoramaPane, StopPanel],
+  imports: [AlignMode, MapPane, PanoramaPane, StopPanel],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
@@ -20,6 +21,9 @@ export class App {
   protected readonly store = inject(TourStore);
   protected readonly ready = signal(false);
   protected readonly error = signal<string | null>(null);
+  protected readonly aligning = alignModeEnabled(
+    typeof location === 'undefined' ? '' : location.search,
+  );
 
   constructor() {
     void this.bootstrap();

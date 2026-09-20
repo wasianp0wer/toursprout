@@ -14,3 +14,8 @@ h2 { margin: 0 0 0.4rem; font-size: 1.35rem; }
 .controls { display: flex; gap: 0.5rem; margin-top: 1.2rem; }
 .controls button { flex: 1; padding: 0.55rem; background: #2f7fd4; color: #fff; border: 0; border-radius: 4px; font: inherit; cursor: pointer; }
 .controls button:disabled { background: #333944; color: #6d7480; cursor: default; }
+
+.rephoto-control { margin-top: 1rem; border-top: 1px solid #333944; padding-top: 0.9rem; }
+.rephoto-control label { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #9aa0ab; margin-bottom: 0.4rem; }
+.slider-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.7rem; color: #9aa0ab; }
+.slider-row input { flex: 1; }

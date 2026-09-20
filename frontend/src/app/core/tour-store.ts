@@ -1,6 +1,7 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { detectArrival } from './arrival';
 import { bearingBetween, type LngLatLike } from './geo';
+import type { GeoQuadAnchorLike } from '../align/align-mode';
 import type { Overlay, Stop, Tour } from './tour.models';
 
 /**
@@ -14,6 +15,7 @@ export class TourStore {
   private readonly _selectedOverlayId = signal<string | null>(null);
   private readonly _viewerPosition = signal<LngLatLike | null>(null);
   private readonly _rephotoOpacity = signal(0.7);
+  private readonly _alignmentOverride = signal<GeoQuadAnchorLike | null>(null);
   private _latched: ReadonlySet<string> = new Set();
 
   readonly tour = this._tour.asReadonly();
@@ -40,6 +42,7 @@ export class TourStore {
   readonly hasPrevious = computed(() => this._index() > 0);
 
   readonly viewerPosition = this._viewerPosition.asReadonly();
+  readonly alignmentOverride = this._alignmentOverride.asReadonly();
   readonly rephotoOpacity = this._rephotoOpacity.asReadonly();
 
   /** The stop the tour is heading toward, or null at the end. */
@@ -83,6 +86,11 @@ export class TourStore {
   /** Move because the viewer walked here, as opposed to skipping with goTo. */
   arriveAt(index: number): void {
     this.goTo(index);
+  }
+
+  /** Alignment mode only: live-replace the current stop's rephoto anchor. */
+  setAlignmentOverride(anchor: GeoQuadAnchorLike | null): void {
+    this._alignmentOverride.set(anchor);
   }
 
   setRephotoOpacity(value: number): void {
