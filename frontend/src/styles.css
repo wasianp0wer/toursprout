@@ -1,0 +1,10 @@
+/* You can add global styles to this file, and also import other style files */
+
+@import 'mapillary-js/dist/mapillary.css';
+
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: Georgia, 'Times New Roman', serif;
+  background: #14161a;
+  color: #ecebe6;
+}

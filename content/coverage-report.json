@@ -1,0 +1,534 @@
+{
+  "bbox": [
+    38.84,
+    -77.318,
+    38.856,
+    -77.295
+  ],
+  "radius_m": 50.0,
+  "stops": [
+    {
+      "name": "City of Fairfax Historic District",
+      "kind": "district",
+      "lat": 38.8461117,
+      "lng": -77.3068695,
+      "osm": "node/356599862",
+      "start_date": null,
+      "nrhp": null,
+      "wikidata": null,
+      "image_count": 159,
+      "pano_count": 130,
+      "nearest_m": 14.7,
+      "newest": "2026-08",
+      "verdict": "PANO",
+      "best_pano": {
+        "id": "2268207283967095",
+        "lng": -77.306706207226,
+        "lat": 38.846075979191,
+        "is_pano": true,
+        "captured_at": 1788017964316,
+        "compass_angle": 194.55335097253,
+        "distance_m": 14.7
+      },
+      "sample": [
+        {
+          "id": "2268207283967095",
+          "lng": -77.306706207226,
+          "lat": 38.846075979191,
+          "is_pano": true,
+          "captured_at": 1788017964316,
+          "compass_angle": 194.55335097253,
+          "distance_m": 14.7
+        },
+        {
+          "id": "1079258831256230",
+          "lng": -77.306696337199,
+          "lat": 38.846104987813,
+          "is_pano": true,
+          "captured_at": 1788017964016,
+          "compass_angle": 195.42081815797,
+          "distance_m": 15.0
+        },
+        {
+          "id": "2246894989482862",
+          "lng": -77.306715818712,
+          "lat": 38.846047013991,
+          "is_pano": true,
+          "captured_at": 1788017964617,
+          "compass_angle": 194.26859573465,
+          "distance_m": 15.1
+        },
+        {
+          "id": "1624111919365003",
+          "lng": -77.306686366084,
+          "lat": 38.84613365395,
+          "is_pano": true,
+          "captured_at": 1788017963717,
+          "compass_angle": 194.84943708909,
+          "distance_m": 16.0
+        },
+        {
+          "id": "1759763591891119",
+          "lng": -77.306725783161,
+          "lat": 38.846017805642,
+          "is_pano": true,
+          "captured_at": 1788017964917,
+          "compass_angle": 194.98797824161,
+          "distance_m": 16.2
+        }
+      ]
+    },
+    {
+      "name": "Fairfax City Hall",
+      "kind": "townhall",
+      "lat": 38.8409429,
+      "lng": -77.3081539,
+      "osm": "node/367990730",
+      "start_date": null,
+      "nrhp": null,
+      "wikidata": null,
+      "image_count": 45,
+      "pano_count": 45,
+      "nearest_m": 26.2,
+      "newest": "2026-08",
+      "verdict": "PANO",
+      "best_pano": {
+        "id": "1412217390816350",
+        "lng": -77.308076932225,
+        "lat": 38.841170482768,
+        "is_pano": true,
+        "captured_at": 1788018134577,
+        "compass_angle": 107.28845147195,
+        "distance_m": 26.2
+      },
+      "sample": [
+        {
+          "id": "1412217390816350",
+          "lng": -77.308076932225,
+          "lat": 38.841170482768,
+          "is_pano": true,
+          "captured_at": 1788018134577,
+          "compass_angle": 107.28845147195,
+          "distance_m": 26.2
+        },
+        {
+          "id": "1047663651213936",
+          "lng": -77.308041470398,
+          "lat": 38.84116183386,
+          "is_pano": true,
+          "captured_at": 1788018135111,
+          "compass_angle": 105.45763724246,
+          "distance_m": 26.2
+        },
+        {
+          "id": "1436622585038408",
+          "lng": -77.308110581916,
+          "lat": 38.84117877903,
+          "is_pano": true,
+          "captured_at": 1788018134078,
+          "compass_angle": 107.7951048204,
+          "distance_m": 26.5
+        },
+        {
+          "id": "1058165566970194",
+          "lng": -77.30800636754,
+          "lat": 38.841153419996,
+          "is_pano": true,
+          "captured_at": 1788018135644,
+          "compass_angle": 107.28844749735,
+          "distance_m": 26.7
+        },
+        {
+          "id": "1084502384027040",
+          "lng": -77.308144446513,
+          "lat": 38.8411872748,
+          "is_pano": true,
+          "captured_at": 1788018133577,
+          "compass_angle": 107.7951068744,
+          "distance_m": 27.2
+        }
+      ]
+    },
+    {
+      "name": "Fairfax Museum and Visitors Center",
+      "kind": "museum",
+      "lat": 38.8445451,
+      "lng": -77.3004972,
+      "osm": "node/367996983",
+      "start_date": null,
+      "nrhp": null,
+      "wikidata": null,
+      "image_count": 59,
+      "pano_count": 32,
+      "nearest_m": 35.1,
+      "newest": "2026-08",
+      "verdict": "PANO",
+      "best_pano": {
+        "id": "1675017370851450",
+        "lng": -77.300386949057,
+        "lat": 38.844849011248,
+        "is_pano": true,
+        "captured_at": 1788019363116,
+        "compass_angle": 104.21384029035,
+        "distance_m": 35.1
+      },
+      "sample": [
+        {
+          "id": "1675017370851450",
+          "lng": -77.300386949057,
+          "lat": 38.844849011248,
+          "is_pano": true,
+          "captured_at": 1788019363116,
+          "compass_angle": 104.21384029035,
+          "distance_m": 35.1
+        },
+        {
+          "id": "959600227161843",
+          "lng": -77.300421511752,
+          "lat": 38.844856381102,
+          "is_pano": true,
+          "captured_at": 1788019362882,
+          "compass_angle": 103.65323485682,
+          "distance_m": 35.2
+        },
+        {
+          "id": "1540729390644832",
+          "lng": -77.300352429832,
+          "lat": 38.844841734042,
+          "is_pano": true,
+          "captured_at": 1788019363349,
+          "compass_angle": 104.58815753263,
+          "distance_m": 35.3
+        },
+        {
+          "id": "1689560795448046",
+          "lng": -77.300455970529,
+          "lat": 38.844863776521,
+          "is_pano": true,
+          "captured_at": 1788019362649,
+          "compass_angle": 105.77332591401,
+          "distance_m": 35.6
+        },
+        {
+          "id": "1414117777323466",
+          "lng": -77.300317872436,
+          "lat": 38.844834546453,
+          "is_pano": true,
+          "captured_at": 1788019363582,
+          "compass_angle": 105.05269099739,
+          "distance_m": 35.7
+        }
+      ]
+    },
+    {
+      "name": "Fairfax County Judicial Center",
+      "kind": "courthouse",
+      "lat": 38.84402,
+      "lng": -77.3103055,
+      "osm": "way/124472505",
+      "start_date": null,
+      "nrhp": null,
+      "wikidata": null,
+      "image_count": 0,
+      "pano_count": 0,
+      "nearest_m": null,
+      "newest": "?",
+      "verdict": "NO IMAGERY",
+      "best_pano": null,
+      "sample": []
+    },
+    {
+      "name": "Fairfax County Courthouse",
+      "kind": "courthouse",
+      "lat": 38.8438852,
+      "lng": -77.309366,
+      "osm": "way/316693243",
+      "start_date": null,
+      "nrhp": null,
+      "wikidata": null,
+      "image_count": 0,
+      "pano_count": 0,
+      "nearest_m": null,
+      "newest": "?",
+      "verdict": "NO IMAGERY",
+      "best_pano": null,
+      "sample": []
+    },
+    {
+      "name": "Fairfax County Historic Courthouse",
+      "kind": "courthouse",
+      "lat": 38.8456228,
+      "lng": -77.3073232,
+      "osm": "way/471912196",
+      "start_date": null,
+      "nrhp": null,
+      "wikidata": null,
+      "image_count": 55,
+      "pano_count": 47,
+      "nearest_m": 39.0,
+      "newest": "2026-08",
+      "verdict": "PANO",
+      "best_pano": {
+        "id": "2116094392633820",
+        "lng": -77.306888050888,
+        "lat": 38.845533730977,
+        "is_pano": true,
+        "captured_at": 1788017969918,
+        "compass_angle": 194.695565523,
+        "distance_m": 39.0
+      },
+      "sample": [
+        {
+          "id": "2116094392633820",
+          "lng": -77.306888050888,
+          "lat": 38.845533730977,
+          "is_pano": true,
+          "captured_at": 1788017969918,
+          "compass_angle": 194.695565523,
+          "distance_m": 39.0
+        },
+        {
+          "id": "1018084517881254",
+          "lng": -77.306896827399,
+          "lat": 38.845507026336,
+          "is_pano": true,
+          "captured_at": 1788017970184,
+          "compass_angle": 194.41401942031,
+          "distance_m": 39.1
+        },
+        {
+          "id": "1536863597757433",
+          "lng": -77.306879271906,
+          "lat": 38.845560436676,
+          "is_pano": true,
+          "captured_at": 1788017969651,
+          "compass_angle": 193.84019653366,
+          "distance_m": 39.1
+        },
+        {
+          "id": "1430487015654811",
+          "lng": -77.306870438811,
+          "lat": 38.845587252983,
+          "is_pano": true,
+          "captured_at": 1788017969384,
+          "compass_angle": 194.1303570339,
+          "distance_m": 39.4
+        },
+        {
+          "id": "1543285986952079",
+          "lng": -77.306905929741,
+          "lat": 38.845480453614,
+          "is_pano": true,
+          "captured_at": 1788017970451,
+          "compass_angle": 194.414025183,
+          "distance_m": 39.5
+        }
+      ]
+    },
+    {
+      "name": "Ratcliffe-Allison-Pozer House",
+      "kind": "building",
+      "lat": 38.8460095,
+      "lng": -77.3046768,
+      "osm": "way/1230258549",
+      "start_date": null,
+      "nrhp": null,
+      "wikidata": null,
+      "image_count": 76,
+      "pano_count": 58,
+      "nearest_m": 22.2,
+      "newest": "2026-08",
+      "verdict": "PANO",
+      "best_pano": {
+        "id": "1623645942614169",
+        "lng": -77.304756691669,
+        "lat": 38.845820152134,
+        "is_pano": true,
+        "captured_at": 1788019254604,
+        "compass_angle": 107.12678118463,
+        "distance_m": 22.2
+      },
+      "sample": [
+        {
+          "id": "1623645942614169",
+          "lng": -77.304756691669,
+          "lat": 38.845820152134,
+          "is_pano": true,
+          "captured_at": 1788019254604,
+          "compass_angle": 107.12678118463,
+          "distance_m": 22.2
+        },
+        {
+          "id": "1806816207177585",
+          "lng": -77.304720004953,
+          "lat": 38.845811811467,
+          "is_pano": true,
+          "captured_at": 1788019255371,
+          "compass_angle": 102.66369868758,
+          "distance_m": 22.3
+        },
+        {
+          "id": "1696085138121657",
+          "lng": -77.304793223262,
+          "lat": 38.845828344558,
+          "is_pano": true,
+          "captured_at": 1788019254006,
+          "compass_angle": 105.06784586335,
+          "distance_m": 22.5
+        },
+        {
+          "id": "1778256893311727",
+          "lng": -77.30468244865,
+          "lat": 38.845803340143,
+          "is_pano": true,
+          "captured_at": 1788019256571,
+          "compass_angle": 107.79618977532,
+          "distance_m": 22.9
+        },
+        {
+          "id": "1383272839912337",
+          "lng": -77.304829322957,
+          "lat": 38.845836390787,
+          "is_pano": true,
+          "captured_at": 1788019253504,
+          "compass_angle": 104.01791475439,
+          "distance_m": 23.3
+        }
+      ]
+    },
+    {
+      "name": "Old Town Hall",
+      "kind": "manual",
+      "lat": 38.84604,
+      "lng": -77.30617,
+      "image_count": 106,
+      "pano_count": 84,
+      "nearest_m": 11.1,
+      "newest": "2026-08",
+      "verdict": "PANO",
+      "best_pano": {
+        "id": "1377390754539790",
+        "lng": -77.306146181031,
+        "lat": 38.846138072365,
+        "is_pano": true,
+        "captured_at": 1788019235901,
+        "compass_angle": 103.06389195796,
+        "distance_m": 11.1
+      },
+      "sample": [
+        {
+          "id": "1377390754539790",
+          "lng": -77.306146181031,
+          "lat": 38.846138072365,
+          "is_pano": true,
+          "captured_at": 1788019235901,
+          "compass_angle": 103.06389195796,
+          "distance_m": 11.1
+        },
+        {
+          "id": "4548799598726537",
+          "lng": -77.306110663967,
+          "lat": 38.846130310111,
+          "is_pano": true,
+          "captured_at": 1788019236334,
+          "compass_angle": 105.44535164178,
+          "distance_m": 11.3
+        },
+        {
+          "id": "1691145375302987",
+          "lng": -77.306182463913,
+          "lat": 38.846145947455,
+          "is_pano": true,
+          "captured_at": 1788019235467,
+          "compass_angle": 103.90203256027,
+          "distance_m": 11.8
+        },
+        {
+          "id": "1535837311562872",
+          "lng": -77.306075460264,
+          "lat": 38.846122525622,
+          "is_pano": true,
+          "captured_at": 1788019236768,
+          "compass_angle": 106.5046139482,
+          "distance_m": 12.3
+        },
+        {
+          "id": "1070504295468136",
+          "lng": -77.30621833361,
+          "lat": 38.846153601135,
+          "is_pano": true,
+          "captured_at": 1788019235035,
+          "compass_angle": 104.90587863605,
+          "distance_m": 13.3
+        }
+      ]
+    },
+    {
+      "name": "Marr Monument",
+      "kind": "manual",
+      "lat": 38.84566,
+      "lng": -77.30716,
+      "image_count": 73,
+      "pano_count": 65,
+      "nearest_m": 26.3,
+      "newest": "2026-08",
+      "verdict": "PANO",
+      "best_pano": {
+        "id": "1430487015654811",
+        "lng": -77.306870438811,
+        "lat": 38.845587252983,
+        "is_pano": true,
+        "captured_at": 1788017969384,
+        "compass_angle": 194.1303570339,
+        "distance_m": 26.3
+      },
+      "sample": [
+        {
+          "id": "1430487015654811",
+          "lng": -77.306870438811,
+          "lat": 38.845587252983,
+          "is_pano": true,
+          "captured_at": 1788017969384,
+          "compass_angle": 194.1303570339,
+          "distance_m": 26.3
+        },
+        {
+          "id": "1595790768915011",
+          "lng": -77.306861688273,
+          "lat": 38.845614037459,
+          "is_pano": true,
+          "captured_at": 1788017969117,
+          "compass_angle": 194.97491626572,
+          "distance_m": 26.3
+        },
+        {
+          "id": "1575825530683135",
+          "lng": -77.306852773686,
+          "lat": 38.845640878543,
+          "is_pano": true,
+          "captured_at": 1788017968851,
+          "compass_angle": 194.83179298007,
+          "distance_m": 26.7
+        },
+        {
+          "id": "1536863597757433",
+          "lng": -77.306879271906,
+          "lat": 38.845560436676,
+          "is_pano": true,
+          "captured_at": 1788017969651,
+          "compass_angle": 193.84019653366,
+          "distance_m": 26.7
+        },
+        {
+          "id": "1694682944947382",
+          "lng": -77.306843849832,
+          "lat": 38.84566758648,
+          "is_pano": true,
+          "captured_at": 1788017968584,
+          "compass_angle": 195.12074549533,
+          "distance_m": 27.4
+        }
+      ]
+    }
+  ]
+}

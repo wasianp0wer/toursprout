@@ -1,0 +1,123 @@
+[
+  {
+    "id": "historic-courthouse",
+    "order": 1,
+    "title": "Fairfax County Historic Courthouse",
+    "summary": "The county's seat of justice since 1800, and the keeper of George Washington's will.",
+    "osmRef": "way/471912196",
+    "location": { "lng": -77.30732, "lat": 38.84562 },
+    "bearing": 200,
+    "narration": "You are standing at the Fairfax County Historic Courthouse, completed in 1800. The county seat was moved here because the site sat at the crossroads of two turnpikes, roughly equidistant from the county's scattered settlements. Among the records kept by the county's circuit court is the will of George Washington, written in his own hand. The building survived occupation by both armies during the Civil War, and remains in use by the county court system.",
+    "overlays": [
+      {
+        "id": "courthouse-founding",
+        "kind": "text",
+        "title": "A courthouse at the crossroads",
+        "anchorOffset": { "east": 8, "north": 4, "altitude": 3 },
+        "body": "Completed in 1800, the courthouse was sited where two turnpikes met, so that no corner of the county was unreasonably far from the law."
+      },
+      {
+        "id": "courthouse-photo",
+        "kind": "image",
+        "title": "Fairfax Court House, early twentieth century",
+        "anchorOffset": { "east": -6, "north": 10, "altitude": 4 },
+        "imageQuery": "Fairfax Court House Virginia"
+      }
+    ]
+  },
+  {
+    "id": "marr-monument",
+    "order": 2,
+    "title": "Marr Monument",
+    "summary": "Marking the death of Captain John Quincy Marr on 1 June 1861.",
+    "osmRef": null,
+    "location": { "lng": -77.30716, "lat": 38.84566 },
+    "bearing": 150,
+    "narration": "This obelisk marks the death of Captain John Quincy Marr, killed here on the first of June, 1861, during a brief pre-dawn skirmish known as the Battle of Fairfax Court House. Marr is generally identified as the first Confederate officer killed in combat in the Civil War. The monument was erected in 1904, more than four decades after the event, during a period when such memorials were being raised across the South.",
+    "overlays": [
+      {
+        "id": "marr-death",
+        "kind": "text",
+        "title": "1 June 1861",
+        "anchorOffset": { "east": 5, "north": 3, "altitude": 2.5 },
+        "body": "A skirmish before dawn left Captain John Quincy Marr dead, the first Confederate officer killed in combat in the war. The monument came much later, in 1904."
+      }
+    ]
+  },
+  {
+    "id": "old-town-hall",
+    "order": 3,
+    "title": "Old Town Hall",
+    "summary": "A 1900 gift to the town, still its gathering place.",
+    "osmRef": null,
+    "location": { "lng": -77.30617, "lat": 38.84604 },
+    "bearing": 250,
+    "narration": "Old Town Hall was built in 1900 as a gift to the town from Joseph Willard, whose family had long-standing ties to the area. For most of the twentieth century it served as the civic centre of Fairfax, hosting town meetings, dances and elections. It stands at the junction of Main Street and University Drive, and is still used for public events.",
+    "overlays": [
+      {
+        "id": "town-hall-gift",
+        "kind": "text",
+        "title": "A gift to the town",
+        "anchorOffset": { "east": -7, "north": 6, "altitude": 3.5 },
+        "body": "Joseph Willard gave the building to the town in 1900. It served as the centre of civic life for most of the century that followed."
+      }
+    ]
+  },
+  {
+    "id": "ratcliffe-allison-pozer-house",
+    "order": 4,
+    "title": "Ratcliffe-Allison-Pozer House",
+    "summary": "The oldest surviving house in the City of Fairfax, built about 1812.",
+    "osmRef": "way/1230258549",
+    "location": { "lng": -77.30468, "lat": 38.84601 },
+    "bearing": 180,
+    "narration": "This is the oldest surviving house in the City of Fairfax, built around 1812 by Richard Ratcliffe, the landowner who sold the county the ground its courthouse stands on. The house passed through the Allison and Pozer families, and each left its mark on the structure. It is now a museum property, and its successive names record the layered ownership typical of a small county town.",
+    "overlays": [
+      {
+        "id": "ratcliffe-oldest",
+        "kind": "text",
+        "title": "Three families, one house",
+        "anchorOffset": { "east": 6, "north": -5, "altitude": 3 },
+        "body": "Built around 1812 by Richard Ratcliffe, who had sold the county the land for its courthouse. The Allison and Pozer families followed; the hyphenated name records all three."
+      }
+    ]
+  },
+  {
+    "id": "fairfax-museum",
+    "order": 5,
+    "title": "Fairfax Museum and Visitor Center",
+    "summary": "An 1873 schoolhouse, now the city's museum.",
+    "osmRef": "node/367996983",
+    "location": { "lng": -77.30050, "lat": 38.84455 },
+    "bearing": 300,
+    "narration": "The Fairfax Museum and Visitor Center occupies a brick building put up in 1873 as Fairfax Elementary School. It served as a school into the middle of the twentieth century before being converted to its present use. The building is a reminder that public education in Virginia was being rebuilt in the years immediately after the Civil War.",
+    "overlays": [
+      {
+        "id": "museum-school",
+        "kind": "text",
+        "title": "Built as a school",
+        "anchorOffset": { "east": -8, "north": 4, "altitude": 3.5 },
+        "body": "Fairfax Elementary School opened here in 1873, part of the rebuilding of public education in Virginia after the Civil War."
+      }
+    ]
+  },
+  {
+    "id": "fairfax-city-hall",
+    "order": 6,
+    "title": "Fairfax City Hall",
+    "summary": "Where an independent city governs itself, separately from the county that surrounds it.",
+    "osmRef": "node/367990730",
+    "location": { "lng": -77.30815, "lat": 38.84094 },
+    "bearing": 60,
+    "narration": "Fairfax City Hall is the seat of a city that is, unusually, independent of the county bearing the same name. Virginia is distinctive in the United States for its independent cities, which sit outside county government entirely. The City of Fairfax became independent in 1961, while remaining the county seat of Fairfax County, an arrangement that still confuses visitors.",
+    "overlays": [
+      {
+        "id": "city-hall-independence",
+        "kind": "text",
+        "title": "A city outside its county",
+        "anchorOffset": { "east": 7, "north": 7, "altitude": 3 },
+        "body": "The City of Fairfax became independent of Fairfax County in 1961, yet remains the county seat. Virginia's independent cities are close to unique in the United States."
+      }
+    ]
+  }
+]

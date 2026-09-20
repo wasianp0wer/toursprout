@@ -1,0 +1,125 @@
+{
+  "pano-historic-courthouse.jpg": {
+    "file": "pano/pano-historic-courthouse.jpg",
+    "credit": {
+      "source": "Mapillary",
+      "url": "https://www.mapillary.com/app/?pKey=2116094392633820",
+      "license": "CC-BY-SA-4.0",
+      "creator": "apmwa"
+    },
+    "imageId": "2116094392633820"
+  },
+  "courthouse-photo.jpg": {
+    "file": "courthouse-photo.jpg",
+    "credit": {
+      "source": "Library of Congress",
+      "url": "http://www.loc.gov/item/2016826367/",
+      "license": "No known restrictions on publication",
+      "creator": "Unknown"
+    }
+  },
+  "pano-marr-monument.jpg": {
+    "file": "pano/pano-marr-monument.jpg",
+    "credit": {
+      "source": "Mapillary",
+      "url": "https://www.mapillary.com/app/?pKey=1430487015654811",
+      "license": "CC-BY-SA-4.0",
+      "creator": "apmwa"
+    },
+    "imageId": "1430487015654811"
+  },
+  "pano-old-town-hall.jpg": {
+    "file": "pano/pano-old-town-hall.jpg",
+    "credit": {
+      "source": "Mapillary",
+      "url": "https://www.mapillary.com/app/?pKey=1377390754539790",
+      "license": "CC-BY-SA-4.0",
+      "creator": "apmwa"
+    },
+    "imageId": "1377390754539790"
+  },
+  "pano-ratcliffe-allison-pozer-house.jpg": {
+    "file": "pano/pano-ratcliffe-allison-pozer-house.jpg",
+    "credit": {
+      "source": "Mapillary",
+      "url": "https://www.mapillary.com/app/?pKey=1623645942614169",
+      "license": "CC-BY-SA-4.0",
+      "creator": "apmwa"
+    },
+    "imageId": "1623645942614169"
+  },
+  "pano-fairfax-museum.jpg": {
+    "file": "pano/pano-fairfax-museum.jpg",
+    "credit": {
+      "source": "Mapillary",
+      "url": "https://www.mapillary.com/app/?pKey=1675017370851450",
+      "license": "CC-BY-SA-4.0",
+      "creator": "apmwa"
+    },
+    "imageId": "1675017370851450"
+  },
+  "pano-fairfax-city-hall.jpg": {
+    "file": "pano/pano-fairfax-city-hall.jpg",
+    "credit": {
+      "source": "Mapillary",
+      "url": "https://www.mapillary.com/app/?pKey=1412217390816350",
+      "license": "CC-BY-SA-4.0",
+      "creator": "apmwa"
+    },
+    "imageId": "1412217390816350"
+  },
+  "narration-historic-courthouse.m4a": {
+    "file": "narration-historic-courthouse.m4a",
+    "credit": {
+      "source": "Synthesized narration, generated for this prototype",
+      "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+      "license": "Generated for this prototype; not an archival recording",
+      "creator": "macOS speech synthesis, voice Samantha"
+    }
+  },
+  "narration-marr-monument.m4a": {
+    "file": "narration-marr-monument.m4a",
+    "credit": {
+      "source": "Synthesized narration, generated for this prototype",
+      "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+      "license": "Generated for this prototype; not an archival recording",
+      "creator": "macOS speech synthesis, voice Samantha"
+    }
+  },
+  "narration-old-town-hall.m4a": {
+    "file": "narration-old-town-hall.m4a",
+    "credit": {
+      "source": "Synthesized narration, generated for this prototype",
+      "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+      "license": "Generated for this prototype; not an archival recording",
+      "creator": "macOS speech synthesis, voice Samantha"
+    }
+  },
+  "narration-ratcliffe-allison-pozer-house.m4a": {
+    "file": "narration-ratcliffe-allison-pozer-house.m4a",
+    "credit": {
+      "source": "Synthesized narration, generated for this prototype",
+      "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+      "license": "Generated for this prototype; not an archival recording",
+      "creator": "macOS speech synthesis, voice Samantha"
+    }
+  },
+  "narration-fairfax-museum.m4a": {
+    "file": "narration-fairfax-museum.m4a",
+    "credit": {
+      "source": "Synthesized narration, generated for this prototype",
+      "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+      "license": "Generated for this prototype; not an archival recording",
+      "creator": "macOS speech synthesis, voice Samantha"
+    }
+  },
+  "narration-fairfax-city-hall.m4a": {
+    "file": "narration-fairfax-city-hall.m4a",
+    "credit": {
+      "source": "Synthesized narration, generated for this prototype",
+      "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+      "license": "Generated for this prototype; not an archival recording",
+      "creator": "macOS speech synthesis, voice Samantha"
+    }
+  }
+}

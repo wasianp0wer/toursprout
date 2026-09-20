@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "autoAllowBashIfSandboxed": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "allowWrite": [
+        "/Users/maddiepersonal/phd/clio-wired"
+      ],
+      "denyWrite": [
+        "~/.claude",
+        "~/.zshrc",
+        "~/.zprofile",
+        "~/.gitconfig",
+        "~/.config"
+      ],
+      "denyRead": [
+        "~/.ssh",
+        "~/.gnupg",
+        "~/.aws",
+        "~/.docker",
+        "~/.copilot",
+        "~/.zsh_history",
+        "~/.psql_history",
+        "~/.viminfo",
+        "~/.lesshst",
+        "~/Documents",
+        "~/Desktop",
+        "~/Downloads",
+        "~/Pictures",
+        "~/Movies",
+        "~/Music",
+        "~/Library/Keychains",
+        "~/clio-wired",
+        "~/amogh-school-project",
+        "~/da-movies",
+        "~/gaming",
+        "~/notestest",
+        "~/takingnotes",
+        "~/transcribe",
+        "~/web-dev",
+        "~/writing"
+      ],
+      "allowRead": [
+        "/Users/maddiepersonal/phd/clio-wired"
+      ]
+    },
+    "credentials": {
+      "files": [
+        {
+          "path": "~/.ssh",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.aws",
+          "mode": "deny"
+        }
+      ]
+    },
+    "network": {
+      "allowLocalBinding": true
+    }
+  },
+  "permissions": {
+    "additionalDirectories": [],
+    "deny": [
+      "Edit(./.claude/settings.json)",
+      "Edit(//Applications/**)",
+      "Edit(//Library/**)",
+      "Edit(//System/**)",
+      "Edit(//Users/maddiepersonal/.Trash/**)",
+      "Edit(//Users/maddiepersonal/.angular-config.json)",
+      "Edit(//Users/maddiepersonal/.aws/**)",
+      "Edit(//Users/maddiepersonal/.cache/**)",
+      "Edit(//Users/maddiepersonal/.claude.json)",
+      "Edit(//Users/maddiepersonal/.claude/**)",
+      "Edit(//Users/maddiepersonal/.config/**)",
+      "Edit(//Users/maddiepersonal/.copilot/**)",
+      "Edit(//Users/maddiepersonal/.docker/**)",
+      "Edit(//Users/maddiepersonal/.flexlmrc)",
+      "Edit(//Users/maddiepersonal/.gitconfig)",
+      "Edit(//Users/maddiepersonal/.gnupg/**)",
+      "Edit(//Users/maddiepersonal/.gradle/**)",
+      "Edit(//Users/maddiepersonal/.hawtjni/**)",
+      "Edit(//Users/maddiepersonal/.lesshst)",
+      "Edit(//Users/maddiepersonal/.local/**)",
+      "Edit(//Users/maddiepersonal/.npm/**)",
+      "Edit(//Users/maddiepersonal/.ollama/**)",
+      "Edit(//Users/maddiepersonal/.playwright-mcp/**)",
+      "Edit(//Users/maddiepersonal/.psql_history)",
+      "Edit(//Users/maddiepersonal/.ssh/**)",
+      "Edit(//Users/maddiepersonal/.thumbnails/**)",
+      "Edit(//Users/maddiepersonal/.viminfo)",
+      "Edit(//Users/maddiepersonal/.vscode/**)",
+      "Edit(//Users/maddiepersonal/.zprofile)",
+      "Edit(//Users/maddiepersonal/.zsh_history)",
+      "Edit(//Users/maddiepersonal/.zshrc)",
+      "Edit(//Users/maddiepersonal/2011-DH-definitions.txt)",
+      "Edit(//Users/maddiepersonal/Applications/**)",
+      "Edit(//Users/maddiepersonal/Desktop/**)",
+      "Edit(//Users/maddiepersonal/Documents/**)",
+      "Edit(//Users/maddiepersonal/Downloads/**)",
+      "Edit(//Users/maddiepersonal/Library/**)",
+      "Edit(//Users/maddiepersonal/Movies/**)",
+      "Edit(//Users/maddiepersonal/Music/**)",
+      "Edit(//Users/maddiepersonal/Pictures/**)",
+      "Edit(//Users/maddiepersonal/Public/**)",
+      "Edit(//Users/maddiepersonal/amogh-school-project/**)",
+      "Edit(//Users/maddiepersonal/clio-wired/**)",
+      "Edit(//Users/maddiepersonal/da-movies/**)",
+      "Edit(//Users/maddiepersonal/gaming/**)",
+      "Edit(//Users/maddiepersonal/notestest/**)",
+      "Edit(//Users/maddiepersonal/takingnotes/**)",
+      "Edit(//Users/maddiepersonal/transcribe/**)",
+      "Edit(//Users/maddiepersonal/web-dev/**)",
+      "Edit(//Users/maddiepersonal/writing/**)",
+      "Edit(//bin/**)",
+      "Edit(//etc/**)",
+      "Edit(//opt/**)",
+      "Edit(//sbin/**)",
+      "Edit(//usr/**)",
+      "Edit(//var/**)",
+      "Read(//Users/maddiepersonal/.aws/**)",
+      "Read(//Users/maddiepersonal/.copilot/**)",
+      "Read(//Users/maddiepersonal/.docker/**)",
+      "Read(//Users/maddiepersonal/.gnupg/**)",
+      "Read(//Users/maddiepersonal/.psql_history)",
+      "Read(//Users/maddiepersonal/.ssh/**)",
+      "Read(//Users/maddiepersonal/.zsh_history)",
+      "Read(//Users/maddiepersonal/Desktop/**)",
+      "Read(//Users/maddiepersonal/Documents/**)",
+      "Read(//Users/maddiepersonal/Downloads/**)",
+      "Read(//Users/maddiepersonal/Library/**)",
+      "Read(//Users/maddiepersonal/Movies/**)",
+      "Read(//Users/maddiepersonal/Music/**)",
+      "Read(//Users/maddiepersonal/Pictures/**)",
+      "Read(//Users/maddiepersonal/amogh-school-project/**)",
+      "Read(//Users/maddiepersonal/clio-wired/**)",
+      "Read(//Users/maddiepersonal/da-movies/**)",
+      "Read(//Users/maddiepersonal/gaming/**)",
+      "Read(//Users/maddiepersonal/notestest/**)",
+      "Read(//Users/maddiepersonal/takingnotes/**)",
+      "Read(//Users/maddiepersonal/transcribe/**)",
+      "Read(//Users/maddiepersonal/web-dev/**)",
+      "Read(//Users/maddiepersonal/writing/**)"
+    ]
+  }
+}

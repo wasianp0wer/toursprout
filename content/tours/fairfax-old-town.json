@@ -1,0 +1,368 @@
+{
+  "id": "fairfax-old-town",
+  "schemaVersion": 1,
+  "title": "Old Town Fairfax",
+  "description": "Six historic sites in the City of Fairfax, Virginia, told through street-level panoramas.",
+  "attribution": [
+    {
+      "text": "Map data (c) OpenStreetMap contributors",
+      "url": "https://www.openstreetmap.org/copyright",
+      "license": "ODbL"
+    },
+    {
+      "text": "Street-level imagery (c) Mapillary contributors",
+      "url": "https://www.mapillary.com",
+      "license": "CC-BY-SA-4.0"
+    }
+  ],
+  "stops": [
+    {
+      "id": "historic-courthouse",
+      "order": 1,
+      "title": "Fairfax County Historic Courthouse",
+      "summary": "The county's seat of justice since 1800, and the keeper of George Washington's will.",
+      "location": {
+        "lng": -77.30732,
+        "lat": 38.84562
+      },
+      "osmRef": "way/471912196",
+      "panorama": {
+        "provider": "mapillary",
+        "imageId": "2116094392633820",
+        "bearing": 200.0,
+        "cachedPath": "media/pano/pano-historic-courthouse.jpg"
+      },
+      "overlays": [
+        {
+          "id": "courthouse-founding",
+          "kind": "text",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30722772815423,
+            "lat": 38.845655932446995,
+            "altitude": 3
+          },
+          "title": "A courthouse at the crossroads",
+          "body": "Completed in 1800, the courthouse was sited where two turnpikes met, so that no corner of the county was unreasonably far from the law.",
+          "credit": {
+            "source": "Written for this prototype",
+            "url": "https://www.openstreetmap.org/copyright",
+            "license": "Draft text, not peer-reviewed",
+            "creator": "Project author"
+          }
+        },
+        {
+          "id": "courthouse-photo",
+          "kind": "image",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30738920388433,
+            "lat": 38.845709831117496,
+            "altitude": 4
+          },
+          "title": "Fairfax Court House, early twentieth century",
+          "mediaId": "courthouse-photo.jpg",
+          "credit": {
+            "source": "Library of Congress",
+            "url": "http://www.loc.gov/item/2016826367/",
+            "license": "No known restrictions on publication",
+            "creator": "Unknown"
+          }
+        },
+        {
+          "id": "narration-historic-courthouse",
+          "kind": "audio",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30732,
+            "lat": 38.8456379662235,
+            "altitude": 2.0
+          },
+          "title": "Narration: Fairfax County Historic Courthouse",
+          "mediaId": "narration-historic-courthouse.m4a",
+          "credit": {
+            "source": "Synthesized narration, generated for this prototype",
+            "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+            "license": "Generated for this prototype; not an archival recording",
+            "creator": "macOS speech synthesis, voice Samantha"
+          }
+        }
+      ]
+    },
+    {
+      "id": "marr-monument",
+      "order": 2,
+      "title": "Marr Monument",
+      "summary": "Marking the death of Captain John Quincy Marr on 1 June 1861.",
+      "location": {
+        "lng": -77.30716,
+        "lat": 38.84566
+      },
+      "osmRef": null,
+      "panorama": {
+        "provider": "mapillary",
+        "imageId": "1430487015654811",
+        "bearing": 150.0,
+        "cachedPath": "media/pano/pano-marr-monument.jpg"
+      },
+      "overlays": [
+        {
+          "id": "marr-death",
+          "kind": "text",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30710233006397,
+            "lat": 38.84568694933525,
+            "altitude": 2.5
+          },
+          "title": "1 June 1861",
+          "body": "A skirmish before dawn left Captain John Quincy Marr dead, the first Confederate officer killed in combat in the war. The monument came much later, in 1904.",
+          "credit": {
+            "source": "Written for this prototype",
+            "url": "https://www.openstreetmap.org/copyright",
+            "license": "Draft text, not peer-reviewed",
+            "creator": "Project author"
+          }
+        },
+        {
+          "id": "narration-marr-monument",
+          "kind": "audio",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30716,
+            "lat": 38.845677966223505,
+            "altitude": 2.0
+          },
+          "title": "Narration: Marr Monument",
+          "mediaId": "narration-marr-monument.m4a",
+          "credit": {
+            "source": "Synthesized narration, generated for this prototype",
+            "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+            "license": "Generated for this prototype; not an archival recording",
+            "creator": "macOS speech synthesis, voice Samantha"
+          }
+        }
+      ]
+    },
+    {
+      "id": "old-town-hall",
+      "order": 3,
+      "title": "Old Town Hall",
+      "summary": "A 1900 gift to the town, still its gathering place.",
+      "location": {
+        "lng": -77.30617,
+        "lat": 38.84604
+      },
+      "osmRef": null,
+      "panorama": {
+        "provider": "mapillary",
+        "imageId": "1377390754539790",
+        "bearing": 250.0,
+        "cachedPath": "media/pano/pano-old-town-hall.jpg"
+      },
+      "overlays": [
+        {
+          "id": "town-hall-gift",
+          "kind": "text",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30625073834167,
+            "lat": 38.8460938986705,
+            "altitude": 3.5
+          },
+          "title": "A gift to the town",
+          "body": "Joseph Willard gave the building to the town in 1900. It served as the centre of civic life for most of the century that followed.",
+          "credit": {
+            "source": "Written for this prototype",
+            "url": "https://www.openstreetmap.org/copyright",
+            "license": "Draft text, not peer-reviewed",
+            "creator": "Project author"
+          }
+        },
+        {
+          "id": "narration-old-town-hall",
+          "kind": "audio",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30617,
+            "lat": 38.846057966223505,
+            "altitude": 2.0
+          },
+          "title": "Narration: Old Town Hall",
+          "mediaId": "narration-old-town-hall.m4a",
+          "credit": {
+            "source": "Synthesized narration, generated for this prototype",
+            "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+            "license": "Generated for this prototype; not an archival recording",
+            "creator": "macOS speech synthesis, voice Samantha"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ratcliffe-allison-pozer-house",
+      "order": 4,
+      "title": "Ratcliffe-Allison-Pozer House",
+      "summary": "The oldest surviving house in the City of Fairfax, built about 1812.",
+      "location": {
+        "lng": -77.30468,
+        "lat": 38.84601
+      },
+      "osmRef": "way/1230258549",
+      "panorama": {
+        "provider": "mapillary",
+        "imageId": "1623645942614169",
+        "bearing": 180.0,
+        "cachedPath": "media/pano/pano-ratcliffe-allison-pozer-house.jpg"
+      },
+      "overlays": [
+        {
+          "id": "ratcliffe-oldest",
+          "kind": "text",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30461079573632,
+            "lat": 38.845965084441254,
+            "altitude": 3
+          },
+          "title": "Three families, one house",
+          "body": "Built around 1812 by Richard Ratcliffe, who had sold the county the land for its courthouse. The Allison and Pozer families followed; the hyphenated name records all three.",
+          "credit": {
+            "source": "Written for this prototype",
+            "url": "https://www.openstreetmap.org/copyright",
+            "license": "Draft text, not peer-reviewed",
+            "creator": "Project author"
+          }
+        },
+        {
+          "id": "narration-ratcliffe-allison-pozer-house",
+          "kind": "audio",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30468,
+            "lat": 38.8460279662235,
+            "altitude": 2.0
+          },
+          "title": "Narration: Ratcliffe-Allison-Pozer House",
+          "mediaId": "narration-ratcliffe-allison-pozer-house.m4a",
+          "credit": {
+            "source": "Synthesized narration, generated for this prototype",
+            "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+            "license": "Generated for this prototype; not an archival recording",
+            "creator": "macOS speech synthesis, voice Samantha"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fairfax-museum",
+      "order": 5,
+      "title": "Fairfax Museum and Visitor Center",
+      "summary": "An 1873 schoolhouse, now the city's museum.",
+      "location": {
+        "lng": -77.3005,
+        "lat": 38.84455
+      },
+      "osmRef": "node/367996983",
+      "panorama": {
+        "provider": "mapillary",
+        "imageId": "1675017370851450",
+        "bearing": 300.0,
+        "cachedPath": "media/pano/pano-fairfax-museum.jpg"
+      },
+      "overlays": [
+        {
+          "id": "museum-school",
+          "kind": "text",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30059227045808,
+            "lat": 38.844585932446996,
+            "altitude": 3.5
+          },
+          "title": "Built as a school",
+          "body": "Fairfax Elementary School opened here in 1873, part of the rebuilding of public education in Virginia after the Civil War.",
+          "credit": {
+            "source": "Written for this prototype",
+            "url": "https://www.openstreetmap.org/copyright",
+            "license": "Draft text, not peer-reviewed",
+            "creator": "Project author"
+          }
+        },
+        {
+          "id": "narration-fairfax-museum",
+          "kind": "audio",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.3005,
+            "lat": 38.8445679662235,
+            "altitude": 2.0
+          },
+          "title": "Narration: Fairfax Museum and Visitor Center",
+          "mediaId": "narration-fairfax-museum.m4a",
+          "credit": {
+            "source": "Synthesized narration, generated for this prototype",
+            "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+            "license": "Generated for this prototype; not an archival recording",
+            "creator": "macOS speech synthesis, voice Samantha"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fairfax-city-hall",
+      "order": 6,
+      "title": "Fairfax City Hall",
+      "summary": "Where an independent city governs itself, separately from the county that surrounds it.",
+      "location": {
+        "lng": -77.30815,
+        "lat": 38.84094
+      },
+      "osmRef": "node/367990730",
+      "panorama": {
+        "provider": "mapillary",
+        "imageId": "1412217390816350",
+        "bearing": 60.0,
+        "cachedPath": "media/pano/pano-fairfax-city-hall.jpg"
+      },
+      "overlays": [
+        {
+          "id": "city-hall-independence",
+          "kind": "text",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30806926744532,
+            "lat": 38.84100288178225,
+            "altitude": 3
+          },
+          "title": "A city outside its county",
+          "body": "The City of Fairfax became independent of Fairfax County in 1961, yet remains the county seat. Virginia's independent cities are close to unique in the United States.",
+          "credit": {
+            "source": "Written for this prototype",
+            "url": "https://www.openstreetmap.org/copyright",
+            "license": "Draft text, not peer-reviewed",
+            "creator": "Project author"
+          }
+        },
+        {
+          "id": "narration-fairfax-city-hall",
+          "kind": "audio",
+          "anchor": {
+            "type": "geo",
+            "lng": -77.30815,
+            "lat": 38.840957966223506,
+            "altitude": 2.0
+          },
+          "title": "Narration: Fairfax City Hall",
+          "mediaId": "narration-fairfax-city-hall.m4a",
+          "credit": {
+            "source": "Synthesized narration, generated for this prototype",
+            "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
+            "license": "Generated for this prototype; not an archival recording",
+            "creator": "macOS speech synthesis, voice Samantha"
+          }
+        }
+      ]
+    }
+  ]
+}

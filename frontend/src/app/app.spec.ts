@@ -1,0 +1,46 @@
+import { describe, expect, it, beforeEach } from 'vitest';
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { App } from './app';
+import { PANORAMA_VIEWER } from './panorama/panorama-pane';
+import { FakeViewer } from './panorama/fake-viewer';
+
+describe('App', () => {
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [App],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: PANORAMA_VIEWER, useValue: new FakeViewer() },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  it('shows an actionable message when the backend is unreachable', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    http.expectOne('/api/config').error(new ProgressEvent('network'));
+    http.expectOne('/api/tours/fairfax-old-town').error(new ProgressEvent('network'));
+    // The bootstrap promise rejects on a microtask; whenStable alone can run
+    // before the catch block has set the error signal.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-error]')?.textContent).toContain('backend');
+  });
+
+  it('shows the loading state before the tour arrives', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('Loading the tour');
+    http.expectOne('/api/config');
+    http.expectOne('/api/tours/fairfax-old-town');
+  });
+});
