@@ -40,7 +40,24 @@ class GeoAnchor(Strict):
     altitude: float = 0.0
 
 
-Anchor = Annotated[GeoAnchor, Field(discriminator="type")]
+class GeoQuadAnchor(Strict):
+    """A photograph standing in the world as a flat plane.
+
+    Used by rephoto overlays, where the historical image is draped over the
+    scene it depicts rather than pinned to a point. `heading_deg` is the
+    compass direction the face of the photograph looks toward.
+    """
+
+    type: Literal["geoQuad"] = "geoQuad"
+    lng: Annotated[float, Field(ge=-180.0, le=180.0)]
+    lat: Annotated[float, Field(ge=-90.0, le=90.0)]
+    altitude: float = 0.0
+    heading_deg: Annotated[float, Field(ge=0.0, lt=360.0)] = Field(alias="headingDeg")
+    width_m: Annotated[float, Field(gt=0.0, le=200.0)] = Field(alias="widthM")
+    height_m: Annotated[float, Field(gt=0.0, le=200.0)] = Field(alias="heightM")
+
+
+Anchor = Annotated[GeoAnchor | GeoQuadAnchor, Field(discriminator="type")]
 
 
 class Credit(Strict):
@@ -61,7 +78,7 @@ class Credit(Strict):
 
 class Overlay(Strict):
     id: str = Field(min_length=1)
-    kind: Literal["text", "image", "audio"]
+    kind: Literal["text", "image", "audio", "rephoto"]
     anchor: Anchor
     title: str = Field(min_length=1)
     body: str | None = None
@@ -72,8 +89,12 @@ class Overlay(Strict):
     def _payload_matches_kind(self) -> Overlay:
         if self.kind == "text" and not (self.body or "").strip():
             raise ValueError("text overlays require a body")
-        if self.kind in ("image", "audio") and not self.media_id:
+        if self.kind in ("image", "audio", "rephoto") and not self.media_id:
             raise ValueError(f"{self.kind} overlays require a mediaId")
+        if self.kind == "rephoto" and self.anchor.type != "geoQuad":
+            raise ValueError("rephoto overlays require a geoQuad anchor")
+        if self.kind != "rephoto" and self.anchor.type != "geo":
+            raise ValueError(f"{self.kind} overlays require a geo anchor")
         return self
 
 

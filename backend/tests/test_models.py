@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from pydantic import ValidationError
 
@@ -147,3 +149,87 @@ def test_json_schema_exports():
     schema = Tour.model_json_schema()
     assert schema["title"] == "Tour"
     assert "stops" in schema["properties"]
+
+
+GEO_QUAD = {
+    "type": "geoQuad",
+    "lng": -77.30732, "lat": 38.84562, "altitude": 6.0,
+    "headingDeg": 200.0, "widthM": 18.0, "heightM": 14.0,
+}
+
+
+def _rephoto(**over):
+    base = {
+        "id": "court-1863",
+        "kind": "rephoto",
+        "anchor": dict(GEO_QUAD),
+        "title": "Fairfax Court House, 1863",
+        "mediaId": "court-1863.jpg",
+        "credit": VALID_CREDIT,
+    }
+    base.update(over)
+    return base
+
+
+def test_rephoto_overlay_parses():
+    ov = Overlay.model_validate(_rephoto())
+    assert ov.kind == "rephoto"
+    assert ov.anchor.type == "geoQuad"
+    assert ov.anchor.heading_deg == 200.0
+    assert ov.anchor.width_m == 18.0
+
+
+def test_rephoto_requires_a_geo_quad_anchor():
+    """A rephoto is a plane in the world; a bare point cannot place one."""
+    with pytest.raises(ValidationError):
+        Overlay.model_validate(_rephoto(
+            anchor={"type": "geo", "lng": -77.3, "lat": 38.8, "altitude": 3.0}))
+
+
+def test_rephoto_requires_a_media_id():
+    with pytest.raises(ValidationError):
+        Overlay.model_validate(_rephoto(mediaId=None))
+
+
+def test_text_overlay_rejects_a_geo_quad_anchor():
+    """geoQuad is meaningless for a marker; accepting it would hide a mistake."""
+    with pytest.raises(ValidationError):
+        Overlay.model_validate(_overlay(anchor=dict(GEO_QUAD)))
+
+
+def test_geo_quad_heading_must_be_a_compass_bearing():
+    with pytest.raises(ValidationError):
+        Overlay.model_validate(_rephoto(anchor={**GEO_QUAD, "headingDeg": 360.0}))
+    with pytest.raises(ValidationError):
+        Overlay.model_validate(_rephoto(anchor={**GEO_QUAD, "headingDeg": -1.0}))
+
+
+def test_geo_quad_dimensions_must_be_positive():
+    for field in ("widthM", "heightM"):
+        with pytest.raises(ValidationError):
+            Overlay.model_validate(_rephoto(anchor={**GEO_QUAD, field: 0.0}))
+
+
+def test_geo_quad_dimensions_have_a_sane_upper_bound():
+    """A 500 m photograph is a typo, not a design choice."""
+    with pytest.raises(ValidationError):
+        Overlay.model_validate(_rephoto(anchor={**GEO_QUAD, "widthM": 500.0}))
+
+
+def test_anchor_union_discriminates_on_type():
+    assert Overlay.model_validate(_overlay()).anchor.type == "geo"
+    assert Overlay.model_validate(_rephoto()).anchor.type == "geoQuad"
+
+
+def test_tour_with_a_rephoto_stop_validates():
+    stop = _stop(overlays=[_overlay(), _rephoto()])
+    tour = Tour.model_validate(_tour(stops=[stop]))
+    assert [o.kind for o in tour.stops[0].overlays] == ["text", "rephoto"]
+
+
+def test_rephoto_round_trips_through_camel_case_json():
+    tour = Tour.model_validate(_tour(stops=[_stop(overlays=[_rephoto()])]))
+    dumped = json.loads(tour.model_dump_json(by_alias=True))
+    anchor = dumped["stops"][0]["overlays"][0]["anchor"]
+    assert anchor["headingDeg"] == 200.0
+    assert anchor["widthM"] == 18.0
