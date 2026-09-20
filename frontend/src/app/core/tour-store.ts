@@ -1,4 +1,6 @@
 import { Injectable, computed, signal } from '@angular/core';
+import { detectArrival } from './arrival';
+import { bearingBetween, type LngLatLike } from './geo';
 import type { Overlay, Stop, Tour } from './tour.models';
 
 /**
@@ -10,6 +12,9 @@ export class TourStore {
   private readonly _tour = signal<Tour | null>(null);
   private readonly _index = signal(0);
   private readonly _selectedOverlayId = signal<string | null>(null);
+  private readonly _viewerPosition = signal<LngLatLike | null>(null);
+  private readonly _rephotoOpacity = signal(0.7);
+  private _latched: ReadonlySet<string> = new Set();
 
   readonly tour = this._tour.asReadonly();
   readonly currentIndex = this._index.asReadonly();
@@ -34,10 +39,54 @@ export class TourStore {
   readonly hasNext = computed(() => this._index() < this.stops().length - 1);
   readonly hasPrevious = computed(() => this._index() > 0);
 
+  readonly viewerPosition = this._viewerPosition.asReadonly();
+  readonly rephotoOpacity = this._rephotoOpacity.asReadonly();
+
+  /** The stop the tour is heading toward, or null at the end. */
+  readonly nextStop = computed<Stop | null>(() => this.stops()[this._index() + 1] ?? null);
+
+  /** Compass bearing from the viewer to the next stop; null until both are known. */
+  readonly bearingToNextStop = computed<number | null>(() => {
+    const from = this._viewerPosition();
+    const to = this.nextStop();
+    return from && to ? bearingBetween(from, to.location) : null;
+  });
+
+  readonly hasRephotos = computed(() =>
+    this.overlaysForCurrentStop().some((o) => o.kind === 'rephoto'),
+  );
+
   load(tour: Tour): void {
     this._tour.set(tour);
     this._index.set(0);
     this._selectedOverlayId.set(null);
+    this._viewerPosition.set(null);
+    this._latched = new Set();
+  }
+
+  /**
+   * Feed viewer movement in. The store decides whether it counts as arriving,
+   * which keeps that rule in one testable place rather than in a component.
+   */
+  updateViewerPosition(position: LngLatLike): void {
+    this._viewerPosition.set(position);
+    const { arrivedIndex, latched } = detectArrival({
+      position,
+      stops: this.stops(),
+      currentIndex: this._index(),
+      latched: this._latched,
+    });
+    this._latched = latched;
+    if (arrivedIndex !== null) this.arriveAt(arrivedIndex);
+  }
+
+  /** Move because the viewer walked here, as opposed to skipping with goTo. */
+  arriveAt(index: number): void {
+    this.goTo(index);
+  }
+
+  setRephotoOpacity(value: number): void {
+    this._rephotoOpacity.set(Math.min(1, Math.max(0, value)));
   }
 
   next(): void {
@@ -52,6 +101,10 @@ export class TourStore {
     if (index < 0 || index >= this.stops().length) return;
     this._index.set(index);
     this._selectedOverlayId.set(null);
+    // Latch the destination: without this, skipping to a stop you are already
+    // standing near would immediately re-trigger arrival at that same stop.
+    const stop = this.stops()[index];
+    if (stop) this._latched = new Set([...this._latched, stop.id]);
   }
 
   selectOverlay(id: string | null): void {

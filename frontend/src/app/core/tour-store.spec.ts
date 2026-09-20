@@ -116,4 +116,109 @@ describe('TourStore', () => {
     expect(store.hasNext()).toBe(true);
     expect(store.hasPrevious()).toBe(true);
   });
+
+  it('starts with no viewer position', () => {
+    store.load(tour());
+    expect(store.viewerPosition()).toBeNull();
+  });
+
+  it('records viewer position as you move', () => {
+    store.load(tour());
+    store.updateViewerPosition({ lng: -77.31, lat: 38.8456 });
+    expect(store.viewerPosition()).toEqual({ lng: -77.31, lat: 38.8456 });
+  });
+
+  it('exposes the next stop while walking', () => {
+    store.load(tour());
+    expect(store.nextStop()?.id).toBe('s2');
+    store.goTo(2);
+    expect(store.nextStop()).toBeNull();
+  });
+
+  it('exposes a bearing toward the next stop once position is known', () => {
+    const t = tour();
+    t.stops[0].location = { lng: -77.31, lat: 38.8456 };
+    t.stops[1].location = { lng: -77.31, lat: 38.8466 };
+    store.load(t);
+    expect(store.bearingToNextStop()).toBeNull();
+    store.updateViewerPosition({ lng: -77.31, lat: 38.8456 });
+    expect(store.bearingToNextStop()!).toBeCloseTo(0, 0);
+  });
+
+  it('advances when the viewer walks into the next stop', () => {
+    const t = tour();
+    t.stops[1].location = { lng: -77.305, lat: 38.8456 };
+    store.load(t);
+    store.updateViewerPosition({ lng: -77.305, lat: 38.8456 });
+    expect(store.currentIndex()).toBe(1);
+  });
+
+  it('does not advance for a position far from any stop', () => {
+    store.load(tour());
+    store.updateViewerPosition({ lng: -70, lat: 30 });
+    expect(store.currentIndex()).toBe(0);
+  });
+
+  it('does not re-advance while lingering at the same stop', () => {
+    const t = tour();
+    t.stops[1].location = { lng: -77.305, lat: 38.8456 };
+    store.load(t);
+    store.updateViewerPosition({ lng: -77.305, lat: 38.8456 });
+    store.updateViewerPosition({ lng: -77.305, lat: 38.8456 });
+    expect(store.currentIndex()).toBe(1);
+  });
+
+  it('clears the selected overlay on arrival', () => {
+    const t = tour();
+    t.stops[1].location = { lng: -77.305, lat: 38.8456 };
+    store.load(t);
+    store.selectOverlay('ov-1');
+    store.updateViewerPosition({ lng: -77.305, lat: 38.8456 });
+    expect(store.selectedOverlay()).toBeNull();
+  });
+
+  it('walking backwards moves the tour back', () => {
+    const t = tour();
+    t.stops[0].location = { lng: -77.31, lat: 38.8456 };
+    t.stops[1].location = { lng: -77.305, lat: 38.8456 };
+    store.load(t);
+    store.goTo(1);
+    store.updateViewerPosition({ lng: -77.31, lat: 38.8456 });
+    expect(store.currentIndex()).toBe(0);
+  });
+
+  it('a deliberate skip does not immediately re-arrive at itself', () => {
+    const t = tour();
+    t.stops[1].location = { lng: -77.305, lat: 38.8456 };
+    store.load(t);
+    store.goTo(1);
+    store.updateViewerPosition({ lng: -77.305, lat: 38.8456 });
+    expect(store.currentIndex()).toBe(1);
+  });
+
+  it('forgets viewer position and latches when a new tour loads', () => {
+    const t = tour();
+    t.stops[1].location = { lng: -77.305, lat: 38.8456 };
+    store.load(t);
+    store.updateViewerPosition({ lng: -77.305, lat: 38.8456 });
+    store.load(tour());
+    expect(store.viewerPosition()).toBeNull();
+    expect(store.currentIndex()).toBe(0);
+  });
+
+  it('defaults rephoto opacity to a visible ghost', () => {
+    expect(store.rephotoOpacity()).toBeCloseTo(0.7, 3);
+  });
+
+  it('clamps rephoto opacity into range', () => {
+    store.setRephotoOpacity(5);
+    expect(store.rephotoOpacity()).toBe(1);
+    store.setRephotoOpacity(-3);
+    expect(store.rephotoOpacity()).toBe(0);
+  });
+
+  it('knows whether the current stop has a rephoto', () => {
+    store.load(tour());
+    expect(store.hasRephotos()).toBe(false);
+  });
 });

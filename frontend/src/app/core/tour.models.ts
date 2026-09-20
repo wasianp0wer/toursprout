@@ -18,12 +18,26 @@ export interface GeoAnchor {
   altitude: number;
 }
 
-export type OverlayKind = 'text' | 'image' | 'audio';
+export interface GeoQuadAnchor {
+  type: 'geoQuad';
+  lng: number;
+  lat: number;
+  altitude: number;
+  /** Compass direction the face of the photograph looks toward. */
+  headingDeg: number;
+  widthM: number;
+  heightM: number;
+}
+
+/** Discriminated on `type`, mirroring the pydantic union. */
+export type Anchor = GeoAnchor | GeoQuadAnchor;
+
+export type OverlayKind = 'text' | 'image' | 'audio' | 'rephoto';
 
 export interface Overlay {
   id: string;
   kind: OverlayKind;
-  anchor: GeoAnchor;
+  anchor: Anchor;
   title: string;
   body: string | null;
   mediaId: string | null;
