@@ -9,7 +9,10 @@ import {
   viewChild,
 } from '@angular/core';
 import { ConfigStore } from '../core/config-store';
+import { TourApi } from '../core/tour-api';
 import { TourStore } from '../core/tour-store';
+import type { OverlayMarker } from './panorama-viewer';
+import type { RephotoPlacement } from './rephoto-placement';
 import { MapillaryViewer } from './mapillary-viewer';
 import type { PanoramaViewer } from './panorama-viewer';
 
@@ -34,6 +37,7 @@ export class PanoramaPane {
   private readonly viewer = inject(PANORAMA_VIEWER);
   private readonly store = inject(TourStore);
   private readonly config = inject(ConfigStore);
+  private readonly api = inject(TourApi);
   private readonly container = viewChild.required<ElementRef<HTMLElement>>('container');
   protected readonly loadError = signal(false);
   private attached = false;
@@ -41,6 +45,7 @@ export class PanoramaPane {
   constructor() {
     inject(DestroyRef).onDestroy(() => this.viewer.destroy());
     this.viewer.onMarkerClick((id) => this.store.selectOverlay(id));
+    this.viewer.onPositionChange((position) => this.store.updateViewerPosition(position));
 
     effect(() => {
       const stop = this.store.currentStop();
@@ -59,14 +64,55 @@ export class PanoramaPane {
 
     effect(() => {
       const selectedId = this.store.selectedOverlay()?.id ?? null;
-      this.viewer.setMarkers(
-        this.store.overlaysForCurrentStop().map((o) => ({
+      const markers: OverlayMarker[] = this.store
+        .overlaysForCurrentStop()
+        .filter((o) => o.anchor.type === 'geo')
+        .map((o) => ({
           id: o.id,
           lng: o.anchor.lng,
           lat: o.anchor.lat,
           selected: o.id === selectedId,
-        })),
-      );
+          kind: 'overlay' as const,
+        }));
+
+      // The highlighted arrow only helps when you are already facing roughly
+      // the right way; the destination marker tells you where to turn when
+      // you are not.
+      const next = this.store.nextStop();
+      if (next) {
+        markers.push({
+          id: `destination-${next.id}`,
+          lng: next.location.lng,
+          lat: next.location.lat,
+          selected: false,
+          kind: 'destination' as const,
+        });
+      }
+
+      this.viewer.setMarkers(markers);
     });
+
+    effect(() => {
+      const rephotos: RephotoPlacement[] = this.store
+        .overlaysForCurrentStop()
+        .flatMap((o) => {
+          if (o.kind !== 'rephoto' || o.anchor.type !== 'geoQuad' || !o.mediaId) return [];
+          return [{
+            id: o.id,
+            imageUrl: this.api.mediaUrl(o.mediaId),
+            lng: o.anchor.lng,
+            lat: o.anchor.lat,
+            altitude: o.anchor.altitude,
+            headingDeg: o.anchor.headingDeg,
+            widthM: o.anchor.widthM,
+            heightM: o.anchor.heightM,
+          }];
+        });
+      this.viewer.setRephotos(rephotos);
+    });
+
+    effect(() => this.viewer.setRephotoOpacity(this.store.rephotoOpacity()));
+
+    effect(() => this.viewer.setDestinationBearing(this.store.bearingToNextStop()));
   }
 }
