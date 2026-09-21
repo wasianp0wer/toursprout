@@ -110,11 +110,14 @@ export class PanoramaPane {
             heightM: o.anchor.heightM,
           }];
         });
-      // Alignment mode nudges the first rephoto live, so the author sees the
-      // effect of each keypress without a reload.
+      // Alignment mode nudges one rephoto live, so the author sees the effect
+      // of each keypress without a reload. Match by id: matching by position
+      // meant only the first photograph could ever be aligned.
       const override = this.store.alignmentOverride();
       this.viewer.setRephotos(
-        override ? rephotos.map((r, i) => (i === 0 ? { ...r, ...override } : r)) : rephotos,
+        override
+          ? rephotos.map((r) => (r.id === override.id ? { ...r, ...override.anchor } : r))
+          : rephotos,
       );
     });
 

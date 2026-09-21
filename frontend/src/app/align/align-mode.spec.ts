@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { alignModeEnabled, nudgeAnchor, STEP_DEG, type GeoQuadAnchorLike } from './align-mode';
+import {
+  alignModeEnabled,
+  alignTarget,
+  nudgeAnchor,
+  STEP_DEG,
+  type GeoQuadAnchorLike,
+} from './align-mode';
+import type { Overlay } from '../core/tour.models';
 
 const BASE: GeoQuadAnchorLike = {
   lng: -77.30732, lat: 38.84562, altitude: 6,
@@ -73,5 +80,42 @@ describe('alignModeEnabled', () => {
   it('is off for any other value', () => {
     expect(alignModeEnabled('?align=0')).toBe(false);
     expect(alignModeEnabled('?other=1')).toBe(false);
+  });
+});
+
+describe('alignTarget', () => {
+  function rephoto(id: string): Overlay {
+    return {
+      id, kind: 'rephoto',
+      anchor: { type: 'geoQuad', lng: -77.3, lat: 38.84, altitude: 6,
+                headingDeg: 113, widthM: 18, heightM: 14 },
+      title: id, body: null, mediaId: `${id}.jpg`,
+      credit: { source: 'S', url: 'U', license: 'L', creator: null },
+    };
+  }
+
+  const photos = [rephoto('court-1863'), rephoto('court-1918')];
+
+  it('aligns the selected photograph', () => {
+    // The bug: arrow keys always moved the first photograph, so the second
+    // could never be positioned.
+    expect(alignTarget(photos, 'court-1918')?.id).toBe('court-1918');
+  });
+
+  it('falls back to the first when nothing is selected', () => {
+    expect(alignTarget(photos, null)?.id).toBe('court-1863');
+  });
+
+  it('falls back to the first when the selection is not a photograph', () => {
+    expect(alignTarget(photos, 'some-text-overlay')?.id).toBe('court-1863');
+  });
+
+  it('returns null when the stop has no photographs', () => {
+    expect(alignTarget([], 'anything')).toBeNull();
+  });
+
+  it('does not mutate the list it is given', () => {
+    alignTarget(photos, 'court-1918');
+    expect(photos.map((p) => p.id)).toEqual(['court-1863', 'court-1918']);
   });
 });

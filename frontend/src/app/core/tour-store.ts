@@ -15,7 +15,8 @@ export class TourStore {
   private readonly _selectedOverlayId = signal<string | null>(null);
   private readonly _viewerPosition = signal<LngLatLike | null>(null);
   private readonly _rephotoOpacity = signal<Record<string, number>>({});
-  private readonly _alignmentOverride = signal<GeoQuadAnchorLike | null>(null);
+  private readonly _alignmentOverride =
+    signal<{ id: string; anchor: GeoQuadAnchorLike } | null>(null);
   private _latched: ReadonlySet<string> = new Set();
 
   readonly tour = this._tour.asReadonly();
@@ -83,14 +84,9 @@ export class TourStore {
   updateViewerPosition(position: LngLatLike, imageId?: string): void {
     this._viewerPosition.set(position);
 
-    // A stop's own panorama stands on the road, not at the stop, and can sit
-    // nearer to a neighbouring stop than to its own. Standing at the vantage
-    // point the tour just loaded is not walking anywhere, so it cannot count
-    // as arriving somewhere else.
-    if (imageId && imageId === this.currentStop()?.panorama.imageId) return;
-
     const { arrivedIndex, latched } = detectArrival({
       position,
+      imageId,
       stops: this.stops(),
       currentIndex: this._index(),
       latched: this._latched,
@@ -99,14 +95,19 @@ export class TourStore {
     if (arrivedIndex !== null) this.arriveAt(arrivedIndex);
   }
 
+  /** Diagnostics only: the current arrival-latch set. */
+  latchedStopIds(): string[] {
+    return [...this._latched];
+  }
+
   /** Move because the viewer walked here, as opposed to skipping with goTo. */
   arriveAt(index: number): void {
     this.goTo(index);
   }
 
   /** Alignment mode only: live-replace the current stop's rephoto anchor. */
-  setAlignmentOverride(anchor: GeoQuadAnchorLike | null): void {
-    this._alignmentOverride.set(anchor);
+  setAlignmentOverride(override: { id: string; anchor: GeoQuadAnchorLike } | null): void {
+    this._alignmentOverride.set(override);
   }
 
   setRephotoOpacity(id: string, value: number): void {

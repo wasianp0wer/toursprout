@@ -205,3 +205,16 @@ it faces the viewer. Never reintroduce a hand-guessed bearing.
 `content/tours/*.json` is read into SQLite when the app boots. Rebuilding tour
 content while the server is running serves the **old** tour and looks like the
 frontend ignoring your changes. Restart the backend after `make content`.
+
+
+## A stop's panorama identifies it; its distance does not
+
+Arrival was decided by measuring from the viewer to each stop's location. That
+cannot work here: a stop's panorama stands on the road, and the courthouse
+vantage point is 39 m from the courthouse but only 26 m from the Marr
+Monument, 14.6 m away. Leaving the courthouse and returning left the tour
+stuck on the monument, because the monument was always nearer.
+
+Each stop already names a panorama, which is an exact identity. Standing on a
+stop's designated panorama means being at that stop, full stop; proximity is
+only the fallback for street images that belong to no stop.

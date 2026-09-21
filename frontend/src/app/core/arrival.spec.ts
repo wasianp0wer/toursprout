@@ -126,4 +126,50 @@ describe('detectArrival', () => {
     // Standing between them, neither is decisively nearer than the current stop.
     expect(r.arrivedIndex).toBeNull();
   });
+
+  // A stop's panorama stands on the road and can be nearer to a neighbour
+  // than to its own stop: the courthouse vantage point is 39 m from the
+  // courthouse but only 26 m from the Marr Monument. Distance alone can
+  // therefore never settle the tour back on the courthouse.
+  const COURT = stop('courthouse', 1, -77.30732, 38.84562);
+  const MARR_M = stop('marr', 2, -77.30716, 38.84566);
+  const PAIR = [COURT, MARR_M];
+  const COURT_PANO = { lng: -77.306888, lat: 38.845534 };
+
+  it('arrives at the stop whose panorama you stepped onto', () => {
+    const r = detectArrival({
+      position: COURT_PANO, imageId: 'img-1', stops: PAIR, currentIndex: 1, latched: new Set(),
+    });
+    expect(r.arrivedIndex).toBe(0);
+  });
+
+  it('returns to the courthouse even though the monument is nearer', () => {
+    const r = detectArrival({
+      position: COURT_PANO, imageId: 'img-1', stops: PAIR, currentIndex: 1, latched: new Set(['marr']),
+    });
+    expect(r.arrivedIndex).toBe(0);
+  });
+
+  it('does not re-arrive when already on that stop', () => {
+    const r = detectArrival({
+      position: COURT_PANO, imageId: 'img-1', stops: PAIR, currentIndex: 0, latched: new Set(),
+    });
+    expect(r.arrivedIndex).toBeNull();
+  });
+
+  it('a panorama belonging to no stop still falls back to proximity', () => {
+    const r = detectArrival({
+      position: MARR_M.location, imageId: 'some-street-image',
+      stops: PAIR, currentIndex: 0, latched: new Set(),
+    });
+    expect(r.arrivedIndex).toBe(1);
+  });
+
+  it('identity beats proximity even mid-street', () => {
+    // Standing nearer the monument, but on the courthouse's own panorama.
+    const r = detectArrival({
+      position: MARR_M.location, imageId: 'img-1', stops: PAIR, currentIndex: 1, latched: new Set(),
+    });
+    expect(r.arrivedIndex).toBe(0);
+  });
 });

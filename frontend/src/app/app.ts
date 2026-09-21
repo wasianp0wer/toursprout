@@ -26,6 +26,10 @@ export class App {
   );
 
   constructor() {
+    if (typeof window !== 'undefined' && location.search.includes('diag=1')) {
+      // Diagnostics only: lets tour state be watched while walking the street.
+      (window as unknown as { __tour?: unknown }).__tour = this.store;
+    }
     void this.bootstrap();
   }
 

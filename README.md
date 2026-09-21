@@ -72,7 +72,9 @@ app with `?align=1`:
 | `+` / `-` | resize, preserving aspect ratio |
 | `[` / `]` | rotate its heading |
 
-The panel shows the live anchor and copies it as JSON. Paste the result into
+The panel names the photograph it is aligning. With several at a stop, click
+a rephoto row in the stop panel to switch which one the keys move. The panel
+shows the live anchor and copies it as JSON. Paste the result into
 the stop's `rephotos[].anchor` in `content/source/stops.json`, then
 `make content`. **The committed anchors are starting estimates and have not
 been aligned against the real view** — that needs someone at a browser.

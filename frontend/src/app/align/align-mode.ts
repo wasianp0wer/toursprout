@@ -1,5 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { TourStore } from '../core/tour-store';
+import type { Overlay } from '../core/tour.models';
 
 export interface GeoQuadAnchorLike {
   lng: number;
@@ -64,6 +65,18 @@ export function nudgeAnchor(anchor: GeoQuadAnchorLike, key: string): GeoQuadAnch
   return next;
 }
 
+/**
+ * Which photograph the arrow keys move.
+ *
+ * Selecting a rephoto row in the stop panel chooses it; otherwise the first is
+ * aligned. Without this the keys always moved the first photograph, leaving
+ * any others impossible to position.
+ */
+export function alignTarget(rephotos: Overlay[], selectedId: string | null): Overlay | null {
+  if (rephotos.length === 0) return null;
+  return rephotos.find((o) => o.id === selectedId) ?? rephotos[0];
+}
+
 export function alignModeEnabled(search: string): boolean {
   return new URLSearchParams(search).get('align') === '1';
 }
@@ -80,7 +93,9 @@ export function alignModeEnabled(search: string): boolean {
     @let anchor = draft();
     @if (anchor) {
       <aside class="align" data-align-panel>
+        <p class="target" data-align-target>{{ target()?.title }}</p>
         <p class="keys">← → ↑ ↓ move · PgUp/PgDn height · +/− size · [ ] heading</p>
+        <p class="keys">Select another photograph in the panel to align it.</p>
         <pre data-align-json>{{ json() }}</pre>
         <button type="button" data-align-copy (click)="copy()">copy anchor JSON</button>
       </aside>
@@ -93,6 +108,7 @@ export function alignModeEnabled(search: string): boolean {
              background: rgba(15, 17, 20, 0.92); border: 1px solid #e8b04b;
              border-radius: 4px; padding: 0.6rem 0.75rem; font-size: 0.7rem;
              color: #ecebe6; max-width: 22rem; }
+    .target { margin: 0 0 0.35rem; color: #e8b04b; font-size: 0.78rem; }
     .keys { margin: 0 0 0.5rem; color: #9aa0ab; }
     pre { margin: 0 0 0.5rem; white-space: pre-wrap; font-size: 0.68rem; }
     button { font: inherit; background: #e8b04b; border: 0; border-radius: 3px;
@@ -102,14 +118,20 @@ export function alignModeEnabled(search: string): boolean {
 })
 export class AlignMode {
   private readonly store = inject(TourStore);
-  private readonly override = signal<GeoQuadAnchorLike | null>(null);
+  private readonly override = signal<{ id: string; anchor: GeoQuadAnchorLike } | null>(null);
+
+  protected readonly target = computed<Overlay | null>(() =>
+    alignTarget(this.store.rephotos(), this.store.selectedOverlay()?.id ?? null),
+  );
 
   protected readonly draft = computed<GeoQuadAnchorLike | null>(() => {
+    const target = this.target();
+    if (!target || target.anchor.type !== 'geoQuad') return null;
+
     const manual = this.override();
-    if (manual) return manual;
-    const rephoto = this.store.overlaysForCurrentStop().find((o) => o.kind === 'rephoto');
-    if (!rephoto || rephoto.anchor.type !== 'geoQuad') return null;
-    const a = rephoto.anchor;
+    if (manual && manual.id === target.id) return manual.anchor;
+
+    const a = target.anchor;
     return {
       lng: a.lng, lat: a.lat, altitude: a.altitude,
       headingDeg: a.headingDeg, widthM: a.widthM, heightM: a.heightM,
@@ -123,12 +145,13 @@ export class AlignMode {
 
   protected onKey(event: KeyboardEvent): void {
     const current = this.draft();
-    if (!current) return;
+    const target = this.target();
+    if (!current || !target) return;
     const next = nudgeAnchor(current, event.key);
     if (next === current) return;
     event.preventDefault();
-    this.override.set(next);
-    this.store.setAlignmentOverride(next);
+    this.override.set({ id: target.id, anchor: next });
+    this.store.setAlignmentOverride({ id: target.id, anchor: next });
   }
 
   protected copy(): void {
