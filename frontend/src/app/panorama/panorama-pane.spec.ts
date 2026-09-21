@@ -192,6 +192,15 @@ describe('PanoramaPane', () => {
     expect(fake.markers.at(-1)!.every((m) => m.kind === 'overlay')).toBe(true);
   });
 
+  it('pushes opacity to the viewer on first render, not only on change', async () => {
+    // If opacity only reached the renderer when the slider moved, every
+    // rephoto would start fully transparent and look like a missing image.
+    store.load(tour());
+    await render();
+    expect(fake.opacity).not.toBeNull();
+    expect(fake.opacity).toBeGreaterThan(0);
+  });
+
   it('pushes the opacity setting down to the viewer', async () => {
     store.load(tour());
     const fixture = await render();

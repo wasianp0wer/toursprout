@@ -6,7 +6,6 @@ import {
   geodeticToEnu,
 } from 'mapillary-js';
 import {
-  Matrix4,
   Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
@@ -15,6 +14,7 @@ import {
   TextureLoader,
   WebGLRenderer,
 } from 'three';
+import { syncCamera } from './camera-sync';
 import { planeTransform, type RephotoPlacement } from './rephoto-placement';
 
 /**
@@ -75,10 +75,7 @@ export class RephotoRenderer implements ICustomRenderer {
   render(_context: WebGLRenderingContext, viewMatrix: number[], projectionMatrix: number[]): void {
     if (!this.renderer || this.meshes.size === 0 || this.opacity <= 0.01) return;
 
-    this.camera.matrixWorldInverse = new Matrix4().fromArray(viewMatrix);
-    this.camera.matrixWorld = this.camera.matrixWorldInverse.clone().invert();
-    this.camera.projectionMatrix = new Matrix4().fromArray(projectionMatrix);
-    this.camera.projectionMatrixInverse = this.camera.projectionMatrix.clone().invert();
+    syncCamera(this.camera, viewMatrix, projectionMatrix);
 
     this.renderer.resetState();
     this.renderer.render(this.scene, this.camera);
@@ -116,7 +113,12 @@ export class RephotoRenderer implements ICustomRenderer {
 
       const mesh = new Mesh(new PlaneGeometry(transform.width, transform.height), material);
       mesh.position.set(transform.position[0], transform.position[1], transform.position[2]);
-      mesh.rotation.y = transform.rotationY;
+      mesh.rotation.set(
+        transform.rotation[0],
+        transform.rotation[1],
+        transform.rotation[2],
+        transform.rotationOrder,
+      );
       mesh.visible = this.opacity > 0.01;
 
       this.scene.add(mesh);

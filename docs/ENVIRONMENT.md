@@ -142,3 +142,28 @@ cd frontend && npm ls three
 ```
 
 Expect exactly one entry, nested under `mapillary-js`.
+
+
+## Two three.js traps in mapillary's custom renderer
+
+Both made the rephotos invisible and neither produced an error.
+
+**The scene is Z-up, not Y-up.** `geodeticToEnu` returns east, north, **up** —
+so the up axis is +Z, unlike three.js's usual +Y. A `PlaneGeometry`'s normal
+starts along +Z, which here points at the sky: an unrotated plane lies flat on
+the ground and is invisible edge-on. Planes must be stood upright about X and
+then swung about the up axis.
+
+Rotation **order** matters as much as the angles. With three.js's default
+`XYZ` Euler order the Z rotation is applied first, which does nothing to a
+normal that starts along Z — every photograph ends up facing south regardless
+of its heading. `rephoto-placement.ts` therefore returns an explicit `ZYX`
+order and the renderer passes it to `mesh.rotation.set`.
+
+**Assigning `camera.matrixWorld` does not survive a frame.**
+`WebGLRenderer.render` calls `camera.updateMatrixWorld()`, which — with
+`matrixAutoUpdate` on, the default — recomposes the matrix from `position`,
+`quaternion` and `scale`, overwriting whatever was assigned. The camera then
+sits at the ENU origin and renders nothing. Decompose the inverted view matrix
+into those three properties instead; `camera-sync.ts` does this and is tested
+by simulating the `updateMatrixWorld` call that discarded the old assignment.
