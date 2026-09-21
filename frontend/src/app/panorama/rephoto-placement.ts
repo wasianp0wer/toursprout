@@ -54,3 +54,35 @@ export function planeTransform(
     height: placement.heightM,
   };
 }
+
+
+/**
+ * Convert an anchor's height above the ground into the absolute altitude
+ * `geodeticToEnu` expects.
+ *
+ * Authors think in metres above the pavement; the conversion works in metres
+ * above the ellipsoid. Passing the raw value placed the Fairfax photographs
+ * 128 m underground, since the local ground sits at ~136 m.
+ */
+export function geodeticAltitude(anchorAltitude: number, referenceAltitude: number): number {
+  return referenceAltitude + anchorAltitude;
+}
+
+
+/**
+ * Material options for a draped photograph.
+ *
+ * `DoubleSide` is not cosmetic. A plane rendered `FrontSide` vanishes the
+ * moment the viewer passes behind its normal, and since the heading is
+ * authored by eye it will often be roughly edge-on. A photograph standing in
+ * the world should be legible from either side rather than disappearing.
+ */
+export function rephotoMaterialOptions(opacity: number) {
+  return {
+    transparent: true,
+    opacity,
+    depthTest: false,
+    depthWrite: false,
+    side: 2 as const, // THREE.DoubleSide
+  };
+}

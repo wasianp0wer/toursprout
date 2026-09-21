@@ -22,12 +22,14 @@ export function createDiagnostics(enabled: boolean): Diagnostics {
   const seen = new Set<string>();
   return {
     log(label, detail) {
-      console.log(`[rephoto] ${label}`, detail ?? '');
+      // Stringify rather than pass the object: console readers collapse
+      // objects to "Object", which hides exactly the numbers being traced.
+      console.log(`[rephoto] ${label} ${detail === undefined ? '' : JSON.stringify(detail)}`);
     },
     once(label, detail) {
       if (seen.has(label)) return;
       seen.add(label);
-      console.log(`[rephoto] ${label}`, detail ?? '');
+      console.log(`[rephoto] ${label} ${detail === undefined ? '' : JSON.stringify(detail)}`);
     },
   };
 }

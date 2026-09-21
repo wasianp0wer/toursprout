@@ -90,9 +90,31 @@ export class MapillaryViewer implements PanoramaViewer {
   async load(imageId: string, bearing: number): Promise<void> {
     if (!this.viewer) return;
     await this.viewer.moveTo(imageId);
-    // Basic image coordinates: x runs 0..1 across the full 360 degrees.
-    const normalised = (((bearing % 360) + 360) % 360) / 360;
-    this.viewer.setCenter([normalised, 0.5]);
+    await this.faceBearing(bearing);
+  }
+
+  /**
+   * Turn the view to a compass bearing.
+   *
+   * `setCenter` works in basic image coordinates, and x = 0 is the left edge
+   * of the panorama, not due north — the offset depends on how the image
+   * happens to be oriented. Mapping bearing to x directly pointed every stop
+   * in an arbitrary direction. Reading the current bearing and shifting by the
+   * difference works whatever the image's orientation.
+   */
+  private async faceBearing(target: number): Promise<void> {
+    if (!this.viewer) return;
+    try {
+      const [current, center] = await Promise.all([
+        this.viewer.getBearing(),
+        this.viewer.getCenter(),
+      ]);
+      const delta = (((target - current + 540) % 360) - 180) / 360;
+      const x = (((center[0] + delta) % 1) + 1) % 1;
+      this.viewer.setCenter([x, center[1]]);
+    } catch {
+      // A view that will not turn is a cosmetic failure, not a fatal one.
+    }
   }
 
   setMarkers(markers: OverlayMarker[]): void {
@@ -118,10 +140,24 @@ export class MapillaryViewer implements PanoramaViewer {
 
   setRephotos(rephotos: RephotoPlacement[]): void {
     this.rephotoRenderer?.setRephotos(rephotos);
+    this.requestRedraw();
   }
 
   setRephotoOpacity(opacity: number): void {
     this.rephotoRenderer?.setOpacity(opacity);
+    this.requestRedraw();
+  }
+
+  /**
+   * Ask the viewer to draw another frame.
+   *
+   * mapillary-js renders on demand, and custom renderers are only invoked
+   * during its own redraws. Without this, changing a rephoto or moving the
+   * opacity slider has no visible effect until the user happens to drag the
+   * panorama.
+   */
+  private requestRedraw(): void {
+    this.viewer?.triggerRerender();
   }
 
   setDestinationBearing(bearingDeg: number | null): void {

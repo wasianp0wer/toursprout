@@ -167,3 +167,41 @@ order and the renderer passes it to `mesh.rotation.set`.
 sits at the ENU origin and renders nothing. Decompose the inverted view matrix
 into those three properties instead; `camera-sync.ts` does this and is tested
 by simulating the `updateMatrixWorld` call that discarded the old assignment.
+
+
+## mapillary-js renders on demand — tell it when custom content changes
+
+The viewer only redraws when it decides to, and custom renderers are invoked
+only during its own redraws. Changing a rephoto or moving the opacity slider
+therefore had no visible effect until the user happened to drag the panorama.
+`viewer.triggerRerender()` after any custom-content change is required.
+
+This also invalidates naive debugging: mutating the scene from the console and
+taking a screenshot shows a **stale frame**, which reads exactly like "the
+draw is broken". Force a redraw before concluding anything from a screenshot.
+
+## `setCenter` is in basic image coordinates, not compass bearings
+
+x = 0 is the left edge of the panorama, not due north, and the offset depends
+on how the image happens to be oriented. Mapping a bearing to x by dividing by
+360 pointed every stop in an arbitrary direction. Read `getBearing()`, take the
+signed difference to the target, and shift `getCenter()` by `delta / 360`.
+
+## `geodeticToEnu` altitude is absolute, not height above ground
+
+Authors think in metres above the pavement. Passing that value raw placed the
+Fairfax photographs 128 m underground, because the local ground sits at
+~136 m above the ellipsoid. Add the reference altitude first.
+
+## Derive view bearings; do not author them by eye
+
+All six hand-written stop bearings were wrong, one by 138 degrees, which put
+the subject behind the viewer. `build_tour.py` now computes each stop's
+bearing from where its panorama actually stands, and each rephoto's heading so
+it faces the viewer. Never reintroduce a hand-guessed bearing.
+
+## The backend seeds tours at startup
+
+`content/tours/*.json` is read into SQLite when the app boots. Rebuilding tour
+content while the server is running serves the **old** tour and looks like the
+frontend ignoring your changes. Restart the backend after `make content`.

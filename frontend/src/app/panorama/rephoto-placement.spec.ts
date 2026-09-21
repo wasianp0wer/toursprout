@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Euler, Vector3 } from 'three';
-import { planeTransform, type RephotoPlacement } from './rephoto-placement';
+import {
+  geodeticAltitude,
+  planeTransform,
+  rephotoMaterialOptions,
+  type RephotoPlacement,
+} from './rephoto-placement';
 
 function placement(over: Partial<RephotoPlacement> = {}): RephotoPlacement {
   return {
@@ -75,5 +80,50 @@ describe('planeTransform', () => {
     const p = placement();
     planeTransform(p, [1, 2, 3]);
     expect(p.headingDeg).toBe(200);
+  });
+});
+
+describe('geodeticAltitude', () => {
+  // The viewer reference at Fairfax sits ~136.6 m above the ellipsoid.
+  const FAIRFAX_GROUND = 136.60236361623;
+
+  it('treats the anchor altitude as height above the ground', () => {
+    expect(geodeticAltitude(8, FAIRFAX_GROUND)).toBeCloseTo(144.6, 1);
+  });
+
+  it('puts a ground-level anchor at the reference height, not at sea level', () => {
+    expect(geodeticAltitude(0, FAIRFAX_GROUND)).toBeCloseTo(FAIRFAX_GROUND, 6);
+  });
+
+  it('never buries the photograph below the reference ground', () => {
+    // The original bug: passing the raw anchor altitude put the plane
+    // 128 m underground, because geodeticToEnu wants absolute altitude.
+    expect(geodeticAltitude(8, FAIRFAX_GROUND) - FAIRFAX_GROUND).toBeGreaterThan(0);
+  });
+
+  it('scales with the anchor altitude', () => {
+    const low = geodeticAltitude(2, FAIRFAX_GROUND);
+    const high = geodeticAltitude(20, FAIRFAX_GROUND);
+    expect(high - low).toBeCloseTo(18, 6);
+  });
+});
+
+describe('rephotoMaterialOptions', () => {
+  it('renders both sides so a grazing angle does not cull the photograph', () => {
+    // DoubleSide is 2 in three.js. FrontSide (0) makes the plane vanish as
+    // soon as the viewer is behind its normal.
+    expect(rephotoMaterialOptions(0.7).side).toBe(2);
+  });
+
+  it('carries the requested opacity', () => {
+    expect(rephotoMaterialOptions(0.42).opacity).toBeCloseTo(0.42, 6);
+  });
+
+  it('is transparent so the present view shows through', () => {
+    expect(rephotoMaterialOptions(0.7).transparent).toBe(true);
+  });
+
+  it('does not write depth, so it cannot occlude the panorama', () => {
+    expect(rephotoMaterialOptions(0.7).depthWrite).toBe(false);
   });
 });

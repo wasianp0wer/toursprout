@@ -221,4 +221,32 @@ describe('TourStore', () => {
     store.load(tour());
     expect(store.hasRephotos()).toBe(false);
   });
+
+  it('does not arrive elsewhere while standing at the current stop\'s own panorama', () => {
+    // A stop's panorama sits on the road, not at the stop, and can be nearer
+    // to a neighbour than to its own stop. Loading stop 1 must not teleport
+    // the tour to stop 2.
+    const t = tour();
+    t.stops[0].location = { lng: -77.30732, lat: 38.84562 };
+    t.stops[1].location = { lng: -77.30716, lat: 38.84566 };
+    store.load(t);
+    store.updateViewerPosition({ lng: -77.30716, lat: 38.84566 }, 'img-1');
+    expect(store.currentIndex()).toBe(0);
+  });
+
+  it('still arrives once you walk to a different image', () => {
+    const t = tour();
+    t.stops[0].location = { lng: -77.31, lat: 38.8456 };
+    t.stops[1].location = { lng: -77.305, lat: 38.8456 };
+    store.load(t);
+    store.updateViewerPosition({ lng: -77.305, lat: 38.8456 }, 'some-other-image');
+    expect(store.currentIndex()).toBe(1);
+  });
+
+  it('records position even when arrival is suppressed', () => {
+    const t = tour();
+    store.load(t);
+    store.updateViewerPosition({ lng: -77.3, lat: 38.84 }, 'img-1');
+    expect(store.viewerPosition()).toEqual({ lng: -77.3, lat: 38.84 });
+  });
 });

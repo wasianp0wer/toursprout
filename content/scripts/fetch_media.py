@@ -60,11 +60,20 @@ def best_pano_for(coverage: dict, location: dict) -> dict | None:
     return best if best_distance < 0.0005 else None
 
 
-def fetch_panorama(token: str, image_id: str, dest: Path) -> dict:
-    meta = CLIENT.get(f"{GRAPH}/{image_id}", params={
+def fetch_panorama(token: str, image_id: str, dest: Path, existing: dict | None) -> dict:
+    """Download a panorama, or reuse the one already cached.
+
+    Re-downloading an unchanged panorama on every run wastes the archive's
+    bandwidth and makes the pipeline fail on transient network errors even
+    though nothing needed fetching.
+    """
+    if dest.exists() and existing and existing.get("credit"):
+        return existing["credit"]
+
+    meta = get_json_with_retry(CLIENT, f"{GRAPH}/{image_id}", {
         "access_token": token,
         "fields": "id,thumb_2048_url,captured_at,creator,is_pano",
-    }).json()
+    })
     content = get_bytes_with_retry(CLIENT, meta["thumb_2048_url"])
     if content is None:
         raise RuntimeError(f"could not download panorama {image_id}")
@@ -140,9 +149,17 @@ def main() -> int:
         pano = best_pano_for(coverage, stop["location"])
         if pano:
             media_id = f"pano-{stop['id']}.jpg"
-            credit = fetch_panorama(token, pano["id"], MEDIA / "pano" / media_id)
-            manifest[media_id] = {"file": f"pano/{media_id}", "credit": credit,
-                                  "imageId": pano["id"]}
+            credit = fetch_panorama(
+                token, pano["id"], MEDIA / "pano" / media_id, manifest.get(media_id))
+            manifest[media_id] = {
+                "file": f"pano/{media_id}",
+                "credit": credit,
+                "imageId": pano["id"],
+                # Where the camera stood. The stop's view direction is derived
+                # from this rather than guessed.
+                "lng": pano["lng"],
+                "lat": pano["lat"],
+            }
             print(f"  pano   {stop['id']:<32} {pano['id']}")
         else:
             print(f"  pano   {stop['id']:<32} NOT FOUND", file=sys.stderr)
@@ -152,6 +169,9 @@ def main() -> int:
             if ov["kind"] != "image":
                 continue
             media_id = f"{ov['id']}.jpg"
+            if (MEDIA / media_id).exists() and manifest.get(media_id, {}).get("credit"):
+                print(f"  image  {ov['id']:<32} cached")
+                continue
             credit = fetch_loc_image(ov["imageQuery"], ov.get("imageTerms", []), MEDIA / media_id)
             if credit:
                 manifest[media_id] = {"file": media_id, "credit": credit}

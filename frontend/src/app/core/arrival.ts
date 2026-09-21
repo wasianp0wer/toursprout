@@ -34,18 +34,30 @@ export function detectArrival(input: ArrivalInput): ArrivalResult {
     }
   }
 
-  let bestIndex: number | null = null;
-  let bestDistance = Infinity;
+  // Arrive only at the stop you are actually closest to. A plain radius test
+  // is not enough where stops are near each other: the Marr Monument stands
+  // 14.6 m from the courthouse, well inside the 30 m radius, so a radius-only
+  // rule teleports the tour off the courthouse the moment it loads.
+  let nearestIndex: number | null = null;
+  let nearestDistance = Infinity;
 
   stops.forEach((stop, index) => {
-    if (index === currentIndex || next.has(stop.id)) return;
     const d = distanceBetween(position, stop.location);
-    if (d <= ARRIVAL_RADIUS_M && d < bestDistance) {
-      bestIndex = index;
-      bestDistance = d;
+    if (d < nearestDistance) {
+      nearestIndex = index;
+      nearestDistance = d;
     }
   });
 
-  if (bestIndex !== null) next.add(stops[bestIndex].id);
-  return { arrivedIndex: bestIndex, latched: next };
+  if (
+    nearestIndex === null ||
+    nearestIndex === currentIndex ||
+    nearestDistance > ARRIVAL_RADIUS_M ||
+    next.has(stops[nearestIndex].id)
+  ) {
+    return { arrivedIndex: null, latched: next };
+  }
+
+  next.add(stops[nearestIndex].id);
+  return { arrivedIndex: nearestIndex, latched: next };
 }

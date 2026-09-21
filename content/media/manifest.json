@@ -7,7 +7,9 @@
       "license": "CC-BY-SA-4.0",
       "creator": "apmwa"
     },
-    "imageId": "2116094392633820"
+    "imageId": "2116094392633820",
+    "lng": -77.306888050888,
+    "lat": 38.845533730977
   },
   "courthouse-photo.jpg": {
     "file": "courthouse-photo.jpg",
@@ -26,7 +28,9 @@
       "license": "CC-BY-SA-4.0",
       "creator": "apmwa"
     },
-    "imageId": "1430487015654811"
+    "imageId": "1430487015654811",
+    "lng": -77.306870438811,
+    "lat": 38.845587252983
   },
   "pano-old-town-hall.jpg": {
     "file": "pano/pano-old-town-hall.jpg",
@@ -36,7 +40,9 @@
       "license": "CC-BY-SA-4.0",
       "creator": "apmwa"
     },
-    "imageId": "1377390754539790"
+    "imageId": "1377390754539790",
+    "lng": -77.306146181031,
+    "lat": 38.846138072365
   },
   "pano-ratcliffe-allison-pozer-house.jpg": {
     "file": "pano/pano-ratcliffe-allison-pozer-house.jpg",
@@ -46,7 +52,9 @@
       "license": "CC-BY-SA-4.0",
       "creator": "apmwa"
     },
-    "imageId": "1623645942614169"
+    "imageId": "1623645942614169",
+    "lng": -77.304756691669,
+    "lat": 38.845820152134
   },
   "pano-fairfax-museum.jpg": {
     "file": "pano/pano-fairfax-museum.jpg",
@@ -56,7 +64,9 @@
       "license": "CC-BY-SA-4.0",
       "creator": "apmwa"
     },
-    "imageId": "1675017370851450"
+    "imageId": "1675017370851450",
+    "lng": -77.300386949057,
+    "lat": 38.844849011248
   },
   "pano-fairfax-city-hall.jpg": {
     "file": "pano/pano-fairfax-city-hall.jpg",
@@ -66,7 +76,9 @@
       "license": "CC-BY-SA-4.0",
       "creator": "apmwa"
     },
-    "imageId": "1412217390816350"
+    "imageId": "1412217390816350",
+    "lng": -77.308076932225,
+    "lat": 38.841170482768
   },
   "narration-historic-courthouse.m4a": {
     "file": "narration-historic-courthouse.m4a",

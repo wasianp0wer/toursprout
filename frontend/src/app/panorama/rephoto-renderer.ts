@@ -16,7 +16,12 @@ import {
 } from 'three';
 import { syncCamera } from './camera-sync';
 import { createDiagnostics, type Diagnostics } from './diagnostics';
-import { planeTransform, type RephotoPlacement } from './rephoto-placement';
+import {
+  geodeticAltitude,
+  planeTransform,
+  rephotoMaterialOptions,
+  type RephotoPlacement,
+} from './rephoto-placement';
 
 /**
  * Draws historical photographs as planes standing in the world.
@@ -43,6 +48,43 @@ export class RephotoRenderer implements ICustomRenderer {
 
   constructor(diagnosticsOn = false) {
     this.diag = createDiagnostics(diagnosticsOn);
+    if (diagnosticsOn && typeof window !== 'undefined') {
+      // Diagnostics only: lets the scene graph be interrogated from the
+      // console, since a WebGL scene cannot be inspected any other way.
+      (window as unknown as { __rephoto?: unknown }).__rephoto = this;
+    }
+  }
+
+  /** Diagnostics only. */
+  inspect() {
+    const meshes = [...this.meshes.entries()].map(([id, mesh]) => ({
+      id,
+      position: mesh.position.toArray(),
+      rotation: [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z, mesh.rotation.order],
+      visible: mesh.visible,
+      inScene: mesh.parent === this.scene,
+      material: {
+        opacity: (mesh.material as MeshBasicMaterial).opacity,
+        transparent: (mesh.material as MeshBasicMaterial).transparent,
+        side: (mesh.material as MeshBasicMaterial).side,
+        hasMap: !!(mesh.material as MeshBasicMaterial).map,
+        visible: (mesh.material as MeshBasicMaterial).visible,
+      },
+    }));
+    return {
+      frames: this.frames,
+      opacity: this.opacity,
+      hasRenderer: !!this.renderer,
+      reference: this.reference,
+      sceneChildren: this.scene.children.length,
+      camera: {
+        position: this.camera.position.toArray(),
+        near: this.camera.near,
+        far: this.camera.far,
+        projection: this.camera.projectionMatrix.elements.slice(0, 4),
+      },
+      meshes,
+    };
   }
 
   onAdd(_viewer: IViewer, reference: LngLatAlt, context: WebGLRenderingContext): void {
@@ -135,16 +177,14 @@ export class RephotoRenderer implements ICustomRenderer {
 
     for (const placement of this.placements) {
       const enu = geodeticToEnu(
-        placement.lng, placement.lat, placement.altitude,
+        placement.lng,
+        placement.lat,
+        geodeticAltitude(placement.altitude, reference.alt),
         reference.lng, reference.lat, reference.alt,
       ) as [number, number, number];
 
       const transform = planeTransform(placement, enu);
-      const material = new MeshBasicMaterial({
-        transparent: true,
-        opacity: this.opacity,
-        depthTest: false,
-      });
+      const material = new MeshBasicMaterial(rephotoMaterialOptions(this.opacity));
 
       // A texture that fails to load leaves an untextured plane rather than
       // breaking the tour.

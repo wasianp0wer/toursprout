@@ -94,4 +94,36 @@ describe('detectArrival', () => {
   it('uses a 30 metre radius', () => {
     expect(ARRIVAL_RADIUS_M).toBe(30);
   });
+
+  // Real geometry from the tour: the Marr Monument stands on the courthouse
+  // lawn, 14.6 m away — well inside the 30 m arrival radius.
+  const COURTHOUSE = stop('courthouse', 1, -77.30732, 38.84562);
+  const MARR = stop('marr', 2, -77.30716, 38.84566);
+  const CLOSE_PAIR = [COURTHOUSE, MARR];
+
+  it('does not arrive at a neighbour that merely shares the radius', () => {
+    const r = detectArrival({
+      position: COURTHOUSE.location, stops: CLOSE_PAIR, currentIndex: 0, latched: new Set(),
+    });
+    expect(r.arrivedIndex).toBeNull();
+  });
+
+  it('arrives once the neighbour becomes the nearest stop', () => {
+    const r = detectArrival({
+      position: MARR.location, stops: CLOSE_PAIR, currentIndex: 0, latched: new Set(),
+    });
+    expect(r.arrivedIndex).toBe(1);
+  });
+
+  it('does not arrive from the midpoint back toward the stop behind you', () => {
+    const midpoint = {
+      lng: (COURTHOUSE.location.lng + MARR.location.lng) / 2,
+      lat: (COURTHOUSE.location.lat + MARR.location.lat) / 2,
+    };
+    const r = detectArrival({
+      position: midpoint, stops: CLOSE_PAIR, currentIndex: 1, latched: new Set(),
+    });
+    // Standing between them, neither is decisively nearer than the current stop.
+    expect(r.arrivedIndex).toBeNull();
+  });
 });

@@ -29,7 +29,7 @@
       "panorama": {
         "provider": "mapillary",
         "imageId": "2116094392633820",
-        "bearing": 200.0,
+        "bearing": 284.4,
         "cachedPath": "media/pano/pano-historic-courthouse.jpg"
       },
       "overlays": [
@@ -95,7 +95,7 @@
             "lng": -77.30736,
             "lat": 38.84569,
             "altitude": 8.0,
-            "headingDeg": 200,
+            "headingDeg": 113.0,
             "widthM": 30,
             "heightM": 24
           },
@@ -116,7 +116,7 @@
             "lng": -77.30736,
             "lat": 38.84569,
             "altitude": 5.0,
-            "headingDeg": 200,
+            "headingDeg": 113.0,
             "widthM": 14,
             "heightM": 11
           },
@@ -144,7 +144,7 @@
       "panorama": {
         "provider": "mapillary",
         "imageId": "1430487015654811",
-        "bearing": 150.0,
+        "bearing": 287.9,
         "cachedPath": "media/pano/pano-marr-monument.jpg"
       },
       "overlays": [
@@ -199,7 +199,7 @@
       "panorama": {
         "provider": "mapillary",
         "imageId": "1377390754539790",
-        "bearing": 250.0,
+        "bearing": 190.7,
         "cachedPath": "media/pano/pano-old-town-hall.jpg"
       },
       "overlays": [
@@ -254,7 +254,7 @@
       "panorama": {
         "provider": "mapillary",
         "imageId": "1623645942614169",
-        "bearing": 180.0,
+        "bearing": 17.5,
         "cachedPath": "media/pano/pano-ratcliffe-allison-pozer-house.jpg"
       },
       "overlays": [
@@ -309,7 +309,7 @@
       "panorama": {
         "provider": "mapillary",
         "imageId": "1675017370851450",
-        "bearing": 300.0,
+        "bearing": 196.4,
         "cachedPath": "media/pano/pano-fairfax-museum.jpg"
       },
       "overlays": [
@@ -364,7 +364,7 @@
       "panorama": {
         "provider": "mapillary",
         "imageId": "1412217390816350",
-        "bearing": 60.0,
+        "bearing": 193.9,
         "cachedPath": "media/pano/pano-fairfax-city-hall.jpg"
       },
       "overlays": [

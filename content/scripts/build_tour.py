@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from geo import offset_to_lnglat
+from geo import bearing_between, offset_to_lnglat
 
 from app.models import Tour
 
@@ -50,6 +50,14 @@ def main() -> int:
 
         origin = src["location"]
         overlays = []
+
+        # Face the subject. Authoring this by eye produced six wrong values,
+        # one of them 138 degrees out, which put the stop's subject behind the
+        # viewer. Derive it from where the panorama actually stands.
+        pano_lng, pano_lat = pano_entry.get("lng"), pano_entry.get("lat")
+        if pano_lng is None or pano_lat is None:
+            sys.exit(f"panorama position missing for {src['id']}; re-run fetch_media.py")
+        view_bearing = bearing_between(pano_lng, pano_lat, origin["lng"], origin["lat"])
 
         for ov in src["overlays"]:
             off = ov["anchorOffset"]
@@ -87,10 +95,14 @@ def main() -> int:
             media_id = f"{spec['id']}.jpg"
             if media_id not in manifest:
                 sys.exit(f"missing rephoto {media_id}; run fetch_rephotos.py first")
+            # A photograph must face the viewer, or it renders edge-on.
+            anchor = dict(spec["anchor"])
+            anchor["headingDeg"] = round(
+                bearing_between(anchor["lng"], anchor["lat"], pano_lng, pano_lat), 1)
             overlays.append({
                 "id": spec["id"],
                 "kind": "rephoto",
-                "anchor": spec["anchor"],
+                "anchor": anchor,
                 "title": spec["title"],
                 "mediaId": media_id,
                 "credit": manifest[media_id]["credit"],
@@ -106,7 +118,7 @@ def main() -> int:
             "panorama": {
                 "provider": "mapillary",
                 "imageId": pano_entry["imageId"],
-                "bearing": float(src["bearing"]),
+                "bearing": round(view_bearing, 1),
                 "cachedPath": f"media/{pano_entry['file']}",
             },
             "overlays": overlays,

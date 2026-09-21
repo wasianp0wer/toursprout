@@ -71,8 +71,15 @@ export class TourStore {
    * Feed viewer movement in. The store decides whether it counts as arriving,
    * which keeps that rule in one testable place rather than in a component.
    */
-  updateViewerPosition(position: LngLatLike): void {
+  updateViewerPosition(position: LngLatLike, imageId?: string): void {
     this._viewerPosition.set(position);
+
+    // A stop's own panorama stands on the road, not at the stop, and can sit
+    // nearer to a neighbouring stop than to its own. Standing at the vantage
+    // point the tour just loaded is not walking anywhere, so it cannot count
+    // as arriving somewhere else.
+    if (imageId && imageId === this.currentStop()?.panorama.imageId) return;
+
     const { arrivedIndex, latched } = detectArrival({
       position,
       stops: this.stops(),

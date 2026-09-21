@@ -45,7 +45,9 @@ export class PanoramaPane {
   constructor() {
     inject(DestroyRef).onDestroy(() => this.viewer.destroy());
     this.viewer.onMarkerClick((id) => this.store.selectOverlay(id));
-    this.viewer.onPositionChange((position) => this.store.updateViewerPosition(position));
+    this.viewer.onPositionChange((position, imageId) =>
+      this.store.updateViewerPosition(position, imageId),
+    );
 
     effect(() => {
       const stop = this.store.currentStop();
