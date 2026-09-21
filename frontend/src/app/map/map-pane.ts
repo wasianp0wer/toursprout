@@ -7,13 +7,19 @@ import {
   inject,
   viewChild,
 } from '@angular/core';
-import { type GeoJSONSource, Map as MlMap, type StyleSpecification } from 'maplibre-gl';
+import { DivIcon, Map as LeafletMap, Marker, Polyline, TileLayer } from 'leaflet';
 import { ConfigStore } from '../core/config-store';
 import { TourStore } from '../core/tour-store';
 import { routeGeoJson } from './route';
 
-const ROUTE_SOURCE = 'route';
-
+/**
+ * The tour minimap.
+ *
+ * Leaflet rather than a WebGL engine: the basemap is raster OSM tiles and the
+ * only overlays are a polyline and six pins, so vector tiles, GPU styling and
+ * a worker pipeline would all go unused. Leaflet draws the line as SVG and the
+ * pins as DOM, with no worker involved.
+ */
 @Component({
   selector: 'app-map-pane',
   template: `<div class="minimap" #container></div>`,
@@ -23,7 +29,10 @@ export class MapPane implements AfterViewInit {
   private readonly store = inject(TourStore);
   private readonly config = inject(ConfigStore);
   private readonly container = viewChild.required<ElementRef<HTMLElement>>('container');
-  private map: MlMap | null = null;
+
+  private map: LeafletMap | null = null;
+  private route: Polyline | null = null;
+  private markers = new Map<string, Marker>();
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.map?.remove());
@@ -31,89 +40,113 @@ export class MapPane implements AfterViewInit {
     effect(() => {
       const stop = this.store.currentStop();
       if (!this.map || !stop) return;
-      this.map.easeTo({ center: [stop.location.lng, stop.location.lat], zoom: 17 });
+      this.map.setView([stop.location.lat, stop.location.lng], 17);
       this.paintRoute();
     });
   }
 
   ngAfterViewInit(): void {
-    const style: StyleSpecification = {
-      version: 8,
-      sources: {
-        osm: {
-          type: 'raster',
-          tiles: [this.config.tileUrl()],
-          tileSize: 256,
-          attribution: '(c) OpenStreetMap contributors',
-        },
-      },
-      layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-    };
-
-    this.map = new MlMap({
-      container: this.container().nativeElement,
-      style,
-      center: [-77.3065, 38.8456],
+    this.map = new LeafletMap(this.container().nativeElement, {
+      center: [38.8456, -77.3065],
       zoom: 16,
-      attributionControl: { compact: true },
+      zoomControl: true,
+      attributionControl: true,
     });
 
-    this.map.on('load', () => this.paintRoute());
-    this.map.on('click', 'stops', (e) => {
-      const id = e.features?.[0]?.properties?.['id'] as string | undefined;
-      if (!id) return;
-      const index = this.store.stops().findIndex((s) => s.id === id);
-      if (index >= 0) this.store.goTo(index);
-    });
+    new TileLayer(this.config.tileUrl(), {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(this.map);
+
+    this.paintRoute();
+    this.centreOnCurrentStop();
+  }
+
+  /**
+   * The effect that follows the tour cannot run before the map exists, so the
+   * opening stop has to be centred once the map is up.
+   */
+  private centreOnCurrentStop(): void {
+    const stop = this.store.currentStop();
+    if (this.map && stop) this.map.setView([stop.location.lat, stop.location.lng], 17);
   }
 
   private paintRoute(): void {
     const map = this.map;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map) return;
 
-    const data = routeGeoJson(this.store.stops());
-    const existing = map.getSource(ROUTE_SOURCE);
-    if (existing) {
-      (existing as GeoJSONSource).setData(data);
-    } else {
-      map.addSource(ROUTE_SOURCE, { type: 'geojson', data });
-      map.addLayer({
-        id: 'route-line',
-        type: 'line',
-        source: ROUTE_SOURCE,
-        filter: ['==', ['geometry-type'], 'LineString'],
-        paint: { 'line-color': '#e8b04b', 'line-width': 3, 'line-opacity': 0.8 },
-      });
-      map.addLayer({
-        id: 'stops',
-        type: 'circle',
-        source: ROUTE_SOURCE,
-        filter: ['==', ['geometry-type'], 'Point'],
-        paint: {
-          'circle-radius': 9,
-          'circle-color': '#2f7fd4',
-          'circle-stroke-color': '#fff',
-          'circle-stroke-width': 2,
-        },
-      });
-      map.addLayer({
-        id: 'stop-labels',
-        type: 'symbol',
-        source: ROUTE_SOURCE,
-        filter: ['==', ['geometry-type'], 'Point'],
-        layout: { 'text-field': ['get', 'order'], 'text-size': 12 },
-        paint: { 'text-color': '#fff' },
-      });
+    const features = routeGeoJson(this.store.stops()).features;
+    const currentId = this.store.currentStop()?.id;
+
+    const line = features.find((f) => f.geometry.type === 'LineString');
+    if (line) {
+      // GeoJSON is lng/lat; Leaflet wants lat/lng.
+      const path = (line.geometry as GeoJSON.LineString).coordinates.map(
+        ([lng, lat]) => [lat, lng] as [number, number],
+      );
+      if (this.route) {
+        this.route.setLatLngs(path);
+      } else {
+        this.route = new Polyline(path, { color: '#e8b04b', weight: 4, opacity: 0.85 }).addTo(map);
+      }
     }
 
-    const current = this.store.currentStop();
-    if (current && map.getLayer('stops')) {
-      map.setPaintProperty('stops', 'circle-color', [
-        'case',
-        ['==', ['get', 'id'], current.id],
-        '#e8b04b',
-        '#2f7fd4',
-      ]);
+    for (const feature of features) {
+      if (feature.geometry.type !== 'Point') continue;
+      const [lng, lat] = (feature.geometry as GeoJSON.Point).coordinates;
+      const id = feature.properties?.['id'] as string;
+      const order = feature.properties?.['order'] as number;
+      const title = feature.properties?.['title'] as string;
+      const current = id === currentId;
+
+      const existing = this.markers.get(id);
+      if (existing) {
+        existing.setLatLng([lat, lng]);
+        existing.setIcon(this.pin(order, current));
+        existing.setZIndexOffset(this.stacking(order, current));
+        continue;
+      }
+
+      const marker = new Marker([lat, lng], {
+        icon: this.pin(order, current),
+        title,
+        keyboard: true,
+        alt: `Stop ${order}: ${title}`,
+        // Stops can stand metres apart — the monument is 14.6 m from the
+        // courthouse — so later pins must draw above earlier ones rather than
+        // disappearing beneath them.
+        zIndexOffset: this.stacking(order, current),
+        riseOnHover: true,
+      }).addTo(map);
+
+      marker.on('click', () => {
+        const index = this.store.stops().findIndex((s) => s.id === id);
+        if (index >= 0) this.store.goTo(index);
+      });
+
+      this.markers.set(id, marker);
     }
+  }
+
+  /**
+   * Stops can stand metres apart — the monument is 14.6 m from the courthouse —
+   * so pins overlap. The stop the tour is on always draws on top; the rest
+   * stack in walking order.
+   */
+  private stacking(order: number, current: boolean): number {
+    return current ? 1000 : order * 10;
+  }
+
+  /** A numbered pin, highlighted when it is the stop the tour is on. */
+  private pin(order: number, current: boolean): DivIcon {
+    const background = current ? '#e8b04b' : '#2f7fd4';
+    const colour = current ? '#14161a' : '#ffffff';
+    return new DivIcon({
+      className: 'stop-pin',
+      html:
+        `<span style="background:${background};color:${colour}">${order}</span>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13],
+    });
   }
 }

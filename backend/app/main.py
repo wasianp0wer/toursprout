@@ -142,13 +142,27 @@ class _SpaFiles(StaticFiles):
 
     async def get_response(self, path: str, scope):
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
+            return self._with_cache_headers(response, path)
         except StarletteHTTPException as exc:
             # An unmatched API path is an error, not a deep link. Falling back
             # there would turn a 404 into a 200 page and hide real mistakes.
             if exc.status_code == 404 and not path.startswith("api/"):
-                return await super().get_response("index.html", scope)
+                fallback = await super().get_response("index.html", scope)
+                return self._with_cache_headers(fallback, "index.html")
             raise
+
+    @staticmethod
+    def _with_cache_headers(response, path: str):
+        """Keep HTML fresh; let content-hashed assets cache.
+
+        index.html names hashed bundles, so a cached copy pins the whole app to
+        an old build — which silently served stale JavaScript during
+        development, making changes look like they had not been applied.
+        """
+        if path.endswith(".html") or path in ("", "."):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
 
 
 def _resolve_media(media_dir: Path, media_id: str) -> Path | None:

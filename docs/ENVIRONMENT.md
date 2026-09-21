@@ -218,3 +218,33 @@ stuck on the monument, because the monument was always nearer.
 Each stop already names a panorama, which is an exact identity. Standing on a
 stop's designated panorama means being at that stop, full stop; proximity is
 only the fallback for street images that belong to no stop.
+
+
+## MapLibre's GeoJSON pipeline does not work in this bundle; the minimap uses Leaflet
+
+Under Angular 22's esbuild build, maplibre-gl 6.10 renders raster tiles
+correctly but **no GeoJSON source ever finishes loading**. `isSourceLoaded`
+stays false for ever, nothing from that source draws, and no error is raised on
+the map's error channel or the worker's. It reproduces on a brand-new map with
+an empty style and a single-point source, so it is not specific to this
+application's layers.
+
+Eliminated along the way: the worker URL (MapLibre builds its worker from a
+blob and loads it successfully), a symbol layer without `glyphs`, layer
+ordering, container sizing, and the projection of the features themselves,
+which land well inside the canvas.
+
+The minimap now uses Leaflet, which suits it better regardless: the basemap is
+raster OSM tiles and the overlays are one polyline and a handful of pins, so
+vector tiles, GPU styling and a worker pipeline all went unused. Leaflet draws
+the line as SVG and the pins as DOM. Removing MapLibre took the bundle from
+2.89 MB to 2.04 MB, and the transferred size from 527 kB to 348 kB.
+
+## The browser cached index.html and served stale bundles
+
+`index.html` names content-hashed bundles, so a cached copy pins the whole
+application to an old build. This silently served stale JavaScript during
+development and made fixes look like they had not been applied — twice leading
+to wrong conclusions about where a bug was. The backend now sends
+`Cache-Control: no-cache, must-revalidate` for HTML while leaving hashed assets
+cacheable.

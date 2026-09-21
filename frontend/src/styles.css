@@ -1,10 +1,25 @@
 /* You can add global styles to this file, and also import other style files */
 
 @import 'mapillary-js/dist/mapillary.css';
+@import 'leaflet/dist/leaflet.css';
 
 html, body { height: 100%; margin: 0; }
 body {
   font-family: Georgia, 'Times New Roman', serif;
   background: #14161a;
   color: #ecebe6;
+}
+
+/* Numbered tour pins. Leaflet builds marker icons as plain DOM, so the pin is
+   styled here rather than through a sprite. */
+.stop-pin span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  font: 700 12px Georgia, serif;
 }

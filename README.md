@@ -1,7 +1,7 @@
 # clio-wired
 
 A prototype for a digital-humanities framework that tells historical walking
-tours over real street-level imagery. This proof of concept is a five-stop tour
+tours over real street-level imagery. This proof of concept is a six-stop tour
 of Old Town Fairfax, Virginia, with text, archival photography and narration
 anchored to points in the world and overlaid on 360° panoramas.
 
@@ -17,7 +17,7 @@ hard-authored tour. The **schema** is the part meant to survive.
 | Archival photography | Library of Congress, public domain |
 | Narration | macOS speech synthesis, labelled as synthetic |
 | Backend | FastAPI, pydantic, SQLite, Python 3.14 |
-| Frontend | Angular 22, MapLibre GL 6, mapillary-js 4 |
+| Frontend | Angular 22, Leaflet 1.9, mapillary-js 4 |
 
 OpenStreetMap has no street-level imagery of its own; that is what Mapillary
 supplies. All six stops were chosen by probing actual Mapillary coverage
