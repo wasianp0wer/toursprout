@@ -6,7 +6,7 @@ export class FakeViewer implements PanoramaViewer {
   loaded: { imageId: string; bearing: number }[] = [];
   markers: OverlayMarker[][] = [];
   rephotos: RephotoPlacement[][] = [];
-  opacity: number | null = null;
+  opacity: Record<string, number> | null = null;
   destinationBearing: number | null = null;
   destroyed = false;
   failNextLoad = false;
@@ -45,8 +45,8 @@ export class FakeViewer implements PanoramaViewer {
     this.rephotos.push(rephotos);
   }
 
-  setRephotoOpacity(opacity: number): void {
-    this.opacity = opacity;
+  setRephotoOpacity(opacities: Record<string, number>): void {
+    this.opacity = opacities;
   }
 
   setDestinationBearing(bearingDeg: number | null): void {

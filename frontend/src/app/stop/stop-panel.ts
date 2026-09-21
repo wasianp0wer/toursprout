@@ -53,19 +53,25 @@ import { TourStore } from '../core/tour-store';
 
       @if (store.hasRephotos()) {
         <div class="rephoto-control">
-          <label for="rephoto-opacity">Then and now</label>
-          <div class="slider-row">
-            <span>now</span>
-            <input
-              id="rephoto-opacity"
-              data-rephoto-opacity
-              type="range"
-              min="0" max="1" step="0.01"
-              [value]="store.rephotoOpacity()"
-              (input)="onOpacity($event)"
-            />
-            <span>then</span>
-          </div>
+          <p class="rephoto-heading">Then and now</p>
+          @for (photo of store.rephotos(); track photo.id) {
+            <div class="rephoto-slider" data-rephoto-slider>
+              <label [for]="'opacity-' + photo.id">{{ photo.title }}</label>
+              <div class="slider-row">
+                <span>now</span>
+                <input
+                  [id]="'opacity-' + photo.id"
+                  data-rephoto-opacity
+                  [attr.data-rephoto-id]="photo.id"
+                  type="range"
+                  min="0" max="1" step="0.01"
+                  [value]="store.opacityFor(photo.id)"
+                  (input)="onOpacity(photo.id, $event)"
+                />
+                <span>then</span>
+              </div>
+            </div>
+          }
         </div>
       }
 
@@ -84,8 +90,8 @@ export class StopPanel {
   protected readonly store = inject(TourStore);
   protected readonly api = inject(TourApi);
 
-  protected onOpacity(event: Event): void {
-    this.store.setRephotoOpacity(Number((event.target as HTMLInputElement).value));
+  protected onOpacity(id: string, event: Event): void {
+    this.store.setRephotoOpacity(id, Number((event.target as HTMLInputElement).value));
   }
 
   protected readonly position = computed(

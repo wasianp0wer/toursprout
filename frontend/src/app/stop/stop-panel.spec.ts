@@ -136,11 +136,42 @@ describe('StopPanel', () => {
     expect(text).toContain('now');
   });
 
-  it('moving the slider updates the store', () => {
+  it('moving the slider updates that photograph only', () => {
     store.load(tour([REPHOTO as never]));
     const slider = render().querySelector<HTMLInputElement>('[data-rephoto-opacity]')!;
     slider.value = '0.25';
     slider.dispatchEvent(new Event('input'));
-    expect(store.rephotoOpacity()).toBeCloseTo(0.25, 3);
+    expect(store.opacityFor('court-1863')).toBeCloseTo(0.25, 3);
+  });
+
+  const REPHOTO_2 = { ...REPHOTO, id: 'court-1918', title: 'Fairfax Court House, about 1918' };
+
+  it('gives every photograph its own slider', () => {
+    store.load(tour([REPHOTO as never, REPHOTO_2 as never]));
+    expect(render().querySelectorAll('[data-rephoto-opacity]')).toHaveLength(2);
+  });
+
+  it('labels each slider with its photograph', () => {
+    store.load(tour([REPHOTO as never, REPHOTO_2 as never]));
+    const text = render().textContent ?? '';
+    expect(text).toContain('Fairfax Court House, 1863');
+    expect(text).toContain('Fairfax Court House, about 1918');
+  });
+
+  it('moves one photograph without disturbing the other', () => {
+    store.load(tour([REPHOTO as never, REPHOTO_2 as never]));
+    const el = render();
+    const second = el.querySelectorAll<HTMLInputElement>('[data-rephoto-opacity]')[1];
+    second.value = '0.9';
+    second.dispatchEvent(new Event('input'));
+    expect(store.opacityFor('court-1918')).toBeCloseTo(0.9, 3);
+    expect(store.opacityFor('court-1863')).toBeCloseTo(0.7, 3);
+  });
+
+  it('opens with the first photograph showing and the second hidden', () => {
+    store.load(tour([REPHOTO as never, REPHOTO_2 as never]));
+    const sliders = render().querySelectorAll<HTMLInputElement>('[data-rephoto-opacity]');
+    expect(Number(sliders[0].value)).toBeCloseTo(0.7, 3);
+    expect(Number(sliders[1].value)).toBe(0);
   });
 });

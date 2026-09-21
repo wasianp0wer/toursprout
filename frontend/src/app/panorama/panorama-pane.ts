@@ -118,7 +118,7 @@ export class PanoramaPane {
       );
     });
 
-    effect(() => this.viewer.setRephotoOpacity(this.store.rephotoOpacity()));
+    effect(() => this.viewer.setRephotoOpacity(this.store.rephotoOpacities()));
 
     effect(() => this.viewer.setDestinationBearing(this.store.bearingToNextStop()));
   }

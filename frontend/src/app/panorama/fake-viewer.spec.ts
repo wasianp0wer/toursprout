@@ -15,10 +15,10 @@ describe('FakeViewer', () => {
     expect(v.rephotos.at(-1)).toEqual([REPHOTO]);
   });
 
-  it('records opacity changes', () => {
+  it('records opacity per photograph', () => {
     const v = new FakeViewer();
-    v.setRephotoOpacity(0.4);
-    expect(v.opacity).toBe(0.4);
+    v.setRephotoOpacity({ 'court-1863': 0.4, 'court-1918': 0 });
+    expect(v.opacity).toEqual({ 'court-1863': 0.4, 'court-1918': 0 });
   });
 
   it('records destination bearing including null', () => {

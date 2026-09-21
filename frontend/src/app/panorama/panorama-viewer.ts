@@ -22,8 +22,12 @@ export interface PanoramaViewer {
 
   /** Photographs draped in the world. */
   setRephotos(rephotos: RephotoPlacement[]): void;
-  /** 0 shows the present view, 1 shows the historical photograph. */
-  setRephotoOpacity(opacity: number): void;
+  /**
+   * Opacity per rephoto id: 0 shows the present view, 1 the photograph.
+   * The whole map is passed at once so the renderer cannot drift out of step
+   * with the store.
+   */
+  setRephotoOpacity(opacities: Record<string, number>): void;
   /** Compass bearing to the next stop, or null to clear the arrow highlight. */
   setDestinationBearing(bearingDeg: number | null): void;
   /** Fires whenever the viewer moves to a different image. */

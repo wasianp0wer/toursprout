@@ -143,8 +143,8 @@ export class MapillaryViewer implements PanoramaViewer {
     this.requestRedraw();
   }
 
-  setRephotoOpacity(opacity: number): void {
-    this.rephotoRenderer?.setOpacity(opacity);
+  setRephotoOpacity(opacities: Record<string, number>): void {
+    this.rephotoRenderer?.setOpacity(opacities);
     this.requestRedraw();
   }
 

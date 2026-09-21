@@ -53,8 +53,10 @@ destination marker shows where the next stop is when the arrow is out of view.
 
 **Compare then and now.** The Fairfax County Historic Courthouse carries two
 Library of Congress photographs — 1863, with Union cavalry and a soldier in the
-cupola, and about 1918 — standing in the world where the building is. A slider
-in the stop panel fades between the photograph and the present view.
+cupola, and about 1918 — standing in the world where the building is. Each photograph gets its own slider in the stop panel, fading between it and
+the present view. A stop opens with the first photograph ghosted in and the
+rest hidden, so several semi-transparent images do not overlap into a muddle —
+drag one down and another up to compare eras one at a time.
 
 Rephotography is demonstrated at the courthouse because that is where the
 archive actually is. Targeted searching found essentially no Old Town Fairfax

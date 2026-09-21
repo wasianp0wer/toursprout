@@ -14,7 +14,7 @@ export class TourStore {
   private readonly _index = signal(0);
   private readonly _selectedOverlayId = signal<string | null>(null);
   private readonly _viewerPosition = signal<LngLatLike | null>(null);
-  private readonly _rephotoOpacity = signal(0.7);
+  private readonly _rephotoOpacity = signal<Record<string, number>>({});
   private readonly _alignmentOverride = signal<GeoQuadAnchorLike | null>(null);
   private _latched: ReadonlySet<string> = new Set();
 
@@ -43,7 +43,8 @@ export class TourStore {
 
   readonly viewerPosition = this._viewerPosition.asReadonly();
   readonly alignmentOverride = this._alignmentOverride.asReadonly();
-  readonly rephotoOpacity = this._rephotoOpacity.asReadonly();
+  /** Opacity per rephoto id, so each photograph can be viewed on its own. */
+  readonly rephotoOpacities = this._rephotoOpacity.asReadonly();
 
   /** The stop the tour is heading toward, or null at the end. */
   readonly nextStop = computed<Stop | null>(() => this.stops()[this._index() + 1] ?? null);
@@ -55,9 +56,16 @@ export class TourStore {
     return from && to ? bearingBetween(from, to.location) : null;
   });
 
-  readonly hasRephotos = computed(() =>
-    this.overlaysForCurrentStop().some((o) => o.kind === 'rephoto'),
+  readonly hasRephotos = computed(() => this.rephotos().length > 0);
+
+  /** The photographs draped at the current stop, in document order. */
+  readonly rephotos = computed<Overlay[]>(() =>
+    this.overlaysForCurrentStop().filter((o) => o.kind === 'rephoto'),
   );
+
+  opacityFor(id: string): number {
+    return this._rephotoOpacity()[id] ?? 0;
+  }
 
   load(tour: Tour): void {
     this._tour.set(tour);
@@ -65,6 +73,7 @@ export class TourStore {
     this._selectedOverlayId.set(null);
     this._viewerPosition.set(null);
     this._latched = new Set();
+    this.resetRephotoOpacities();
   }
 
   /**
@@ -100,8 +109,26 @@ export class TourStore {
     this._alignmentOverride.set(anchor);
   }
 
-  setRephotoOpacity(value: number): void {
-    this._rephotoOpacity.set(Math.min(1, Math.max(0, value)));
+  setRephotoOpacity(id: string, value: number): void {
+    this._rephotoOpacity.update((all) => ({
+      ...all,
+      [id]: Math.min(1, Math.max(0, value)),
+    }));
+  }
+
+  /**
+   * Show the first photograph and hide the rest.
+   *
+   * Several semi-transparent photographs over one building overlap into a
+   * muddle, so a stop opens with one legible comparison and the others
+   * waiting behind their own sliders.
+   */
+  private resetRephotoOpacities(): void {
+    const defaults: Record<string, number> = {};
+    this.rephotos().forEach((o, index) => {
+      defaults[o.id] = index === 0 ? 0.7 : 0;
+    });
+    this._rephotoOpacity.set(defaults);
   }
 
   next(): void {
@@ -116,6 +143,7 @@ export class TourStore {
     if (index < 0 || index >= this.stops().length) return;
     this._index.set(index);
     this._selectedOverlayId.set(null);
+    this.resetRephotoOpacities();
     // Latch the destination: without this, skipping to a stop you are already
     // standing near would immediately re-trigger arrival at that same stop.
     const stop = this.stops()[index];

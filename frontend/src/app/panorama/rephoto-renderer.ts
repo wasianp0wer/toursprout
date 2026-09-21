@@ -42,7 +42,7 @@ export class RephotoRenderer implements ICustomRenderer {
   private reference: LngLatAlt | null = null;
   private placements: RephotoPlacement[] = [];
   private readonly meshes = new Map<string, Mesh>();
-  private opacity = 0;
+  private opacity: Record<string, number> = {};
   private readonly diag: Diagnostics;
   private frames = 0;
 
@@ -126,19 +126,25 @@ export class RephotoRenderer implements ICustomRenderer {
     this.rebuild();
   }
 
-  setOpacity(value: number): void {
-    this.diag.log('setOpacity', { value, meshes: this.meshes.size });
-    this.opacity = Math.min(1, Math.max(0, value));
-    for (const mesh of this.meshes.values()) {
+  setOpacity(opacities: Record<string, number>): void {
+    this.diag.log('setOpacity', { opacities, meshes: this.meshes.size });
+    this.opacity = opacities;
+    for (const [id, mesh] of this.meshes.entries()) {
+      const value = this.opacityOf(id);
       const material = mesh.material as MeshBasicMaterial;
-      material.opacity = this.opacity;
-      mesh.visible = this.opacity > 0.01;
+      material.opacity = value;
+      mesh.visible = value > 0.01;
     }
+  }
+
+  private opacityOf(id: string): number {
+    return Math.min(1, Math.max(0, this.opacity[id] ?? 0));
   }
 
   render(context: WebGLRenderingContext, viewMatrix: number[], projectionMatrix: number[]): void {
     this.frames += 1;
-    if (!this.renderer || this.meshes.size === 0 || this.opacity <= 0.01) {
+    const anyVisible = [...this.meshes.keys()].some((id) => this.opacityOf(id) > 0.01);
+    if (!this.renderer || this.meshes.size === 0 || !anyVisible) {
       this.diag.once('render skipped', {
         hasRenderer: !!this.renderer,
         meshes: this.meshes.size,
@@ -184,7 +190,7 @@ export class RephotoRenderer implements ICustomRenderer {
       ) as [number, number, number];
 
       const transform = planeTransform(placement, enu);
-      const material = new MeshBasicMaterial(rephotoMaterialOptions(this.opacity));
+      const material = new MeshBasicMaterial(rephotoMaterialOptions(this.opacityOf(placement.id)));
 
       // A texture that fails to load leaves an untextured plane rather than
       // breaking the tour.
@@ -213,7 +219,7 @@ export class RephotoRenderer implements ICustomRenderer {
         transform.rotation[2],
         transform.rotationOrder,
       );
-      mesh.visible = this.opacity > 0.01;
+      mesh.visible = this.opacityOf(placement.id) > 0.01;
 
       this.scene.add(mesh);
       this.meshes.set(placement.id, mesh);

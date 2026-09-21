@@ -193,20 +193,24 @@ describe('PanoramaPane', () => {
   });
 
   it('pushes opacity to the viewer on first render, not only on change', async () => {
-    // If opacity only reached the renderer when the slider moved, every
+    // If opacity only reached the renderer when a slider moved, every
     // rephoto would start fully transparent and look like a missing image.
-    store.load(tour());
+    const t = tour();
+    t.stops[0].overlays = [...t.stops[0].overlays, REPHOTO_OVERLAY];
+    store.load(t);
     await render();
     expect(fake.opacity).not.toBeNull();
-    expect(fake.opacity).toBeGreaterThan(0);
+    expect(fake.opacity!['court-1863']).toBeGreaterThan(0);
   });
 
-  it('pushes the opacity setting down to the viewer', async () => {
-    store.load(tour());
+  it('pushes a per-photograph opacity change down to the viewer', async () => {
+    const t = tour();
+    t.stops[0].overlays = [...t.stops[0].overlays, REPHOTO_OVERLAY];
+    store.load(t);
     const fixture = await render();
-    store.setRephotoOpacity(0.25);
+    store.setRephotoOpacity('court-1863', 0.25);
     fixture.detectChanges();
     await fixture.whenStable();
-    expect(fake.opacity).toBeCloseTo(0.25, 3);
+    expect(fake.opacity!['court-1863']).toBeCloseTo(0.25, 3);
   });
 });

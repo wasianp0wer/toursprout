@@ -206,15 +206,70 @@ describe('TourStore', () => {
     expect(store.currentIndex()).toBe(0);
   });
 
-  it('defaults rephoto opacity to a visible ghost', () => {
-    expect(store.rephotoOpacity()).toBeCloseTo(0.7, 3);
+  function rephoto(id: string) {
+    return {
+      id, kind: 'rephoto' as const,
+      anchor: { type: 'geoQuad' as const, lng: -77.3, lat: 38.84, altitude: 6,
+                headingDeg: 113, widthM: 18, heightM: 14 },
+      title: id, body: null, mediaId: `${id}.jpg`,
+      credit: { source: 'S', url: 'U', license: 'L', creator: null },
+    };
+  }
+
+  function tourWithRephotos(...ids: string[]) {
+    const t = tour();
+    t.stops[0].overlays = [...t.stops[0].overlays, ...ids.map(rephoto)];
+    return t;
+  }
+
+  it('shows the first photograph and hides the rest', () => {
+    store.load(tourWithRephotos('a', 'b', 'c'));
+    expect(store.opacityFor('a')).toBeCloseTo(0.7, 3);
+    expect(store.opacityFor('b')).toBe(0);
+    expect(store.opacityFor('c')).toBe(0);
   });
 
-  it('clamps rephoto opacity into range', () => {
-    store.setRephotoOpacity(5);
-    expect(store.rephotoOpacity()).toBe(1);
-    store.setRephotoOpacity(-3);
-    expect(store.rephotoOpacity()).toBe(0);
+  it('gives each photograph an independent opacity', () => {
+    store.load(tourWithRephotos('a', 'b'));
+    store.setRephotoOpacity('b', 0.4);
+    expect(store.opacityFor('a')).toBeCloseTo(0.7, 3);
+    expect(store.opacityFor('b')).toBeCloseTo(0.4, 3);
+  });
+
+  it('lets one photograph be hidden without affecting the other', () => {
+    store.load(tourWithRephotos('a', 'b'));
+    store.setRephotoOpacity('b', 0.9);
+    store.setRephotoOpacity('a', 0);
+    expect(store.opacityFor('a')).toBe(0);
+    expect(store.opacityFor('b')).toBeCloseTo(0.9, 3);
+  });
+
+  it('clamps each opacity into range', () => {
+    store.load(tourWithRephotos('a'));
+    store.setRephotoOpacity('a', 5);
+    expect(store.opacityFor('a')).toBe(1);
+    store.setRephotoOpacity('a', -3);
+    expect(store.opacityFor('a')).toBe(0);
+  });
+
+  it('reports zero for a photograph that is not on this stop', () => {
+    store.load(tourWithRephotos('a'));
+    expect(store.opacityFor('nope')).toBe(0);
+  });
+
+  it('exposes the whole opacity map for the renderer', () => {
+    store.load(tourWithRephotos('a', 'b'));
+    expect(store.rephotoOpacities()).toEqual({ a: 0.7, b: 0 });
+  });
+
+  it('resets opacities when the stop changes', () => {
+    const t = tourWithRephotos('a', 'b');
+    store.load(t);
+    store.setRephotoOpacity('b', 1);
+    store.goTo(1);
+    store.goTo(0);
+    expect(store.opacityFor('a')).toBeCloseTo(0.7, 3);
+    expect(store.opacityFor('b')).toBe(0);
   });
 
   it('knows whether the current stop has a rephoto', () => {
