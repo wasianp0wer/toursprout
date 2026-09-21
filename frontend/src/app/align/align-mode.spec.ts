@@ -35,6 +35,23 @@ describe('nudgeAnchor', () => {
     expect(nudgeAnchor(BASE, 'PageDown').altitude).toBeLessThan(BASE.altitude);
   });
 
+  it('z raises and c lowers, for keyboards without page keys', () => {
+    expect(nudgeAnchor(BASE, 'z').altitude).toBeGreaterThan(BASE.altitude);
+    expect(nudgeAnchor(BASE, 'c').altitude).toBeLessThan(BASE.altitude);
+  });
+
+  it('z and c move by the same step as the page keys', () => {
+    expect(nudgeAnchor(BASE, 'z').altitude).toBeCloseTo(
+      nudgeAnchor(BASE, 'PageUp').altitude, 6);
+    expect(nudgeAnchor(BASE, 'c').altitude).toBeCloseTo(
+      nudgeAnchor(BASE, 'PageDown').altitude, 6);
+  });
+
+  it('accepts Z and C with shift or caps lock held', () => {
+    expect(nudgeAnchor(BASE, 'Z').altitude).toBeGreaterThan(BASE.altitude);
+    expect(nudgeAnchor(BASE, 'C').altitude).toBeLessThan(BASE.altitude);
+  });
+
   it('+ grows and - shrinks, preserving aspect ratio', () => {
     const bigger = nudgeAnchor(BASE, '+');
     expect(bigger.widthM).toBeGreaterThan(BASE.widthM);

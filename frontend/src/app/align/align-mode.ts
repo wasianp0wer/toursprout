@@ -25,7 +25,9 @@ const metresToLng = (m: number, lat: number) =>
 /** Pure reducer: an anchor and a key in, a new anchor out. */
 export function nudgeAnchor(anchor: GeoQuadAnchorLike, key: string): GeoQuadAnchorLike {
   const next = { ...anchor };
-  switch (key) {
+  // Laptop keyboards often lack PageUp/PageDown, so z and c raise and lower
+  // as well. Case-folded so shift or caps lock does not silently do nothing.
+  switch (key.length === 1 ? key.toLowerCase() : key) {
     case 'ArrowUp':
       next.lat += metresToLat(STEP_M);
       break;
@@ -39,9 +41,11 @@ export function nudgeAnchor(anchor: GeoQuadAnchorLike, key: string): GeoQuadAnch
       next.lng -= metresToLng(STEP_M, anchor.lat);
       break;
     case 'PageUp':
+    case 'z':
       next.altitude += STEP_M;
       break;
     case 'PageDown':
+    case 'c':
       next.altitude -= STEP_M;
       break;
     case '+':
@@ -94,7 +98,7 @@ export function alignModeEnabled(search: string): boolean {
     @if (anchor) {
       <aside class="align" data-align-panel>
         <p class="target" data-align-target>{{ target()?.title }}</p>
-        <p class="keys">← → ↑ ↓ move · PgUp/PgDn height · +/− size · [ ] heading</p>
+        <p class="keys">← → ↑ ↓ move · z/c height · +/− size · [ ] heading</p>
         <p class="keys">Select another photograph in the panel to align it.</p>
         <pre data-align-json>{{ json() }}</pre>
         <button type="button" data-align-copy (click)="copy()">copy anchor JSON</button>

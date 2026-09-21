@@ -68,7 +68,7 @@ app with `?align=1`:
 | Key | Effect |
 | --- | --- |
 | ← → ↑ ↓ | move the photograph on the ground |
-| PgUp / PgDn | raise and lower it |
+| `z` / `c` | raise and lower it (PgUp / PgDn also work) |
 | `+` / `-` | resize, preserving aspect ratio |
 | `[` / `]` | rotate its heading |
 
