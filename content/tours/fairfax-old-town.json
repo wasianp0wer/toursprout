@@ -92,10 +92,10 @@
           "kind": "rephoto",
           "anchor": {
             "type": "geoQuad",
-            "lng": -77.30736,
-            "lat": 38.84569,
-            "altitude": 8.0,
-            "headingDeg": 113.0,
+            "lng": -77.30716392239417,
+            "lat": 38.84559118577077,
+            "altitude": 8,
+            "headingDeg": 113,
             "widthM": 30,
             "heightM": 24
           },
@@ -113,10 +113,10 @@
           "kind": "rephoto",
           "anchor": {
             "type": "geoQuad",
-            "lng": -77.30736,
-            "lat": 38.84569,
-            "altitude": 5.0,
-            "headingDeg": 113.0,
+            "lng": -77.30721005810315,
+            "lat": 38.84592356090544,
+            "altitude": 2,
+            "headingDeg": 113,
             "widthM": 14,
             "heightM": 11
           },
