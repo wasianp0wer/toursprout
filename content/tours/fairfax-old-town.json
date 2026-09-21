@@ -363,8 +363,8 @@
       "osmRef": "node/367990730",
       "panorama": {
         "provider": "mapillary",
-        "imageId": "1412217390816350",
-        "bearing": 193.9,
+        "imageId": "1047663651213936",
+        "bearing": 200.9,
         "cachedPath": "media/pano/pano-fairfax-city-hall.jpg"
       },
       "overlays": [
