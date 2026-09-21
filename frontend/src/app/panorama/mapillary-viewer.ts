@@ -8,6 +8,7 @@ import {
 import { pickEdgeToward, type DirectionEdge } from './edge-picker';
 import type { OverlayMarker, PanoramaViewer } from './panorama-viewer';
 import type { RephotoPlacement } from './rephoto-placement';
+import { diagnosticsEnabled } from './diagnostics';
 import { RephotoRenderer } from './rephoto-renderer';
 
 const SELECTED = '#e8b04b';
@@ -52,7 +53,9 @@ export class MapillaryViewer implements PanoramaViewer {
     this.markerComponent = this.viewer.getComponent('marker') as MarkerComponent;
     this.directionComponent = this.viewer.getComponent('direction') as DirectionComponent;
 
-    this.rephotoRenderer = new RephotoRenderer();
+    this.rephotoRenderer = new RephotoRenderer(
+      typeof location === 'undefined' ? false : diagnosticsEnabled(location.search),
+    );
     this.viewer.addCustomRenderer(this.rephotoRenderer);
 
     this.viewer.on('click', (event) => {
