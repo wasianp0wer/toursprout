@@ -1,7 +1,7 @@
 # clio-wired
 
 A prototype for a digital-humanities framework that tells historical walking
-tours over real street-level imagery. This proof of concept is a six-stop tour
+tours over real street-level imagery. This proof of concept is a five-stop tour
 of Old Town Fairfax, Virginia, with text, archival photography and narration
 anchored to points in the world and overlaid on 360° panoramas.
 
