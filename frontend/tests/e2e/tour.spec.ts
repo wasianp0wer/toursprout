@@ -86,12 +86,12 @@ test('selecting a stop on the map moves the tour', async ({ page }) => {
 });
 
 test('the courthouse offers a then/now comparison', async ({ page }) => {
-  await expect(page.locator('[data-rephoto-opacity]')).toBeVisible();
+  await expect(page.locator('[data-in-world-opacity]')).toBeVisible();
 });
 
-test('the comparison slider is absent on a stop with no rephoto', async ({ page }) => {
+test('the comparison slider is absent on a stop with no in-world overlay', async ({ page }) => {
   await page.locator('[data-next]').click();
-  await expect(page.locator('[data-rephoto-opacity]')).toHaveCount(0);
+  await expect(page.locator('[data-in-world-opacity]')).toHaveCount(0);
 });
 
 test('alignment mode stays off unless asked for', async ({ page }) => {
