@@ -17,6 +17,7 @@ from .config import Settings
 from .config import settings as default_settings
 from .db import connect, init_schema, list_tours, load_tour, seed_from_dir
 from .media import RangeNotSatisfiable, guess_media_type, parse_range
+from .publish import PublishError, build_site
 from .session import Session
 
 # Raster tiles carry the OSM usage policy; acceptable at prototype volume.
@@ -202,6 +203,22 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             write_bundle(session.path, out)
             data = out.read_bytes()
         name = f"{session.tour().id}.zip"
+        return Response(
+            content=data, media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        )
+
+    @app.get("/api/session/publish")
+    def publish_site() -> Response:
+        session = app.state.session
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "site.zip"
+            try:
+                build_site(session.path, Path(app.state.cfg.frontend_dist), out)
+            except PublishError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            data = out.read_bytes()
+        name = f"{session.tour().id}-site.zip"
         return Response(
             content=data, media_type="application/zip",
             headers={"Content-Disposition": f'attachment; filename="{name}"'},

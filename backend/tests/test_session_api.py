@@ -195,6 +195,13 @@ def test_unknown_app_route_still_falls_back_to_the_spa_shell(client_with_fronten
     assert b"SPA shell" in r.content
 
 
+def test_publish_without_a_build_is_a_409(client):
+    client.post("/api/session/new", json={"title": "My Tour"})
+    r = client.get("/api/session/publish")
+    assert r.status_code == 409
+    assert "make build" in r.json()["detail"]
+
+
 def test_tour_data_media_range_request_returns_a_slice(client_with_frontend, tmp_path):
     """Range requests through the tour-data mount must work: this is the
     narration-audio guarantee, and it is also the permanent home of the
