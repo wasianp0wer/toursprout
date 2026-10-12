@@ -1,6 +1,6 @@
 # Session handoff
 
-State as of 2026-10-12, commit `821617a`. Verified by running `make check`,
+State as of 2026-10-12, commit `da9c59a`. Verified by running `make check`,
 not from memory.
 
 ## What this is
