@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from geo import bearing_between, offset_to_lnglat
 
-from app.models import Tour
+from app.models import SCHEMA_VERSION, Tour
 
 SOURCE = REPO / "content" / "source" / "stops.json"
 MANIFEST = REPO / "content" / "media" / "manifest.json"
@@ -30,12 +30,23 @@ ATTRIBUTION = [
 ]
 
 # Editorial prose is ours, and is labelled as draft rather than scholarship.
+# Already in the `sourced` credit shape, so it is used directly below.
 TEXT_CREDIT = {
+    "type": "sourced",
     "source": "Written for this prototype",
     "url": "https://www.openstreetmap.org/copyright",
     "license": "Draft text, not peer-reviewed",
     "creator": "Project author",
 }
+
+# Which marker icon represents each content kind.
+_ICON_BY_KIND = {"text": "note", "image": "photo", "audio": "audio"}
+
+
+def _sourced(credit: dict) -> dict:
+    """Manifest credits all name an external source."""
+    return {"type": "sourced", "source": credit["source"], "url": credit["url"],
+            "license": credit["license"], "creator": credit.get("creator")}
 
 
 def main() -> int:
@@ -65,7 +76,9 @@ def main() -> int:
             entry = {
                 "id": ov["id"],
                 "kind": ov["kind"],
-                "anchor": {"type": "geo", "lng": lng, "lat": lat, "altitude": off["altitude"]},
+                "anchor": {"type": "geo", "lng": lng, "lat": lat,
+                           "altitudeM": off["altitude"]},
+                "display": {"mode": "marker", "icon": _ICON_BY_KIND[ov["kind"]]},
                 "title": ov["title"],
             }
             if ov["kind"] == "text":
@@ -76,7 +89,7 @@ def main() -> int:
                 if media_id not in manifest:
                     sys.exit(f"missing media {media_id}; run fetch_media.py first")
                 entry["mediaId"] = media_id
-                entry["credit"] = manifest[media_id]["credit"]
+                entry["credit"] = _sourced(manifest[media_id]["credit"])
             overlays.append(entry)
 
         narration_id = f"narration-{src['id']}.m4a"
@@ -85,27 +98,40 @@ def main() -> int:
             overlays.append({
                 "id": f"narration-{src['id']}",
                 "kind": "audio",
-                "anchor": {"type": "geo", "lng": lng, "lat": lat, "altitude": 2.0},
+                "anchor": {"type": "geo", "lng": lng, "lat": lat, "altitudeM": 2.0},
+                "display": {"mode": "marker", "icon": "audio"},
                 "title": f"Narration: {src['title']}",
                 "mediaId": narration_id,
-                "credit": manifest[narration_id]["credit"],
+                "credit": _sourced(manifest[narration_id]["credit"]),
             })
 
-        for spec in src.get("rephotos", []):
+        for index, spec in enumerate(src.get("rephotos", [])):
             media_id = f"{spec['id']}.jpg"
             if media_id not in manifest:
                 sys.exit(f"missing rephoto {media_id}; run fetch_rephotos.py first")
-            # A photograph must face the viewer, or it renders edge-on.
-            anchor = dict(spec["anchor"])
-            anchor["headingDeg"] = round(
+            anchor = spec["anchor"]
+            # A photograph must face the viewer, or it renders edge-on. Derived
+            # from where the panorama actually stands: all six hand-authored
+            # bearings were wrong, one by 138 degrees.
+            heading = round(
                 bearing_between(anchor["lng"], anchor["lat"], pano_lng, pano_lat), 1)
             overlays.append({
                 "id": spec["id"],
-                "kind": "rephoto",
-                "anchor": anchor,
+                "kind": "image",
+                "anchor": {"type": "geo", "lng": anchor["lng"], "lat": anchor["lat"],
+                           "altitudeM": anchor["altitude"]},
+                "display": {
+                    "mode": "inWorld",
+                    # One legible comparison at a time: several semi-transparent
+                    # photographs over one building overlap into a muddle.
+                    "opacity": 0.7 if index == 0 else 0.0,
+                    "headingDeg": heading,
+                    "widthM": anchor["widthM"],
+                    "heightM": anchor["heightM"],
+                },
                 "title": spec["title"],
                 "mediaId": media_id,
-                "credit": manifest[media_id]["credit"],
+                "credit": _sourced(manifest[media_id]["credit"]),
             })
 
         stops.append({
@@ -126,7 +152,7 @@ def main() -> int:
 
     doc = {
         "id": "fairfax-old-town",
-        "schemaVersion": 1,
+        "schemaVersion": SCHEMA_VERSION,
         "title": "Old Town Fairfax",
         "description": "Six historic sites in the City of Fairfax, Virginia, "
                        "told through street-level panoramas.",

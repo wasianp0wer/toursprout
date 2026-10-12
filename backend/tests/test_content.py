@@ -59,3 +59,16 @@ def test_anchor_offsets_are_small_enough_to_stay_at_the_stop():
             assert abs(off["east"]) <= 25
             assert abs(off["north"]) <= 25
             assert 0 <= off["altitude"] <= 20
+
+
+def test_build_tour_emits_schema_version_two():
+    """content/scripts is not an importable package, so this reads the source.
+    That the OUTPUT is valid is already proven by the migration suite against
+    the real on-disk document; what is checked here is that the generator was
+    not left behind emitting v1 shapes."""
+    src = Path(__file__).resolve().parents[2] / "content" / "scripts" / "build_tour.py"
+    text = src.read_text()
+    assert '"schemaVersion": SCHEMA_VERSION' in text
+    assert '"kind": "rephoto"' not in text
+    assert '"type": "geoQuad"' not in text
+    assert '"altitude":' not in text
