@@ -31,7 +31,7 @@ Ratcliffe-Allison-Pozer House, Fairfax Museum, City Hall.
 - **Alignment mode.** `?align=1` nudges the selected rephoto by keyboard and
   emits anchor JSON to paste into content.
 
-Tests: **119 backend (pytest), 196 frontend (Vitest)**, lint and production
+Tests: **158 backend (pytest), 208 frontend (Vitest)**, lint and production
 build clean via `make check`. Bundle 2.04 MB raw / 348 kB transferred.
 
 ## Running it
@@ -46,7 +46,7 @@ make content   # regenerate panoramas, images, narration, tour JSON
 startup, so a running server keeps serving the old tour — this looked like the
 frontend ignoring changes more than once.
 
-`?diag=1` exposes `window.__tour` and `window.__rephoto` and logs renderer
+`?diag=1` exposes `window.__tour` and `window.__inWorld` and logs renderer
 boundaries. `?align=1` enables alignment mode.
 
 ## Architecture, and why
@@ -71,6 +71,13 @@ Stop bearings and rephoto headings are **derived** in `build_tour.py` from
 where each panorama actually stands. All six hand-authored bearings were wrong,
 one by 138°, which put the subject behind the viewer. Never reintroduce a
 guessed bearing.
+
+Schema v2 added `backend/app/migration.py`, which upgrades a v1 tour document
+to v2 on every read path so only v2 exists above the parsing boundary, and
+`backend/tests/fixtures/fairfax-old-town-v1.json`, a frozen v1 snapshot that
+must never be refreshed — it is what proves the migration is lossless. See
+`docs/decisions/0001-three-axes-for-overlays.md` for why the schema split this
+way.
 
 ## Environment landmines
 
@@ -97,19 +104,37 @@ anything. The ones that cost the most time:
 1. **Rephoto alignment is unfinished.** The anchors are estimates, improved by
    hand in commit `de48b0d` but not finished. Use `?align=1`; it needs eyes on
    a browser.
-2. **Rephotography is demonstrated at one stop.** Targeted searching found
+2. **`content/source/stops.json` has silently drifted from the shipped
+   document, and nobody here can safely fix it.** Commit `de48b0d`
+   ("adjustment") hand-edited the rephoto anchors directly in
+   `content/tours/fairfax-old-town.json` to improve the alignment of the two
+   courthouse photographs, but `stops.json` — what `build_tour.py` actually
+   reads — was never updated to match. The next `make content` silently
+   reverts that alignment work. Worse, a reviewer independently recomputed the
+   derived heading from the hand-tuned anchor positions and got 105.0 and
+   147.2 degrees, where the shipped document currently stores 113 for both, so
+   the stored heading is already inconsistent with its own anchor position.
+   `build_tour.py` and the Makefile's `content:` target both warn about this,
+   but the underlying choice is still open: either sync `stops.json` to the
+   hand-tuned coordinates (which would also change the derived headings to
+   105.0/147.2), or let the editor in sub-project 3 take ownership of the
+   document and retire `stops.json` entirely. Nobody has made that call —
+   the alignment was tuned by eye in a browser, and no browser can run in this
+   environment, so nobody here can see whether either change improves or
+   breaks it.
+3. **Rephotography is demonstrated at one stop.** Targeted searching found
    essentially no Old Town Fairfax imagery for the other five — only the
    courthouse and, possibly, Earp's Ordinary (HABS). Local collections (Fairfax
    Museum, Virginia Room) are the gap to fill. `fetch_rephotos.py` takes a date
    preference so one site can layer several eras.
-3. **The historical text is unreviewed.** Written for the prototype, not
+4. **The historical text is unreviewed.** Written for the prototype, not
    sourced. It lives in `content/source/stops.json` so it can be corrected
    without touching code.
-4. **The Marr Monument editorial question is unresolved.** It stands 14.6 m
+5. **The Marr Monument editorial question is unresolved.** It stands 14.6 m
    from the courthouse, so one ground-arrow step moves the tour to it. It was
    folded into the courthouse stop and then restored to a stop of its own; the
    repo is currently six stops and self-consistent.
-5. **Courthouse narration is long** (~660 kB, about a minute) since it is the
+6. **Courthouse narration is long** (~660 kB, about a minute) since it is the
    richest stop. Splitting it would need overlay-level narration, which
    `make_narration.py` does not do.
 

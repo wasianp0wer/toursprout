@@ -82,7 +82,7 @@ been aligned against the real view** — that needs someone at a browser.
 ## Tests
 
 ```sh
-make check      # lint + 86 backend tests + 50 frontend tests + production build
+make check      # lint + 158 backend tests + 208 frontend tests + production build
 ```
 
 Browser end-to-end tests exist in `frontend/tests/e2e/` but **cannot run inside
@@ -106,10 +106,12 @@ schema before writing.
 
 ## Provenance
 
-Every overlay carries a required `credit` block naming source, URL, licence and
-creator; a missing credit is a schema validation failure. Mapillary imagery is
-CC-BY-SA 4.0 and attributed in the interface. Narration is synthesized and
-labelled as such.
+Every overlay carries a required `credit` block: a `sourced` credit names
+where the material came from (source, URL, licence), and an `original` credit
+covers the author's own recordings and photographs, which have no URL to give
+(creator, licence). A missing credit is a schema validation failure. Mapillary
+imagery is CC-BY-SA 4.0 and attributed in the interface. Narration is
+synthesized and labelled as such.
 
 **The historical text is a draft written for this prototype and has not been
 reviewed.** It lives in `content/source/stops.json` so it can be corrected
@@ -120,3 +122,5 @@ without touching code.
 - `docs/superpowers/specs/2026-09-20-walking-tour-framework-design.md` — design
 - `docs/superpowers/plans/2026-09-20-walking-tour-prototype.md` — implementation plan
 - `docs/ENVIRONMENT.md` — verified environment constraints
+- `docs/HANDOFF.md` — state and open questions as of the last session
+- `docs/decisions/` — decision records; start at `docs/decisions/README.md`

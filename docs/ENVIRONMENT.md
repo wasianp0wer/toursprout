@@ -157,7 +157,7 @@ then swung about the up axis.
 Rotation **order** matters as much as the angles. With three.js's default
 `XYZ` Euler order the Z rotation is applied first, which does nothing to a
 normal that starts along Z — every photograph ends up facing south regardless
-of its heading. `rephoto-placement.ts` therefore returns an explicit `ZYX`
+of its heading. `in-world-placement.ts` therefore returns an explicit `ZYX`
 order and the renderer passes it to `mesh.rotation.set`.
 
 **Assigning `camera.matrixWorld` does not survive a frame.**
