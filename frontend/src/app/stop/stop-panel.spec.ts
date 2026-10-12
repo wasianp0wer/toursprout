@@ -7,6 +7,7 @@ import { TourStore } from '../core/tour-store';
 import type { Overlay, Tour } from '../core/tour.models';
 
 const CREDIT = {
+  type: 'sourced' as const,
   source: 'Library of Congress',
   url: 'https://loc.gov/x',
   license: 'No known restrictions',
@@ -17,7 +18,8 @@ function overlay(over: Partial<Overlay> = {}): Overlay {
   return {
     id: 'ov-1',
     kind: 'text',
-    anchor: { type: 'geo', lng: -77.3, lat: 38.84, altitude: 2 },
+    anchor: { type: 'geo', lng: -77.3, lat: 38.84, altitudeM: 2 },
+    display: { mode: 'marker', icon: 'note' },
     title: 'The 1800 Courthouse',
     body: 'Built in 1800.',
     mediaId: null,
@@ -28,7 +30,8 @@ function overlay(over: Partial<Overlay> = {}): Overlay {
 
 function tour(overlays: Overlay[]): Tour {
   return {
-    id: 't', schemaVersion: 1, title: 'Old Town Fairfax', description: '', attribution: [],
+    id: 't', schemaVersion: 2, title: 'Old Town Fairfax', description: '',
+    defaults: null, attribution: [],
     stops: [{
       id: 's1', order: 1, title: 'Historic Courthouse',
       summary: 'The county seat since 1800.',
@@ -112,9 +115,10 @@ describe('StopPanel', () => {
   });
 
   const REPHOTO = {
-    id: 'court-1863', kind: 'rephoto' as const,
-    anchor: { type: 'geoQuad' as const, lng: -77.3, lat: 38.8, altitude: 6,
-              headingDeg: 200, widthM: 18, heightM: 14 },
+    id: 'court-1863', kind: 'image' as const,
+    anchor: { type: 'geo' as const, lng: -77.3, lat: 38.8, altitudeM: 6 },
+    display: { mode: 'inWorld' as const, opacity: 0.7,
+               headingDeg: 200, widthM: 18, heightM: 14 },
     title: 'Fairfax Court House, 1863', body: null, mediaId: 'court-1863.jpg',
     credit: CREDIT,
   };
@@ -144,7 +148,10 @@ describe('StopPanel', () => {
     expect(store.opacityFor('court-1863')).toBeCloseTo(0.25, 3);
   });
 
-  const REPHOTO_2 = { ...REPHOTO, id: 'court-1918', title: 'Fairfax Court House, about 1918' };
+  const REPHOTO_2 = {
+    ...REPHOTO, id: 'court-1918', title: 'Fairfax Court House, about 1918',
+    display: { ...REPHOTO.display, opacity: 0 },
+  };
 
   it('gives every photograph its own slider', () => {
     store.load(tour([REPHOTO as never, REPHOTO_2 as never]));

@@ -7,7 +7,7 @@ import {
 } from 'mapillary-js';
 import { pickEdgeToward, type DirectionEdge } from './edge-picker';
 import type { OverlayMarker, PanoramaViewer } from './panorama-viewer';
-import type { RephotoPlacement } from './rephoto-placement';
+import type { InWorldPlacement } from './rephoto-placement';
 import { diagnosticsEnabled } from './diagnostics';
 import { RephotoRenderer } from './rephoto-renderer';
 
@@ -138,7 +138,7 @@ export class MapillaryViewer implements PanoramaViewer {
     this.markerHandler = handler;
   }
 
-  setRephotos(rephotos: RephotoPlacement[]): void {
+  setRephotos(rephotos: InWorldPlacement[]): void {
     this.rephotoRenderer?.setRephotos(rephotos);
     this.requestRedraw();
   }

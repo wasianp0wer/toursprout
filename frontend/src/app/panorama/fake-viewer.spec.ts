@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { FakeViewer } from './fake-viewer';
-import type { RephotoPlacement } from './rephoto-placement';
+import type { InWorldPlacement } from './rephoto-placement';
 
-const REPHOTO: RephotoPlacement = {
+const REPHOTO: InWorldPlacement = {
   id: 'court-1863', imageUrl: '/api/media/court-1863.jpg',
-  lng: -77.30732, lat: 38.84562, altitude: 6,
+  lng: -77.30732, lat: 38.84562, altitudeM: 6,
   headingDeg: 200, widthM: 18, heightM: 14,
 };
 

@@ -12,7 +12,7 @@ import { ConfigStore } from '../core/config-store';
 import { TourApi } from '../core/tour-api';
 import { TourStore } from '../core/tour-store';
 import type { OverlayMarker } from './panorama-viewer';
-import type { RephotoPlacement } from './rephoto-placement';
+import type { InWorldPlacement } from './rephoto-placement';
 import { MapillaryViewer } from './mapillary-viewer';
 import type { PanoramaViewer } from './panorama-viewer';
 
@@ -66,16 +66,31 @@ export class PanoramaPane {
 
     effect(() => {
       const selectedId = this.store.selectedOverlay()?.id ?? null;
-      const markers: OverlayMarker[] = this.store
-        .overlaysForCurrentStop()
-        .filter((o) => o.anchor.type === 'geo')
-        .map((o) => ({
-          id: o.id,
-          lng: o.anchor.lng,
-          lat: o.anchor.lat,
-          selected: o.id === selectedId,
-          kind: 'overlay' as const,
-        }));
+      const markers: OverlayMarker[] = [];
+      const placements: InWorldPlacement[] = [];
+      for (const o of this.store.overlaysForCurrentStop()) {
+        if (o.display.mode === 'marker') {
+          markers.push({
+            id: o.id,
+            lng: o.anchor.lng,
+            lat: o.anchor.lat,
+            selected: o.id === selectedId,
+            kind: 'overlay' as const,
+          });
+        } else if (o.display.mode === 'inWorld' && o.mediaId) {
+          placements.push({
+            id: o.id,
+            imageUrl: this.api.mediaUrl(o.mediaId),
+            lng: o.anchor.lng,
+            lat: o.anchor.lat,
+            altitudeM: o.anchor.altitudeM,
+            headingDeg: o.display.headingDeg,
+            widthM: o.display.widthM,
+            heightM: o.display.heightM,
+          });
+        }
+        // `ambient` is drawn nowhere: it is heard, not seen.
+      }
 
       // The highlighted arrow only helps when you are already facing roughly
       // the right way; the destination marker tells you where to turn when
@@ -92,36 +107,19 @@ export class PanoramaPane {
       }
 
       this.viewer.setMarkers(markers);
-    });
 
-    effect(() => {
-      const rephotos: RephotoPlacement[] = this.store
-        .overlaysForCurrentStop()
-        .flatMap((o) => {
-          if (o.kind !== 'rephoto' || o.anchor.type !== 'geoQuad' || !o.mediaId) return [];
-          return [{
-            id: o.id,
-            imageUrl: this.api.mediaUrl(o.mediaId),
-            lng: o.anchor.lng,
-            lat: o.anchor.lat,
-            altitude: o.anchor.altitude,
-            headingDeg: o.anchor.headingDeg,
-            widthM: o.anchor.widthM,
-            heightM: o.anchor.heightM,
-          }];
-        });
-      // Alignment mode nudges one rephoto live, so the author sees the effect
-      // of each keypress without a reload. Match by id: matching by position
-      // meant only the first photograph could ever be aligned.
+      // Alignment mode nudges one photograph live, so the author sees the
+      // effect of each keypress without a reload. Match by id: matching by
+      // position meant only the first photograph could ever be aligned.
       const override = this.store.alignmentOverride();
       this.viewer.setRephotos(
         override
-          ? rephotos.map((r) => (r.id === override.id ? { ...r, ...override.anchor } : r))
-          : rephotos,
+          ? placements.map((r) => (r.id === override.id ? { ...r, ...override.anchor } : r))
+          : placements,
       );
     });
 
-    effect(() => this.viewer.setRephotoOpacity(this.store.rephotoOpacities()));
+    effect(() => this.viewer.setRephotoOpacity(this.store.overlayOpacities()));
 
     effect(() => this.viewer.setDestinationBearing(this.store.bearingToNextStop()));
   }

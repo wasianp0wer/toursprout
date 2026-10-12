@@ -1,7 +1,7 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { detectArrival } from './arrival';
 import { bearingBetween, type LngLatLike } from './geo';
-import type { GeoQuadAnchorLike } from '../align/align-mode';
+import type { InWorldPlacementLike } from '../align/align-mode';
 import type { Overlay, Stop, Tour } from './tour.models';
 
 /**
@@ -14,9 +14,9 @@ export class TourStore {
   private readonly _index = signal(0);
   private readonly _selectedOverlayId = signal<string | null>(null);
   private readonly _viewerPosition = signal<LngLatLike | null>(null);
-  private readonly _rephotoOpacity = signal<Record<string, number>>({});
+  private readonly _overlayOpacity = signal<Record<string, number>>({});
   private readonly _alignmentOverride =
-    signal<{ id: string; anchor: GeoQuadAnchorLike } | null>(null);
+    signal<{ id: string; anchor: InWorldPlacementLike } | null>(null);
   private _latched: ReadonlySet<string> = new Set();
 
   readonly tour = this._tour.asReadonly();
@@ -44,8 +44,8 @@ export class TourStore {
 
   readonly viewerPosition = this._viewerPosition.asReadonly();
   readonly alignmentOverride = this._alignmentOverride.asReadonly();
-  /** Opacity per rephoto id, so each photograph can be viewed on its own. */
-  readonly rephotoOpacities = this._rephotoOpacity.asReadonly();
+  /** Opacity per draped overlay id, so each photograph can be viewed on its own. */
+  readonly overlayOpacities = this._overlayOpacity.asReadonly();
 
   /** The stop the tour is heading toward, or null at the end. */
   readonly nextStop = computed<Stop | null>(() => this.stops()[this._index() + 1] ?? null);
@@ -57,15 +57,15 @@ export class TourStore {
     return from && to ? bearingBetween(from, to.location) : null;
   });
 
-  readonly hasRephotos = computed(() => this.rephotos().length > 0);
+  readonly hasInWorldOverlays = computed(() => this.inWorldOverlays().length > 0);
 
-  /** The photographs draped at the current stop, in document order. */
-  readonly rephotos = computed<Overlay[]>(() =>
-    this.overlaysForCurrentStop().filter((o) => o.kind === 'rephoto'),
+  /** The overlays drawn as planes standing in the world, in document order. */
+  readonly inWorldOverlays = computed<Overlay[]>(() =>
+    this.overlaysForCurrentStop().filter((o) => o.display.mode === 'inWorld'),
   );
 
   opacityFor(id: string): number {
-    return this._rephotoOpacity()[id] ?? 0;
+    return this._overlayOpacity()[id] ?? 0;
   }
 
   load(tour: Tour): void {
@@ -74,7 +74,7 @@ export class TourStore {
     this._selectedOverlayId.set(null);
     this._viewerPosition.set(null);
     this._latched = new Set();
-    this.resetRephotoOpacities();
+    this.resetOverlayOpacities();
   }
 
   /**
@@ -105,31 +105,30 @@ export class TourStore {
     this.goTo(index);
   }
 
-  /** Alignment mode only: live-replace the current stop's rephoto anchor. */
-  setAlignmentOverride(override: { id: string; anchor: GeoQuadAnchorLike } | null): void {
+  /** Alignment mode only: live-replace the current stop's inWorld anchor. */
+  setAlignmentOverride(override: { id: string; anchor: InWorldPlacementLike } | null): void {
     this._alignmentOverride.set(override);
   }
 
-  setRephotoOpacity(id: string, value: number): void {
-    this._rephotoOpacity.update((all) => ({
+  setOverlayOpacity(id: string, value: number): void {
+    this._overlayOpacity.update((all) => ({
       ...all,
       [id]: Math.min(1, Math.max(0, value)),
     }));
   }
 
   /**
-   * Show the first photograph and hide the rest.
+   * Seed each draped overlay's opacity from what the author set.
    *
-   * Several semi-transparent photographs over one building overlap into a
-   * muddle, so a stop opens with one legible comparison and the others
-   * waiting behind their own sliders.
+   * v1 hardcoded "first at 0.7, rest hidden" here. That rule now lives in the
+   * document, so the author decides which comparison a stop opens on.
    */
-  private resetRephotoOpacities(): void {
+  private resetOverlayOpacities(): void {
     const defaults: Record<string, number> = {};
-    this.rephotos().forEach((o, index) => {
-      defaults[o.id] = index === 0 ? 0.7 : 0;
-    });
-    this._rephotoOpacity.set(defaults);
+    for (const o of this.inWorldOverlays()) {
+      if (o.display.mode === 'inWorld') defaults[o.id] = o.display.opacity;
+    }
+    this._overlayOpacity.set(defaults);
   }
 
   next(): void {
@@ -144,7 +143,7 @@ export class TourStore {
     if (index < 0 || index >= this.stops().length) return;
     this._index.set(index);
     this._selectedOverlayId.set(null);
-    this.resetRephotoOpacities();
+    this.resetOverlayOpacities();
     // Latch the destination: without this, skipping to a stop you are already
     // standing near would immediately re-trigger arrival at that same stop.
     const stop = this.stops()[index];

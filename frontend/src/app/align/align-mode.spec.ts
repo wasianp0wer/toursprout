@@ -1,15 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
+import { TestBed } from '@angular/core/testing';
 import {
+  AlignMode,
   alignModeEnabled,
   alignTarget,
   nudgeAnchor,
   STEP_DEG,
-  type GeoQuadAnchorLike,
+  type InWorldPlacementLike,
 } from './align-mode';
-import type { Overlay } from '../core/tour.models';
+import { TourStore } from '../core/tour-store';
+import type { Overlay, Tour } from '../core/tour.models';
 
-const BASE: GeoQuadAnchorLike = {
-  lng: -77.30732, lat: 38.84562, altitude: 6,
+const BASE: InWorldPlacementLike = {
+  lng: -77.30732, lat: 38.84562, altitudeM: 6,
   headingDeg: 200, widthM: 18, heightM: 14,
 };
 
@@ -31,25 +34,25 @@ describe('nudgeAnchor', () => {
   });
 
   it('PageUp raises it and PageDown lowers it', () => {
-    expect(nudgeAnchor(BASE, 'PageUp').altitude).toBeGreaterThan(BASE.altitude);
-    expect(nudgeAnchor(BASE, 'PageDown').altitude).toBeLessThan(BASE.altitude);
+    expect(nudgeAnchor(BASE, 'PageUp').altitudeM).toBeGreaterThan(BASE.altitudeM);
+    expect(nudgeAnchor(BASE, 'PageDown').altitudeM).toBeLessThan(BASE.altitudeM);
   });
 
   it('z raises and c lowers, for keyboards without page keys', () => {
-    expect(nudgeAnchor(BASE, 'z').altitude).toBeGreaterThan(BASE.altitude);
-    expect(nudgeAnchor(BASE, 'c').altitude).toBeLessThan(BASE.altitude);
+    expect(nudgeAnchor(BASE, 'z').altitudeM).toBeGreaterThan(BASE.altitudeM);
+    expect(nudgeAnchor(BASE, 'c').altitudeM).toBeLessThan(BASE.altitudeM);
   });
 
   it('z and c move by the same step as the page keys', () => {
-    expect(nudgeAnchor(BASE, 'z').altitude).toBeCloseTo(
-      nudgeAnchor(BASE, 'PageUp').altitude, 6);
-    expect(nudgeAnchor(BASE, 'c').altitude).toBeCloseTo(
-      nudgeAnchor(BASE, 'PageDown').altitude, 6);
+    expect(nudgeAnchor(BASE, 'z').altitudeM).toBeCloseTo(
+      nudgeAnchor(BASE, 'PageUp').altitudeM, 6);
+    expect(nudgeAnchor(BASE, 'c').altitudeM).toBeCloseTo(
+      nudgeAnchor(BASE, 'PageDown').altitudeM, 6);
   });
 
   it('accepts Z and C with shift or caps lock held', () => {
-    expect(nudgeAnchor(BASE, 'Z').altitude).toBeGreaterThan(BASE.altitude);
-    expect(nudgeAnchor(BASE, 'C').altitude).toBeLessThan(BASE.altitude);
+    expect(nudgeAnchor(BASE, 'Z').altitudeM).toBeGreaterThan(BASE.altitudeM);
+    expect(nudgeAnchor(BASE, 'C').altitudeM).toBeLessThan(BASE.altitudeM);
   });
 
   it('+ grows and - shrinks, preserving aspect ratio', () => {
@@ -103,11 +106,11 @@ describe('alignModeEnabled', () => {
 describe('alignTarget', () => {
   function rephoto(id: string): Overlay {
     return {
-      id, kind: 'rephoto',
-      anchor: { type: 'geoQuad', lng: -77.3, lat: 38.84, altitude: 6,
-                headingDeg: 113, widthM: 18, heightM: 14 },
+      id, kind: 'image',
+      anchor: { type: 'geo', lng: -77.3, lat: 38.84, altitudeM: 6 },
+      display: { mode: 'inWorld', opacity: 0.7, headingDeg: 113, widthM: 18, heightM: 14 },
       title: id, body: null, mediaId: `${id}.jpg`,
-      credit: { source: 'S', url: 'U', license: 'L', creator: null },
+      credit: { type: 'sourced', source: 'S', url: 'U', license: 'L', creator: null },
     };
   }
 
@@ -134,5 +137,44 @@ describe('alignTarget', () => {
   it('does not mutate the list it is given', () => {
     alignTarget(photos, 'court-1918');
     expect(photos.map((p) => p.id)).toEqual(['court-1863', 'court-1918']);
+  });
+});
+
+describe('AlignMode component', () => {
+  let store: TourStore;
+
+  function tourWithInWorld(id: string): Tour {
+    return {
+      id: 't', schemaVersion: 2, title: 'T', description: '', defaults: null, attribution: [],
+      stops: [{
+        id: 's1', order: 1, title: 'S', summary: '',
+        location: { lng: -77.3, lat: 38.84 }, osmRef: null,
+        panorama: { provider: 'mapillary', imageId: 'i', bearing: 0, cachedPath: null },
+        overlays: [{
+          id, kind: 'image',
+          anchor: { type: 'geo', lng: -77.30732, lat: 38.84562, altitudeM: 6 },
+          display: { mode: 'inWorld', opacity: 0.7, headingDeg: 200, widthM: 18, heightM: 14 },
+          title: 'Photo', body: null, mediaId: `${id}.jpg`,
+          credit: { type: 'sourced', source: 'S', url: 'U', license: 'L', creator: null },
+        }],
+      }],
+    };
+  }
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ imports: [AlignMode] });
+    store = TestBed.inject(TourStore);
+  });
+
+  it('emits v2-shaped JSON: an anchor block and a display block', () => {
+    store.load(tourWithInWorld('p1'));
+    const fixture = TestBed.createComponent(AlignMode);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const text = el.querySelector('[data-align-json]')?.textContent ?? '';
+    expect(JSON.parse(text)).toEqual({
+      anchor: { type: 'geo', lng: -77.30732, lat: 38.84562, altitudeM: 6 },
+      display: { mode: 'inWorld', headingDeg: 200, widthM: 18, heightM: 14 },
+    });
   });
 });

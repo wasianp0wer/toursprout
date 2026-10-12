@@ -5,12 +5,12 @@
  * can be tested without mapillary-js or a WebGL context.
  */
 
-export interface RephotoPlacement {
+export interface InWorldPlacement {
   id: string;
   imageUrl: string;
   lng: number;
   lat: number;
-  altitude: number;
+  altitudeM: number;
   /** Compass direction the face of the photograph looks toward. */
   headingDeg: number;
   widthM: number;
@@ -34,7 +34,7 @@ export interface PlaneTransform {
 }
 
 export function planeTransform(
-  placement: RephotoPlacement,
+  placement: InWorldPlacement,
   enu: [number, number, number],
 ): PlaneTransform {
   // The scene is ENU — east, north, UP — so "up" is +Z, not three.js's usual

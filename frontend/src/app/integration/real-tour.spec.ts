@@ -13,6 +13,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { StopPanel } from '../stop/stop-panel';
+import { creditLine } from '../core/credit';
 import { TourStore } from '../core/tour-store';
 import type { Tour } from '../core/tour.models';
 
@@ -37,6 +38,25 @@ describe('the real Fairfax tour', () => {
     fixture.detectChanges();
     return fixture.nativeElement as HTMLElement;
   }
+
+  it('is schema v2', () => {
+    expect(TOUR.schemaVersion).toBe(2);
+  });
+
+  it('gives every one of the fifteen overlays a display', () => {
+    const overlays = store.stops().flatMap((s) => s.overlays);
+    expect(overlays).toHaveLength(15);
+    for (const ov of overlays) {
+      expect(ov.display).toBeDefined();
+    }
+  });
+
+  it('has exactly two inWorld overlays across the whole tour', () => {
+    const inWorld = store.stops()
+      .flatMap((s) => s.overlays)
+      .filter((o) => o.display.mode === 'inWorld');
+    expect(inWorld).toHaveLength(2);
+  });
 
   it('has six stops in walking order', () => {
     expect(store.stops()).toHaveLength(6);
@@ -80,7 +100,7 @@ describe('the real Fairfax tour', () => {
         const el = render();
         const credit = el.querySelector('.overlay-detail .credit');
         expect(credit?.textContent?.trim()).toBeTruthy();
-        expect(credit?.textContent).toContain(ov.credit.source);
+        expect(credit?.textContent?.trim()).toBe(creditLine(ov.credit).attribution);
       }
     }
   });
@@ -99,18 +119,21 @@ describe('the real Fairfax tour', () => {
 
   it('renders the archival photograph on the courthouse stop', () => {
     store.goTo(0);
-    const image = store.overlaysForCurrentStop().find((o) => o.kind === 'image');
+    const image = store
+      .overlaysForCurrentStop()
+      .find((o) => o.kind === 'image' && o.display.mode === 'marker');
     expect(image).toBeDefined();
     store.selectOverlay(image!.id);
     const img = render().querySelector('img');
     expect(img?.getAttribute('src')).toBe('/api/media/courthouse-photo.jpg');
-    expect(image!.credit.source).toBe('Library of Congress');
+    expect(image!.credit.type).toBe('sourced');
+    expect(image!.credit.type === 'sourced' && image!.credit.source).toBe('Library of Congress');
   });
 
   it('labels synthesized narration honestly rather than as an archival recording', () => {
     store.goTo(0);
     const audio = store.overlaysForCurrentStop().find((o) => o.kind === 'audio');
-    expect(audio!.credit.source.toLowerCase()).toContain('synthesized');
+    expect(creditLine(audio!.credit).attribution.toLowerCase()).toContain('synthesized');
   });
 
   it('credits Mapillary and OpenStreetMap at the tour level', () => {
@@ -128,52 +151,57 @@ describe('the real Fairfax tour', () => {
     }
   });
 
-  it('the courthouse carries rephotos from more than one era', () => {
+  it('the courthouse carries inWorld comparison photographs from more than one era', () => {
     store.goTo(0);
-    const rephotos = store.overlaysForCurrentStop().filter((o) => o.kind === 'rephoto');
-    expect(rephotos.length).toBeGreaterThanOrEqual(2);
+    const inWorld = store.overlaysForCurrentStop().filter((o) => o.display.mode === 'inWorld');
+    expect(inWorld.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('every rephoto has a geoQuad anchor with a real size', () => {
+  it('every inWorld overlay has a display with a real size and heading', () => {
     for (let i = 0; i < 6; i++) {
       store.goTo(i);
       for (const ov of store.overlaysForCurrentStop()) {
-        if (ov.kind !== 'rephoto') continue;
-        expect(ov.anchor.type).toBe('geoQuad');
-        const a = ov.anchor as Extract<typeof ov.anchor, { type: 'geoQuad' }>;
-        expect(a.widthM).toBeGreaterThan(0);
-        expect(a.heightM).toBeGreaterThan(0);
-        expect(a.headingDeg).toBeGreaterThanOrEqual(0);
-        expect(a.headingDeg).toBeLessThan(360);
+        if (ov.display.mode !== 'inWorld') continue;
+        expect(ov.display.widthM).toBeGreaterThan(0);
+        expect(ov.display.heightM).toBeGreaterThan(0);
+        expect(ov.display.headingDeg).toBeGreaterThanOrEqual(0);
+        expect(ov.display.headingDeg).toBeLessThan(360);
       }
     }
   });
 
-  it('every rephoto stands within a short walk of its stop', () => {
+  it('every inWorld overlay stands within a short walk of its stop', () => {
     for (const stop of store.stops()) {
       for (const ov of stop.overlays) {
-        if (ov.kind !== 'rephoto') continue;
-        const a = ov.anchor as Extract<typeof ov.anchor, { type: 'geoQuad' }>;
-        expect(Math.abs(a.lng - stop.location.lng)).toBeLessThan(0.002);
-        expect(Math.abs(a.lat - stop.location.lat)).toBeLessThan(0.002);
+        if (ov.display.mode !== 'inWorld') continue;
+        expect(Math.abs(ov.anchor.lng - stop.location.lng)).toBeLessThan(0.002);
+        expect(Math.abs(ov.anchor.lat - stop.location.lat)).toBeLessThan(0.002);
       }
     }
   });
 
-  it('every rephoto credits a named archive and the matched item', () => {
+  it('every inWorld overlay credits a named archive and the matched item', () => {
     for (const stop of store.stops()) {
       for (const ov of stop.overlays) {
-        if (ov.kind !== 'rephoto') continue;
-        expect(ov.credit.source).toContain('Library of Congress');
-        expect(ov.credit.creator?.length).toBeGreaterThan(0);
+        if (ov.display.mode !== 'inWorld') continue;
+        expect(ov.credit.type).toBe('sourced');
+        if (ov.credit.type === 'sourced') {
+          expect(ov.credit.source).toContain('Library of Congress');
+          expect(ov.credit.creator?.length ?? 0).toBeGreaterThan(0);
+        }
       }
     }
   });
 
   it('archive credits name the matched item, not just the archive', () => {
     store.goTo(0);
-    const rephoto = store.overlaysForCurrentStop().find((o) => o.kind === 'rephoto')!;
-    expect(rephoto.credit.creator).toMatch(/Fairfax/i);
+    const inWorldOverlay = store
+      .overlaysForCurrentStop()
+      .find((o) => o.display.mode === 'inWorld')!;
+    expect(inWorldOverlay.credit.type).toBe('sourced');
+    if (inWorldOverlay.credit.type === 'sourced') {
+      expect(inWorldOverlay.credit.creator).toMatch(/Fairfax/i);
+    }
   });
 
   it('walking to a stop advances the tour, as the panorama would', () => {
@@ -195,8 +223,8 @@ describe('the real Fairfax tour', () => {
 
   it('the comparison slider is offered only where there is something to compare', () => {
     store.goTo(0);
-    expect(store.hasRephotos()).toBe(true);
+    expect(store.hasInWorldOverlays()).toBe(true);
     store.goTo(1);
-    expect(store.hasRephotos()).toBe(false);
+    expect(store.hasInWorldOverlays()).toBe(false);
   });
 });

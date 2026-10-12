@@ -1,4 +1,5 @@
 import { Component, computed, inject } from '@angular/core';
+import { creditLine } from '../core/credit';
 import { TourApi } from '../core/tour-api';
 import { TourStore } from '../core/tour-store';
 
@@ -44,17 +45,21 @@ import { TourStore } from '../core/tour-store';
             }
           }
 
+          @let line = credit(selected.credit);
           <p class="credit">
-            {{ selected.credit.source }}@if (selected.credit.creator) { — {{ selected.credit.creator }}} ·
-            {{ selected.credit.license }}
+            @if (line.url) {
+              <a [href]="line.url" target="_blank" rel="noopener">{{ line.attribution }}</a>
+            } @else {
+              {{ line.attribution }}
+            }
           </p>
         </article>
       }
 
-      @if (store.hasRephotos()) {
+      @if (store.hasInWorldOverlays()) {
         <div class="rephoto-control">
           <p class="rephoto-heading">Then and now</p>
-          @for (photo of store.rephotos(); track photo.id) {
+          @for (photo of store.inWorldOverlays(); track photo.id) {
             <div class="rephoto-slider" data-rephoto-slider>
               <label [for]="'opacity-' + photo.id">{{ photo.title }}</label>
               <div class="slider-row">
@@ -89,9 +94,10 @@ import { TourStore } from '../core/tour-store';
 export class StopPanel {
   protected readonly store = inject(TourStore);
   protected readonly api = inject(TourApi);
+  protected readonly credit = creditLine;
 
   protected onOpacity(id: string, event: Event): void {
-    this.store.setRephotoOpacity(id, Number((event.target as HTMLInputElement).value));
+    this.store.setOverlayOpacity(id, Number((event.target as HTMLInputElement).value));
   }
 
   protected readonly position = computed(

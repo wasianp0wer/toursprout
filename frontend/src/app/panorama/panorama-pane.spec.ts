@@ -7,21 +7,25 @@ import type { Overlay, Tour } from '../core/tour.models';
 
 const REPHOTO_OVERLAY: Overlay = {
   id: 'court-1863',
-  kind: 'rephoto',
+  kind: 'image',
   anchor: {
-    type: 'geoQuad',
-    lng: -77.3073, lat: 38.8456, altitude: 6,
+    type: 'geo',
+    lng: -77.3073, lat: 38.8456, altitudeM: 6,
+  },
+  display: {
+    mode: 'inWorld',
+    opacity: 0.7,
     headingDeg: 200, widthM: 18, heightM: 14,
   },
   title: 'Fairfax Court House, 1863',
   body: null,
   mediaId: 'court-1863.jpg',
-  credit: { source: 'LoC', url: 'U', license: 'PD', creator: null },
+  credit: { type: 'sourced', source: 'LoC', url: 'U', license: 'PD', creator: null },
 };
 
 function tour(): Tour {
   return {
-    id: 't', schemaVersion: 1, title: 'T', description: '', attribution: [],
+    id: 't', schemaVersion: 2, title: 'T', description: '', defaults: null, attribution: [],
     stops: [1, 2].map((n) => ({
       id: `s${n}`, order: n, title: `Stop ${n}`, summary: '',
       location: { lng: -77.3, lat: 38.84 }, osmRef: null,
@@ -31,9 +35,10 @@ function tour(): Tour {
       },
       overlays: [{
         id: `ov-${n}`, kind: 'text' as const,
-        anchor: { type: 'geo' as const, lng: -77.3 + n * 0.0001, lat: 38.84, altitude: 2 },
+        anchor: { type: 'geo' as const, lng: -77.3 + n * 0.0001, lat: 38.84, altitudeM: 2 },
+        display: { mode: 'marker' as const, icon: 'note' as const },
         title: 'O', body: 'B', mediaId: null,
-        credit: { source: 'S', url: 'U', license: 'L', creator: null },
+        credit: { type: 'sourced' as const, source: 'S', url: 'U', license: 'L', creator: null },
       }],
     })),
   };
@@ -208,7 +213,7 @@ describe('PanoramaPane', () => {
     t.stops[0].overlays = [...t.stops[0].overlays, REPHOTO_OVERLAY];
     store.load(t);
     const fixture = await render();
-    store.setRephotoOpacity('court-1863', 0.25);
+    store.setOverlayOpacity('court-1863', 0.25);
     fixture.detectChanges();
     await fixture.whenStable();
     expect(fake.opacity!['court-1863']).toBeCloseTo(0.25, 3);

@@ -1,4 +1,4 @@
-import type { RephotoPlacement } from './rephoto-placement';
+import type { InWorldPlacement } from './rephoto-placement';
 
 export interface OverlayMarker {
   id: string;
@@ -21,7 +21,7 @@ export interface PanoramaViewer {
   onMarkerClick(handler: (id: string) => void): void;
 
   /** Photographs draped in the world. */
-  setRephotos(rephotos: RephotoPlacement[]): void;
+  setRephotos(rephotos: InWorldPlacement[]): void;
   /**
    * Opacity per rephoto id: 0 shows the present view, 1 the photograph.
    * The whole map is passed at once so the renderer cannot drift out of step

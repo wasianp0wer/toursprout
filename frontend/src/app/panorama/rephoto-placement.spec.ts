@@ -4,14 +4,14 @@ import {
   geodeticAltitude,
   planeTransform,
   rephotoMaterialOptions,
-  type RephotoPlacement,
+  type InWorldPlacement,
 } from './rephoto-placement';
 
-function placement(over: Partial<RephotoPlacement> = {}): RephotoPlacement {
+function placement(over: Partial<InWorldPlacement> = {}): InWorldPlacement {
   return {
     id: 'court-1863',
     imageUrl: '/api/media/court-1863.jpg',
-    lng: -77.30732, lat: 38.84562, altitude: 6,
+    lng: -77.30732, lat: 38.84562, altitudeM: 6,
     headingDeg: 200, widthM: 18, heightM: 14,
     ...over,
   };

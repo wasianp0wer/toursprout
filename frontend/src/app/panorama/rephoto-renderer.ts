@@ -20,7 +20,7 @@ import {
   geodeticAltitude,
   planeTransform,
   rephotoMaterialOptions,
-  type RephotoPlacement,
+  type InWorldPlacement,
 } from './rephoto-placement';
 
 /**
@@ -40,7 +40,7 @@ export class RephotoRenderer implements ICustomRenderer {
   private readonly camera = new PerspectiveCamera();
   private readonly loader = new TextureLoader();
   private reference: LngLatAlt | null = null;
-  private placements: RephotoPlacement[] = [];
+  private placements: InWorldPlacement[] = [];
   private readonly meshes = new Map<string, Mesh>();
   private opacity: Record<string, number> = {};
   private readonly diag: Diagnostics;
@@ -116,7 +116,7 @@ export class RephotoRenderer implements ICustomRenderer {
     this.renderer = null;
   }
 
-  setRephotos(placements: RephotoPlacement[]): void {
+  setRephotos(placements: InWorldPlacement[]): void {
     this.diag.log('setRephotos', {
       count: placements.length,
       ids: placements.map((p) => p.id),
@@ -185,7 +185,7 @@ export class RephotoRenderer implements ICustomRenderer {
       const enu = geodeticToEnu(
         placement.lng,
         placement.lat,
-        geodeticAltitude(placement.altitude, reference.alt),
+        geodeticAltitude(placement.altitudeM, reference.alt),
         reference.lng, reference.lat, reference.alt,
       ) as [number, number, number];
 

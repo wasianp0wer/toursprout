@@ -2,10 +2,11 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { TourStore } from '../core/tour-store';
 import type { Overlay } from '../core/tour.models';
 
-export interface GeoQuadAnchorLike {
+/** The subset of an inWorld display that alignment mode moves. */
+export interface InWorldPlacementLike {
   lng: number;
   lat: number;
-  altitude: number;
+  altitudeM: number;
   headingDeg: number;
   widthM: number;
   heightM: number;
@@ -23,7 +24,7 @@ const metresToLng = (m: number, lat: number) =>
   m / (METRES_PER_DEGREE_LAT * Math.cos((lat * Math.PI) / 180));
 
 /** Pure reducer: an anchor and a key in, a new anchor out. */
-export function nudgeAnchor(anchor: GeoQuadAnchorLike, key: string): GeoQuadAnchorLike {
+export function nudgeAnchor(anchor: InWorldPlacementLike, key: string): InWorldPlacementLike {
   const next = { ...anchor };
   // Laptop keyboards often lack PageUp/PageDown, so z and c raise and lower
   // as well. Case-folded so shift or caps lock does not silently do nothing.
@@ -42,11 +43,11 @@ export function nudgeAnchor(anchor: GeoQuadAnchorLike, key: string): GeoQuadAnch
       break;
     case 'PageUp':
     case 'z':
-      next.altitude += STEP_M;
+      next.altitudeM += STEP_M;
       break;
     case 'PageDown':
     case 'c':
-      next.altitude -= STEP_M;
+      next.altitudeM -= STEP_M;
       break;
     case '+':
     case '=':
@@ -122,29 +123,39 @@ export function alignModeEnabled(search: string): boolean {
 })
 export class AlignMode {
   private readonly store = inject(TourStore);
-  private readonly override = signal<{ id: string; anchor: GeoQuadAnchorLike } | null>(null);
+  private readonly override = signal<{ id: string; anchor: InWorldPlacementLike } | null>(null);
 
   protected readonly target = computed<Overlay | null>(() =>
-    alignTarget(this.store.rephotos(), this.store.selectedOverlay()?.id ?? null),
+    alignTarget(this.store.inWorldOverlays(), this.store.selectedOverlay()?.id ?? null),
   );
 
-  protected readonly draft = computed<GeoQuadAnchorLike | null>(() => {
+  protected readonly draft = computed<InWorldPlacementLike | null>(() => {
     const target = this.target();
-    if (!target || target.anchor.type !== 'geoQuad') return null;
+    if (!target || target.display.mode !== 'inWorld') return null;
 
     const manual = this.override();
     if (manual && manual.id === target.id) return manual.anchor;
 
     const a = target.anchor;
+    const d = target.display;
     return {
-      lng: a.lng, lat: a.lat, altitude: a.altitude,
-      headingDeg: a.headingDeg, widthM: a.widthM, heightM: a.heightM,
+      lng: a.lng, lat: a.lat, altitudeM: a.altitudeM,
+      headingDeg: d.headingDeg, widthM: d.widthM, heightM: d.heightM,
     };
   });
 
+  /**
+   * v2 JSON ready to paste into content: an `anchor` object plus the
+   * `display` fields alignment mode moves. Pasting the pre-v2 shape back
+   * into a document would silently fail validation.
+   */
   protected readonly json = computed(() => {
     const a = this.draft();
-    return a ? JSON.stringify({ type: 'geoQuad', ...a }, null, 2) : '';
+    if (!a) return '';
+    return JSON.stringify({
+      anchor: { type: 'geo', lng: a.lng, lat: a.lat, altitudeM: a.altitudeM },
+      display: { mode: 'inWorld', headingDeg: a.headingDeg, widthM: a.widthM, heightM: a.heightM },
+    }, null, 2);
   });
 
   protected onKey(event: KeyboardEvent): void {

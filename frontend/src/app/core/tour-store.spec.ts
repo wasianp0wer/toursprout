@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { TourStore } from './tour-store';
-import type { Stop, Tour } from './tour.models';
+import type { Overlay, Stop, Tour } from './tour.models';
 
 function stop(id: string, order: number): Stop {
   return {
@@ -12,19 +12,31 @@ function stop(id: string, order: number): Stop {
     panorama: { provider: 'mapillary', imageId: `img-${order}`, bearing: 90, cachedPath: null },
     overlays: [{
       id: `ov-${order}`, kind: 'text',
-      anchor: { type: 'geo', lng: -77.3, lat: 38.84, altitude: 2 },
+      anchor: { type: 'geo', lng: -77.3, lat: 38.84, altitudeM: 2 },
+      display: { mode: 'marker', icon: 'note' },
       title: 'Overlay', body: 'Body', mediaId: null,
-      credit: { source: 'S', url: 'U', license: 'L', creator: null },
+      credit: { type: 'sourced', source: 'S', url: 'U', license: 'L', creator: null },
     }],
   };
 }
 
 function tour(n = 3): Tour {
   return {
-    id: 'fairfax-old-town', schemaVersion: 1,
+    id: 'fairfax-old-town', schemaVersion: 2,
     title: 'Old Town Fairfax', description: 'desc',
+    defaults: null,
     attribution: [],
     stops: Array.from({ length: n }, (_, i) => stop(`s${i + 1}`, i + 1)),
+  };
+}
+
+function inWorldOverlay(id: string, opacity: number): Overlay {
+  return {
+    id, kind: 'image',
+    anchor: { type: 'geo', lng: -77.3, lat: 38.84, altitudeM: 4 },
+    display: { mode: 'inWorld', opacity, headingDeg: 284.4, widthM: 18, heightM: 12 },
+    title: 'Photo', body: null, mediaId: `${id}.jpg`,
+    credit: { type: 'sourced', source: 'S', url: 'U', license: 'L', creator: null },
   };
 }
 
@@ -206,75 +218,96 @@ describe('TourStore', () => {
     expect(store.currentIndex()).toBe(0);
   });
 
-  function rephoto(id: string) {
-    return {
-      id, kind: 'rephoto' as const,
-      anchor: { type: 'geoQuad' as const, lng: -77.3, lat: 38.84, altitude: 6,
-                headingDeg: 113, widthM: 18, heightM: 14 },
-      title: id, body: null, mediaId: `${id}.jpg`,
-      credit: { source: 'S', url: 'U', license: 'L', creator: null },
-    };
-  }
+  it('treats any inWorld overlay as draped, whatever its kind', () => {
+    const t = tour(1);
+    t.stops[0].overlays.push(inWorldOverlay('p1', 0.7));
+    store.load(t);
+    expect(store.inWorldOverlays().map((o) => o.id)).toEqual(['p1']);
+    expect(store.hasInWorldOverlays()).toBe(true);
+  });
 
-  function tourWithRephotos(...ids: string[]) {
+  it('seeds opacity from the document, not from a hardcoded rule', () => {
+    const t = tour(1);
+    t.stops[0].overlays.push(inWorldOverlay('p1', 0.4), inWorldOverlay('p2', 0.9));
+    store.load(t);
+    expect(store.opacityFor('p1')).toBe(0.4);
+    expect(store.opacityFor('p2')).toBe(0.9);
+  });
+
+  it('survives a stop with no overlays', () => {
+    const t = tour(1);
+    t.stops[0].overlays = [];
+    store.load(t);
+    expect(store.inWorldOverlays()).toEqual([]);
+    expect(store.hasInWorldOverlays()).toBe(false);
+    expect(store.opacityFor('nope')).toBe(0);
+  });
+
+  it('does not treat a marker image as draped', () => {
+    const t = tour(1);
+    t.stops[0].overlays.push({
+      ...inWorldOverlay('p1', 0.7),
+      display: { mode: 'marker', icon: 'photo' },
+    });
+    store.load(t);
+    expect(store.inWorldOverlays()).toEqual([]);
+  });
+
+  function tourWithInWorld(...entries: [string, number][]) {
     const t = tour();
-    t.stops[0].overlays = [...t.stops[0].overlays, ...ids.map(rephoto)];
+    t.stops[0].overlays = [
+      ...t.stops[0].overlays,
+      ...entries.map(([id, opacity]) => inWorldOverlay(id, opacity)),
+    ];
     return t;
   }
 
-  it('shows the first photograph and hides the rest', () => {
-    store.load(tourWithRephotos('a', 'b', 'c'));
-    expect(store.opacityFor('a')).toBeCloseTo(0.7, 3);
-    expect(store.opacityFor('b')).toBe(0);
-    expect(store.opacityFor('c')).toBe(0);
-  });
-
   it('gives each photograph an independent opacity', () => {
-    store.load(tourWithRephotos('a', 'b'));
-    store.setRephotoOpacity('b', 0.4);
+    store.load(tourWithInWorld(['a', 0.7], ['b', 0]));
+    store.setOverlayOpacity('b', 0.4);
     expect(store.opacityFor('a')).toBeCloseTo(0.7, 3);
     expect(store.opacityFor('b')).toBeCloseTo(0.4, 3);
   });
 
   it('lets one photograph be hidden without affecting the other', () => {
-    store.load(tourWithRephotos('a', 'b'));
-    store.setRephotoOpacity('b', 0.9);
-    store.setRephotoOpacity('a', 0);
+    store.load(tourWithInWorld(['a', 0.7], ['b', 0]));
+    store.setOverlayOpacity('b', 0.9);
+    store.setOverlayOpacity('a', 0);
     expect(store.opacityFor('a')).toBe(0);
     expect(store.opacityFor('b')).toBeCloseTo(0.9, 3);
   });
 
   it('clamps each opacity into range', () => {
-    store.load(tourWithRephotos('a'));
-    store.setRephotoOpacity('a', 5);
+    store.load(tourWithInWorld(['a', 0.5]));
+    store.setOverlayOpacity('a', 5);
     expect(store.opacityFor('a')).toBe(1);
-    store.setRephotoOpacity('a', -3);
+    store.setOverlayOpacity('a', -3);
     expect(store.opacityFor('a')).toBe(0);
   });
 
   it('reports zero for a photograph that is not on this stop', () => {
-    store.load(tourWithRephotos('a'));
+    store.load(tourWithInWorld(['a', 0.5]));
     expect(store.opacityFor('nope')).toBe(0);
   });
 
   it('exposes the whole opacity map for the renderer', () => {
-    store.load(tourWithRephotos('a', 'b'));
-    expect(store.rephotoOpacities()).toEqual({ a: 0.7, b: 0 });
+    store.load(tourWithInWorld(['a', 0.7], ['b', 0]));
+    expect(store.overlayOpacities()).toEqual({ a: 0.7, b: 0 });
   });
 
   it('resets opacities when the stop changes', () => {
-    const t = tourWithRephotos('a', 'b');
+    const t = tourWithInWorld(['a', 0.7], ['b', 0]);
     store.load(t);
-    store.setRephotoOpacity('b', 1);
+    store.setOverlayOpacity('b', 1);
     store.goTo(1);
     store.goTo(0);
     expect(store.opacityFor('a')).toBeCloseTo(0.7, 3);
     expect(store.opacityFor('b')).toBe(0);
   });
 
-  it('knows whether the current stop has a rephoto', () => {
+  it('knows whether the current stop has an inWorld overlay', () => {
     store.load(tour());
-    expect(store.hasRephotos()).toBe(false);
+    expect(store.hasInWorldOverlays()).toBe(false);
   });
 
   it('does not arrive elsewhere while standing at the current stop\'s own panorama', () => {
