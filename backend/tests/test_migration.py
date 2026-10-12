@@ -12,6 +12,13 @@ from app.models import Tour
 REPO = Path(__file__).resolve().parents[2]
 REAL_TOUR = REPO / "content" / "tours" / "fairfax-old-town.json"
 
+# A frozen v1 snapshot of the repository's real tour, taken before it was
+# migrated in place (git show fc7f758:content/tours/fairfax-old-town.json).
+# Do NOT refresh this file when the live tour changes: its whole purpose is
+# to stay v1 forever, so these tests keep exercising migrate_v1_to_v2 against
+# real content instead of comparing an already-v2 document to itself.
+V1_FIXTURE = Path(__file__).parent / "fixtures" / "fairfax-old-town-v1.json"
+
 V1_CREDIT = {
     "source": "Library of Congress",
     "url": "http://www.loc.gov/item/2006685364/",
@@ -134,16 +141,20 @@ def test_a_stop_with_no_overlays_survives():
 
 
 def test_the_real_tour_migrates_and_validates():
-    raw = json.loads(REAL_TOUR.read_text())
-    migrated = migrate_v1_to_v2(raw) if raw["schemaVersion"] == 1 else raw
+    """Exercises migrate_v1_to_v2 against real content, permanently: the
+    fixture is frozen v1 regardless of what the live tour later becomes."""
+    raw = json.loads(V1_FIXTURE.read_text())
+    migrated = migrate_v1_to_v2(raw)
     tour = Tour.model_validate(migrated)
     assert len(tour.stops) == 6
     assert sum(len(s.overlays) for s in tour.stops) == 15
 
 
 def test_the_real_tour_loses_nothing():
-    raw = json.loads(REAL_TOUR.read_text())
-    migrated = migrate_v1_to_v2(raw) if raw["schemaVersion"] == 1 else raw
+    """Compares the frozen v1 fixture against its own migration, so `raw`
+    and `migrated` are never the same object and this can actually fail."""
+    raw = json.loads(V1_FIXTURE.read_text())
+    migrated = migrate_v1_to_v2(raw)
 
     def ids(d):
         return [o["id"] for s in d["stops"] for o in s["overlays"]]
@@ -159,9 +170,14 @@ def test_the_real_tour_loses_nothing():
             assert a.get("body") == b.get("body")
             assert a["anchor"]["lng"] == b["anchor"]["lng"]
             assert a["anchor"]["lat"] == b["anchor"]["lat"]
-            # `altitude` was renamed to `altitudeM`. The on-disk tour is
-            # migrated in place by this task, so `a` may already be v2 (no
-            # `altitude` key) if this suite runs after that conversion;
-            # either way its altitude value must match `b`'s.
-            before_altitude = a["anchor"].get("altitude", a["anchor"].get("altitudeM"))
-            assert before_altitude == b["anchor"]["altitudeM"]
+            assert a["anchor"]["altitude"] == b["anchor"]["altitudeM"]
+
+
+def test_the_shipped_tour_is_valid_v2():
+    """Keeps the live document honest now that the fixture tests above no
+    longer look at it: it must already be v2 and must validate as such."""
+    raw = json.loads(REAL_TOUR.read_text())
+    assert raw["schemaVersion"] == 2
+    tour = Tour.model_validate(raw)
+    assert len(tour.stops) == 6
+    assert sum(len(s.overlays) for s in tour.stops) == 15
