@@ -13,6 +13,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from .migration import migrate_v1_to_v2
 from .models import Tour, TourSummary
 
 SCHEMA = """
@@ -42,8 +43,8 @@ def seed_from_dir(conn: sqlite3.Connection, tours_dir: Path) -> int:
     for path in sorted(Path(tours_dir).glob("*.json")):
         raw = json.loads(path.read_text())
         try:
-            tour = Tour.model_validate(raw)
-        except ValidationError as exc:
+            tour = Tour.model_validate(migrate_v1_to_v2(raw))
+        except (ValidationError, ValueError) as exc:
             raise ValueError(f"{path.name} is not a valid tour: {exc}") from exc
         conn.execute(
             "INSERT INTO tours (id, title, document, stop_count) VALUES (?, ?, ?, ?) "

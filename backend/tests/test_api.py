@@ -46,7 +46,7 @@ def test_list_tours(client):
 
 def test_get_tour_returns_camel_case_document(client):
     body = client.get("/api/tours/fairfax-old-town").json()
-    assert body["schemaVersion"] == 1
+    assert body["schemaVersion"] == 2
     assert body["stops"][0]["panorama"]["imageId"] == "2116094392633820"
     assert body["stops"][0]["overlays"][0]["credit"]["license"]
 

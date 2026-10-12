@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-import json
-
 import pytest
 from pydantic import ValidationError
 
-from app.models import Credit, GeoAnchor, Overlay, Stop, Tour
+from app.models import GeoAnchor, Overlay, Stop, Tour
 
 VALID_CREDIT = {
+    "type": "sourced",
     "source": "Library of Congress",
     "url": "https://www.loc.gov/item/2016123456/",
     "license": "No known restrictions",
     "creator": "National Photo Company",
+}
+
+ORIGINAL_CREDIT = {
+    "type": "original",
+    "creator": "Madelyn Harrington",
+    "license": "CC-BY-4.0",
 }
 
 
@@ -19,7 +24,8 @@ def _overlay(**over):
     base = {
         "id": "ov-1",
         "kind": "text",
-        "anchor": {"type": "geo", "lng": -77.30732, "lat": 38.84562, "altitude": 3.0},
+        "anchor": {"type": "geo", "lng": -77.30732, "lat": 38.84562, "altitudeM": 3.0},
+        "display": {"mode": "marker", "icon": "note"},
         "title": "The 1800 Courthouse",
         "body": "Built in 1800 at the crossroads of two turnpikes.",
         "credit": VALID_CREDIT,
@@ -51,7 +57,7 @@ def _stop(**over):
 def _tour(**over):
     base = {
         "id": "fairfax-old-town",
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "title": "Old Town Fairfax",
         "description": "A walking tour of six historic sites.",
         "attribution": [
@@ -72,7 +78,7 @@ def test_valid_tour_parses():
 
 def test_geo_anchor_is_discriminated_by_type():
     anchor = GeoAnchor.model_validate(
-        {"type": "geo", "lng": -77.3, "lat": 38.8, "altitude": 2.0})
+        {"type": "geo", "lng": -77.3, "lat": 38.8, "altitudeM": 2.0})
     assert anchor.type == "geo"
 
 
@@ -96,12 +102,12 @@ def test_unknown_overlay_kind_is_rejected():
 
 def test_latitude_out_of_range_is_rejected():
     with pytest.raises(ValidationError):
-        GeoAnchor.model_validate({"type": "geo", "lng": 0.0, "lat": 91.0, "altitude": 0.0})
+        GeoAnchor.model_validate({"type": "geo", "lng": 0.0, "lat": 91.0, "altitudeM": 0.0})
 
 
 def test_longitude_out_of_range_is_rejected():
     with pytest.raises(ValidationError):
-        GeoAnchor.model_validate({"type": "geo", "lng": 181.0, "lat": 0.0, "altitude": 0.0})
+        GeoAnchor.model_validate({"type": "geo", "lng": 181.0, "lat": 0.0, "altitudeM": 0.0})
 
 
 def test_stop_order_must_be_positive():
@@ -140,96 +146,132 @@ def test_image_overlay_requires_a_media_id():
         Overlay.model_validate(_overlay(kind="image", body=None))
 
 
-def test_credit_object_rejects_blank_license():
-    with pytest.raises(ValidationError):
-        Credit.model_validate({**VALID_CREDIT, "license": ""})
-
-
 def test_json_schema_exports():
     schema = Tour.model_json_schema()
     assert schema["title"] == "Tour"
     assert "stops" in schema["properties"]
 
 
-GEO_QUAD = {
-    "type": "geoQuad",
-    "lng": -77.30732, "lat": 38.84562, "altitude": 6.0,
-    "headingDeg": 200.0, "widthM": 18.0, "heightM": 14.0,
-}
+IN_WORLD = {"mode": "inWorld", "opacity": 0.7,
+            "headingDeg": 284.4, "widthM": 18.0, "heightM": 12.0}
 
 
-def _rephoto(**over):
-    base = {
-        "id": "court-1863",
-        "kind": "rephoto",
-        "anchor": dict(GEO_QUAD),
-        "title": "Fairfax Court House, 1863",
-        "mediaId": "court-1863.jpg",
-        "credit": VALID_CREDIT,
-    }
+def _image(**over):
+    """Merge before delegating, matching _overlay/_stop/_tour in this file, so
+    a caller can override `kind` without a duplicate-keyword TypeError."""
+    base = {"kind": "image", "body": None, "mediaId": "court-1863.jpg",
+            "display": IN_WORLD}
     base.update(over)
-    return base
+    return _overlay(**base)
 
 
-def test_rephoto_overlay_parses():
-    ov = Overlay.model_validate(_rephoto())
-    assert ov.kind == "rephoto"
-    assert ov.anchor.type == "geoQuad"
-    assert ov.anchor.heading_deg == 200.0
-    assert ov.anchor.width_m == 18.0
+@pytest.mark.parametrize("kind,mode,ok", [
+    ("text", "marker", True),
+    ("text", "inWorld", False),
+    ("text", "ambient", False),
+    ("image", "marker", True),
+    ("image", "inWorld", True),
+    ("image", "ambient", False),
+    ("audio", "marker", True),
+    ("audio", "inWorld", False),
+    ("audio", "ambient", True),
+])
+def test_display_mode_matrix(kind, mode, ok):
+    display = {"marker": {"mode": "marker"},
+               "inWorld": IN_WORLD,
+               "ambient": {"mode": "ambient"}}[mode]
+    payload = ({"body": "Body", "mediaId": None} if kind == "text"
+               else {"body": None, "mediaId": "m.bin"})
+    data = _overlay(kind=kind, display=display, **payload)
+    if ok:
+        assert Overlay.model_validate(data).display.mode == mode
+    else:
+        with pytest.raises(ValidationError, match=mode):
+            Overlay.model_validate(data)
 
 
-def test_rephoto_requires_a_geo_quad_anchor():
-    """A rephoto is a plane in the world; a bare point cannot place one."""
+def test_rephoto_is_no_longer_a_kind():
     with pytest.raises(ValidationError):
-        Overlay.model_validate(_rephoto(
-            anchor={"type": "geo", "lng": -77.3, "lat": 38.8, "altitude": 3.0}))
+        Overlay.model_validate(_image(kind="rephoto"))
 
 
-def test_rephoto_requires_a_media_id():
+def test_geoquad_anchors_are_rejected():
     with pytest.raises(ValidationError):
-        Overlay.model_validate(_rephoto(mediaId=None))
+        Overlay.model_validate(_image(display=IN_WORLD, anchor={
+            "type": "geoQuad", "lng": -77.3, "lat": 38.8, "altitude": 1.0,
+            "headingDeg": 90.0, "widthM": 2.0, "heightM": 2.0}))
 
 
-def test_text_overlay_rejects_a_geo_quad_anchor():
-    """geoQuad is meaningless for a marker; accepting it would hide a mistake."""
+def test_original_credit_needs_no_url():
+    ov = Overlay.model_validate(_overlay(credit=ORIGINAL_CREDIT))
+    assert ov.credit.type == "original"
+    assert ov.credit.creator == "Madelyn Harrington"
+
+
+@pytest.mark.parametrize("field", ["creator", "license"])
+def test_blank_original_credit_field_is_rejected(field):
     with pytest.raises(ValidationError):
-        Overlay.model_validate(_overlay(anchor=dict(GEO_QUAD)))
+        Overlay.model_validate(_overlay(credit={**ORIGINAL_CREDIT, field: "   "}))
 
 
-def test_geo_quad_heading_must_be_a_compass_bearing():
+@pytest.mark.parametrize("field", ["source", "url", "license"])
+def test_blank_sourced_credit_field_is_rejected(field):
     with pytest.raises(ValidationError):
-        Overlay.model_validate(_rephoto(anchor={**GEO_QUAD, "headingDeg": 360.0}))
+        Overlay.model_validate(_overlay(credit={**VALID_CREDIT, field: "   "}))
+
+
+def test_unknown_credit_type_is_rejected():
     with pytest.raises(ValidationError):
-        Overlay.model_validate(_rephoto(anchor={**GEO_QUAD, "headingDeg": -1.0}))
+        Overlay.model_validate(_overlay(credit={"type": "vibes", "license": "x"}))
 
 
-def test_geo_quad_dimensions_must_be_positive():
-    for field in ("widthM", "heightM"):
+@pytest.mark.parametrize("heading,ok", [(0.0, True), (359.9, True), (360.0, False),
+                                        (-0.1, False)])
+def test_heading_bounds(heading, ok):
+    data = _image(display={**IN_WORLD, "headingDeg": heading})
+    if ok:
+        assert Overlay.model_validate(data).display.heading_deg == heading
+    else:
         with pytest.raises(ValidationError):
-            Overlay.model_validate(_rephoto(anchor={**GEO_QUAD, field: 0.0}))
+            Overlay.model_validate(data)
 
 
-def test_geo_quad_dimensions_have_a_sane_upper_bound():
-    """A 500 m photograph is a typo, not a design choice."""
+@pytest.mark.parametrize("opacity,ok", [(0.0, True), (1.0, True), (-0.1, False),
+                                        (1.1, False)])
+def test_opacity_bounds(opacity, ok):
+    data = _image(display={**IN_WORLD, "opacity": opacity})
+    if ok:
+        assert Overlay.model_validate(data).display.opacity == opacity
+    else:
+        with pytest.raises(ValidationError):
+            Overlay.model_validate(data)
+
+
+def test_zero_width_is_rejected():
     with pytest.raises(ValidationError):
-        Overlay.model_validate(_rephoto(anchor={**GEO_QUAD, "widthM": 500.0}))
+        Overlay.model_validate(_image(display={**IN_WORLD, "widthM": 0.0}))
 
 
-def test_anchor_union_discriminates_on_type():
-    assert Overlay.model_validate(_overlay()).anchor.type == "geo"
-    assert Overlay.model_validate(_rephoto()).anchor.type == "geoQuad"
+def test_opacity_defaults_to_seven_tenths():
+    display = {k: v for k, v in IN_WORLD.items() if k != "opacity"}
+    assert Overlay.model_validate(_image(display=display)).display.opacity == 0.7
 
 
-def test_tour_with_a_rephoto_stop_validates():
-    stop = _stop(overlays=[_overlay(), _rephoto()])
-    tour = Tour.model_validate(_tour(stops=[stop]))
-    assert [o.kind for o in tour.stops[0].overlays] == ["text", "rephoto"]
+def test_tour_defaults_round_trip():
+    tour = Tour.model_validate(_tour(defaults={"creator": "M. Harrington",
+                                               "license": "CC-BY-4.0"}))
+    assert tour.defaults.creator == "M. Harrington"
 
 
-def test_rephoto_round_trips_through_camel_case_json():
-    tour = Tour.model_validate(_tour(stops=[_stop(overlays=[_rephoto()])]))
-    dumped = json.loads(tour.model_dump_json(by_alias=True))
-    anchor = dumped["stops"][0]["overlays"][0]["anchor"]
-    assert anchor["headingDeg"] == 200.0
-    assert anchor["widthM"] == 18.0
+def test_tour_defaults_are_optional():
+    assert Tour.model_validate(_tour()).defaults is None
+
+
+def test_schema_version_one_is_rejected_by_the_model():
+    """v1 documents go through app.migration, never straight into the model."""
+    with pytest.raises(ValidationError):
+        Tour.model_validate(_tour(schemaVersion=1))
+
+
+def test_a_stop_may_have_no_overlays():
+    assert Stop.model_validate(_stop(overlays=[])).overlays == []

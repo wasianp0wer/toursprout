@@ -1,6 +1,6 @@
 {
   "id": "fairfax-old-town",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "Old Town Fairfax",
   "description": "Six historic sites in the City of Fairfax, Virginia, told through street-level panoramas.",
   "attribution": [
@@ -40,11 +40,17 @@
             "type": "geo",
             "lng": -77.30722772815423,
             "lat": 38.845655932446995,
-            "altitude": 3
+            "altitudeM": 3
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "note"
           },
           "title": "A courthouse at the crossroads",
           "body": "Completed in 1800, the courthouse was sited where two turnpikes met, so that no corner of the county was unreasonably far from the law.",
+          "mediaId": null,
           "credit": {
+            "type": "sourced",
             "source": "Written for this prototype",
             "url": "https://www.openstreetmap.org/copyright",
             "license": "Draft text, not peer-reviewed",
@@ -58,11 +64,17 @@
             "type": "geo",
             "lng": -77.30738920388433,
             "lat": 38.845709831117496,
-            "altitude": 4
+            "altitudeM": 4
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "photo"
           },
           "title": "Fairfax Court House, from the Library of Congress",
+          "body": null,
           "mediaId": "courthouse-photo.jpg",
           "credit": {
+            "type": "sourced",
             "source": "Library of Congress",
             "url": "http://www.loc.gov/item/2006685364/",
             "license": "No known restrictions on publication",
@@ -76,11 +88,17 @@
             "type": "geo",
             "lng": -77.30732,
             "lat": 38.8456379662235,
-            "altitude": 2.0
+            "altitudeM": 2.0
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "audio"
           },
           "title": "Narration: Fairfax County Historic Courthouse",
+          "body": null,
           "mediaId": "narration-historic-courthouse.m4a",
           "credit": {
+            "type": "sourced",
             "source": "Synthesized narration, generated for this prototype",
             "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
             "license": "Generated for this prototype; not an archival recording",
@@ -89,19 +107,25 @@
         },
         {
           "id": "court-1863",
-          "kind": "rephoto",
+          "kind": "image",
           "anchor": {
-            "type": "geoQuad",
+            "type": "geo",
             "lng": -77.30716392239417,
             "lat": 38.84559118577077,
-            "altitude": 8,
+            "altitudeM": 8
+          },
+          "display": {
+            "mode": "inWorld",
+            "opacity": 0.7,
             "headingDeg": 113,
             "widthM": 30,
             "heightM": 24
           },
           "title": "Fairfax Court House, 1863",
+          "body": null,
           "mediaId": "court-1863.jpg",
           "credit": {
+            "type": "sourced",
             "source": "Library of Congress",
             "url": "http://www.loc.gov/item/2013651898/",
             "license": "No known restrictions on publication",
@@ -110,19 +134,25 @@
         },
         {
           "id": "court-1918",
-          "kind": "rephoto",
+          "kind": "image",
           "anchor": {
-            "type": "geoQuad",
+            "type": "geo",
             "lng": -77.30721005810315,
             "lat": 38.84592356090544,
-            "altitude": 2,
+            "altitudeM": 2
+          },
+          "display": {
+            "mode": "inWorld",
+            "opacity": 0.0,
             "headingDeg": 113,
             "widthM": 14,
             "heightM": 11
           },
           "title": "Fairfax Court House, about 1918",
+          "body": null,
           "mediaId": "court-1918.jpg",
           "credit": {
+            "type": "sourced",
             "source": "Library of Congress",
             "url": "http://www.loc.gov/item/2016826367/",
             "license": "No known restrictions on publication",
@@ -155,11 +185,17 @@
             "type": "geo",
             "lng": -77.30710233006397,
             "lat": 38.84568694933525,
-            "altitude": 2.5
+            "altitudeM": 2.5
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "note"
           },
           "title": "1 June 1861",
           "body": "A skirmish before dawn left Captain John Quincy Marr dead, the first Confederate officer killed in combat in the war. The monument came much later, in 1904.",
+          "mediaId": null,
           "credit": {
+            "type": "sourced",
             "source": "Written for this prototype",
             "url": "https://www.openstreetmap.org/copyright",
             "license": "Draft text, not peer-reviewed",
@@ -173,11 +209,17 @@
             "type": "geo",
             "lng": -77.30716,
             "lat": 38.845677966223505,
-            "altitude": 2.0
+            "altitudeM": 2.0
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "audio"
           },
           "title": "Narration: Marr Monument",
+          "body": null,
           "mediaId": "narration-marr-monument.m4a",
           "credit": {
+            "type": "sourced",
             "source": "Synthesized narration, generated for this prototype",
             "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
             "license": "Generated for this prototype; not an archival recording",
@@ -210,11 +252,17 @@
             "type": "geo",
             "lng": -77.30625073834167,
             "lat": 38.8460938986705,
-            "altitude": 3.5
+            "altitudeM": 3.5
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "note"
           },
           "title": "A gift to the town",
           "body": "Joseph Willard gave the building to the town in 1900. It served as the centre of civic life for most of the century that followed.",
+          "mediaId": null,
           "credit": {
+            "type": "sourced",
             "source": "Written for this prototype",
             "url": "https://www.openstreetmap.org/copyright",
             "license": "Draft text, not peer-reviewed",
@@ -228,11 +276,17 @@
             "type": "geo",
             "lng": -77.30617,
             "lat": 38.846057966223505,
-            "altitude": 2.0
+            "altitudeM": 2.0
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "audio"
           },
           "title": "Narration: Old Town Hall",
+          "body": null,
           "mediaId": "narration-old-town-hall.m4a",
           "credit": {
+            "type": "sourced",
             "source": "Synthesized narration, generated for this prototype",
             "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
             "license": "Generated for this prototype; not an archival recording",
@@ -265,11 +319,17 @@
             "type": "geo",
             "lng": -77.30461079573632,
             "lat": 38.845965084441254,
-            "altitude": 3
+            "altitudeM": 3
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "note"
           },
           "title": "Three families, one house",
           "body": "Built around 1812 by Richard Ratcliffe, who had sold the county the land for its courthouse. The Allison and Pozer families followed; the hyphenated name records all three.",
+          "mediaId": null,
           "credit": {
+            "type": "sourced",
             "source": "Written for this prototype",
             "url": "https://www.openstreetmap.org/copyright",
             "license": "Draft text, not peer-reviewed",
@@ -283,11 +343,17 @@
             "type": "geo",
             "lng": -77.30468,
             "lat": 38.8460279662235,
-            "altitude": 2.0
+            "altitudeM": 2.0
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "audio"
           },
           "title": "Narration: Ratcliffe-Allison-Pozer House",
+          "body": null,
           "mediaId": "narration-ratcliffe-allison-pozer-house.m4a",
           "credit": {
+            "type": "sourced",
             "source": "Synthesized narration, generated for this prototype",
             "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
             "license": "Generated for this prototype; not an archival recording",
@@ -320,11 +386,17 @@
             "type": "geo",
             "lng": -77.30059227045808,
             "lat": 38.844585932446996,
-            "altitude": 3.5
+            "altitudeM": 3.5
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "note"
           },
           "title": "Built as a school",
           "body": "Fairfax Elementary School opened here in 1873, part of the rebuilding of public education in Virginia after the Civil War.",
+          "mediaId": null,
           "credit": {
+            "type": "sourced",
             "source": "Written for this prototype",
             "url": "https://www.openstreetmap.org/copyright",
             "license": "Draft text, not peer-reviewed",
@@ -338,11 +410,17 @@
             "type": "geo",
             "lng": -77.3005,
             "lat": 38.8445679662235,
-            "altitude": 2.0
+            "altitudeM": 2.0
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "audio"
           },
           "title": "Narration: Fairfax Museum and Visitor Center",
+          "body": null,
           "mediaId": "narration-fairfax-museum.m4a",
           "credit": {
+            "type": "sourced",
             "source": "Synthesized narration, generated for this prototype",
             "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
             "license": "Generated for this prototype; not an archival recording",
@@ -375,11 +453,17 @@
             "type": "geo",
             "lng": -77.30806926744532,
             "lat": 38.84100288178225,
-            "altitude": 3
+            "altitudeM": 3
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "note"
           },
           "title": "A city outside its county",
           "body": "The City of Fairfax became independent of Fairfax County in 1961, yet remains the county seat. Virginia's independent cities are close to unique in the United States.",
+          "mediaId": null,
           "credit": {
+            "type": "sourced",
             "source": "Written for this prototype",
             "url": "https://www.openstreetmap.org/copyright",
             "license": "Draft text, not peer-reviewed",
@@ -393,11 +477,17 @@
             "type": "geo",
             "lng": -77.30815,
             "lat": 38.840957966223506,
-            "altitude": 2.0
+            "altitudeM": 2.0
+          },
+          "display": {
+            "mode": "marker",
+            "icon": "audio"
           },
           "title": "Narration: Fairfax City Hall",
+          "body": null,
           "mediaId": "narration-fairfax-city-hall.m4a",
           "credit": {
+            "type": "sourced",
             "source": "Synthesized narration, generated for this prototype",
             "url": "https://support.apple.com/guide/mac-help/mchlp2290/mac",
             "license": "Generated for this prototype; not an archival recording",
