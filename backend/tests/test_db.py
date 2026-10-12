@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from app.db import connect, init_schema, list_tours, load_tour, seed_from_dir
 from tests.test_models import _tour
+
+# The frozen v1 snapshot used throughout test_migration.py: see that module
+# for why it must never be refreshed.
+V1_FIXTURE = Path(__file__).parent / "fixtures" / "fairfax-old-town-v1.json"
 
 
 @pytest.fixture
@@ -65,3 +70,22 @@ def test_list_tours_returns_summaries(conn, tours_dir):
 def test_empty_dir_seeds_nothing(conn, tmp_path):
     assert seed_from_dir(conn, tmp_path) == 0
     assert list_tours(conn) == []
+
+
+def test_seed_from_dir_migrates_a_v1_document_to_v2(conn, tmp_path):
+    """The one place `migrate_v1_to_v2` is wired into a read path
+    (`app.db.seed_from_dir`) is asserted everywhere in prose
+    (docs/decisions/0001-three-axes-for-overlays.md, docs/HANDOFF.md) and,
+    until now, tested nowhere: both test_db.py and test_api.py seed an
+    already-v2 document, so deleting the migration call from db.py left all
+    158 backend tests passing. This writes the frozen v1 fixture straight
+    into a tours_dir and goes through the real seed_from_dir/load_tour path."""
+    (tmp_path / "fairfax-old-town.json").write_text(V1_FIXTURE.read_text())
+
+    seed_from_dir(conn, tmp_path)
+    tour = load_tour(conn, "fairfax-old-town")
+
+    assert tour is not None
+    assert tour.schema_version == 2
+    migrated_overlay = next(o for s in tour.stops for o in s.overlays)
+    assert migrated_overlay.display is not None
