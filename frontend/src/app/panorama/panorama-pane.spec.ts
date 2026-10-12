@@ -23,6 +23,23 @@ const REPHOTO_OVERLAY: Overlay = {
   credit: { type: 'sourced', source: 'LoC', url: 'U', license: 'PD', creator: null },
 };
 
+const AMBIENT_OVERLAY: Overlay = {
+  id: 'ambient-1',
+  kind: 'audio',
+  anchor: { type: 'geo', lng: -77.3, lat: 38.84, altitudeM: 2 },
+  display: { mode: 'ambient', autoplay: true },
+  title: 'Street sounds',
+  body: null,
+  mediaId: 'ambient.m4a',
+  credit: { type: 'sourced', source: 'S', url: 'U', license: 'L', creator: null },
+};
+
+const INWORLD_NO_MEDIA: Overlay = {
+  ...REPHOTO_OVERLAY,
+  id: 'no-media',
+  mediaId: null,
+};
+
 function tour(): Tour {
   return {
     id: 't', schemaVersion: 2, title: 'T', description: '', defaults: null, attribution: [],
@@ -158,6 +175,30 @@ describe('PanoramaPane', () => {
     store.load(t);
     await render();
     expect(fake.markers.at(-1)!.map((m) => m.id)).not.toContain('court-1863');
+  });
+
+  it('draws an ambient overlay nowhere: no marker, no placement', async () => {
+    // Ambient is heard, not seen. The partition loop in panorama-pane.ts has
+    // no branch for it at all, which is exactly the behaviour that quietly
+    // breaks if someone later adds an `else`.
+    const t = tour();
+    t.stops[0].overlays = [...t.stops[0].overlays, AMBIENT_OVERLAY];
+    store.load(t);
+    await render();
+    const markerIds = fake.markers.at(-1)!.map((m) => m.id);
+    expect(markerIds).toContain('ov-1');
+    expect(markerIds).not.toContain('ambient-1');
+    expect(fake.rephotos.at(-1)!.map((r) => r.id)).not.toContain('ambient-1');
+  });
+
+  it('skips an inWorld overlay with no mediaId rather than placing a broken image', async () => {
+    const t = tour();
+    t.stops[0].overlays = [...t.stops[0].overlays, REPHOTO_OVERLAY, INWORLD_NO_MEDIA];
+    store.load(t);
+    await expect(render()).resolves.toBeTruthy();
+    const placements = fake.rephotos.at(-1)!;
+    expect(placements.map((p) => p.id)).toEqual(['court-1863']);
+    expect(placements.map((p) => p.id)).not.toContain('no-media');
   });
 
   it('feeds viewer movement back into the store', async () => {
