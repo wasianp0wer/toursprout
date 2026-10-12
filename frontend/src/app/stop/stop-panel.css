@@ -11,6 +11,8 @@ h2 { margin: 0 0 0.4rem; font-size: 1.35rem; }
 .overlay-detail img { max-width: 100%; border-radius: 4px; }
 .overlay-detail audio { width: 100%; }
 .credit { font-size: 0.72rem; color: #9aa0ab; margin-top: 0.7rem; line-height: 1.45; }
+.credit a { color: #9aa0ab; text-decoration: none; }
+.credit a:hover { text-decoration: underline; }
 .controls { display: flex; gap: 0.5rem; margin-top: 1.2rem; }
 .controls button { flex: 1; padding: 0.55rem; background: #2f7fd4; color: #fff; border: 0; border-radius: 4px; font: inherit; cursor: pointer; }
 .controls button:disabled { background: #333944; color: #6d7480; cursor: default; }
