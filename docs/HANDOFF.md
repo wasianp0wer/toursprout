@@ -31,7 +31,7 @@ Ratcliffe-Allison-Pozer House, Fairfax Museum, City Hall.
 - **Alignment mode.** `?align=1` nudges the selected rephoto by keyboard and
   emits anchor JSON to paste into content.
 
-Tests: **158 backend (pytest), 208 frontend (Vitest)**, lint and production
+Tests: **162 backend (pytest), 210 frontend (Vitest)**, lint and production
 build clean via `make check`. Bundle 2.04 MB raw / 348 kB transferred.
 
 ## Running it
@@ -137,6 +137,15 @@ anything. The ones that cost the most time:
 6. **Courthouse narration is long** (~660 kB, about a minute) since it is the
    richest stop. Splitting it would need overlay-level narration, which
    `make_narration.py` does not do.
+7. **Schema v2 changed two things on screen at the courthouse stop, and
+   nobody has decided whether to keep them.** The overlay list badge now
+   reads `IMAGE` instead of `REPHOTO` for the two draped photographs, and
+   selecting one now also shows an `<img>` thumbnail in the panel on top of
+   the ghosted plane in the panorama (stop-panel.ts's `@switch` on `kind`
+   hits the `'image'` case that v1's `'rephoto'` kind fell through). Both
+   are arguably improvements; see the Costs section of
+   `docs/decisions/0001-three-axes-for-overlays.md`. Current behaviour is
+   pinned by tests in `stop-panel.spec.ts` so the choice stays explicit.
 
 ## Conventions used
 

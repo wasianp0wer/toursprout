@@ -54,6 +54,20 @@ tour opens identically, and audio becomes `marker` rather than `ambient`
 because nothing autoplayed in v1 — migrating to `ambient` would have started
 six narrations playing by themselves.
 
+Two on-screen changes at the courthouse stop were not behaviour-preserving,
+and nobody has decided whether to fix them (frontend/src/app/stop/stop-panel.ts):
+
+- The overlay list badges each row with `{{ ov.kind }}`. The two courthouse
+  photographs read `REPHOTO` in v1 and now read `IMAGE`, so the list shows
+  three identical `IMAGE` rows where it used to distinguish the draped
+  photographs from the panel one.
+- v1's `@switch` on `kind` had no case for `'rephoto'`, so selecting one
+  rendered only a title and credit. The same overlay is `kind: 'image'` in
+  v2 and hits the `'image'` case, so an `<img>` now also appears — a
+  courthouse photograph is shown twice at once, ghosted into the panorama
+  and as a thumbnail in the panel. Both are arguably improvements; both are
+  pinned by tests in `stop-panel.spec.ts` rather than decided here.
+
 ## How the deferred features land on this
 
 - **AR** is a fourth `display.mode` reading the same anchors, not a parallel

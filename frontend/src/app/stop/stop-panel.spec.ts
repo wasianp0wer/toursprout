@@ -181,4 +181,25 @@ describe('StopPanel', () => {
     expect(Number(sliders[0].value)).toBeCloseTo(0.7, 3);
     expect(Number(sliders[1].value)).toBe(0);
   });
+
+  // Pinned, not endorsed (docs/decisions/0001-three-axes-for-overlays.md,
+  // "Costs"; docs/HANDOFF.md, Outstanding item 7). v1's badge read REPHOTO
+  // and its `@switch` had no case for that kind, so selecting one of these
+  // rendered title and credit only. v2 has no 'rephoto' kind -- this overlay
+  // is 'image' -- so the badge now reads IMAGE and selecting it also shows
+  // an <img>, on top of the plane already ghosted into the panorama. Both
+  // are arguably improvements; nobody has decided, so these tests make the
+  // current, accidental behaviour explicit rather than leaving it to drift.
+  it('badges an in-world image overlay as image, same as a marker image', () => {
+    store.load(tour([IN_WORLD_PHOTO as never]));
+    const badge = render().querySelector('[data-overlay-item] .kind');
+    expect(badge?.textContent?.trim()).toBe('image');
+  });
+
+  it('selecting an in-world image overlay also renders an img thumbnail', () => {
+    store.load(tour([IN_WORLD_PHOTO as never]));
+    store.selectOverlay('court-1863');
+    const img = render().querySelector<HTMLImageElement>('.overlay-detail img');
+    expect(img?.getAttribute('src')).toBe('/api/media/court-1863.jpg');
+  });
 });
