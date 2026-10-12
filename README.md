@@ -74,15 +74,21 @@ app with `?align=1`:
 
 The panel names the photograph it is aligning. With several at a stop, click
 a rephoto row in the stop panel to switch which one the keys move. The panel
-shows the live anchor and copies it as JSON. Paste the result into
-the stop's `rephotos[].anchor` in `content/source/stops.json`, then
-`make content`. **The committed anchors are starting estimates and have not
-been aligned against the real view** — that needs someone at a browser.
+shows the live anchor and copies JSON shaped `{anchor, display}`. Paste it
+over the matching `rephotos[]` entry's `anchor` key (adding the `display`
+key alongside it) in `content/source/stops.json`, then `make content`;
+`build_tour.py` reads this split shape directly, alongside the older flat
+one. The pasted `display.headingDeg` is a live preview only and is always
+discarded — the shipped heading is derived afresh from the panorama's
+position, never authored, because every hand-guessed bearing in this
+project's history was wrong, one by 138 degrees. **The committed anchors are
+estimates, improved by hand in commit `de48b0d` but not finished** — further
+alignment needs someone at a browser.
 
 ## Tests
 
 ```sh
-make check      # lint + 158 backend tests + 208 frontend tests + production build
+make check      # lint + 162 backend tests + 210 frontend tests + production build
 ```
 
 Browser end-to-end tests exist in `frontend/tests/e2e/` but **cannot run inside

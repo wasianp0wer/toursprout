@@ -145,9 +145,15 @@ export class AlignMode {
   });
 
   /**
-   * v2 JSON ready to paste into content: an `anchor` object plus the
-   * `display` fields alignment mode moves. Pasting the pre-v2 shape back
-   * into a document would silently fail validation.
+   * An `anchor` object plus the `display` fields alignment mode moves, in
+   * v2 shape. Paste this over the `anchor` key (and add this `display` key
+   * alongside it) on the matching entry in content/source/stops.json's
+   * `rephotos[]`, then run `make content`: build_tour.py
+   * (content/scripts/build_tour.py, `in_world_overlay`) reads this split
+   * shape directly, alongside the original flat one. `headingDeg` here is
+   * derived afresh from the panorama's position when the tour is built, so
+   * whatever value is pasted is ignored on input -- it is only shown here as
+   * a live preview of the current aim.
    */
   protected readonly json = computed(() => {
     const a = this.draft();

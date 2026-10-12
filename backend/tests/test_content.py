@@ -107,3 +107,35 @@ def test_rephoto_heading_is_derived_not_authored():
         bearing_between(spec["anchor"]["lng"], spec["anchor"]["lat"], pano_lng, pano_lat), 1)
     assert overlay["display"]["headingDeg"] == expected
     assert overlay["display"]["headingDeg"] != spec["anchor"]["headingDeg"]
+
+
+def test_split_shape_rephoto_heading_is_also_derived_not_authored():
+    """Alignment mode (frontend/src/app/align/align-mode.ts) emits a split
+    {anchor, display} rephoto shape, not the flat v1-ish shape above.
+    in_world_overlay must accept that shape -- so pasting align mode's output
+    into stops.json actually works -- while still deriving the heading: a
+    pasted display.headingDeg, however wrong, must be ignored exactly like
+    the flat shape's authored anchor.headingDeg already is."""
+    spec = {
+        "id": "test-rephoto-split",
+        "title": "Test rephoto (split shape)",
+        "anchor": {"type": "geo", "lng": -77.307, "lat": 38.846, "altitudeM": 8.0},
+        "display": {
+            "mode": "inWorld",
+            "headingDeg": 7.0,  # deliberately bogus -- must be ignored
+            "widthM": 30,
+            "heightM": 24,
+        },
+    }
+    pano_lng, pano_lat = -77.307, 38.845
+    credit = {"type": "sourced", "source": "s", "url": "u", "license": "l", "creator": None}
+
+    overlay = in_world_overlay(spec, "test-rephoto-split.jpg", credit, pano_lng, pano_lat, 0)
+
+    expected = round(
+        bearing_between(spec["anchor"]["lng"], spec["anchor"]["lat"], pano_lng, pano_lat), 1)
+    assert overlay["display"]["headingDeg"] == expected
+    assert overlay["display"]["headingDeg"] != spec["display"]["headingDeg"]
+    assert overlay["anchor"] == {"type": "geo", "lng": -77.307, "lat": 38.846, "altitudeM": 8.0}
+    assert overlay["display"]["widthM"] == 30
+    assert overlay["display"]["heightM"] == 24

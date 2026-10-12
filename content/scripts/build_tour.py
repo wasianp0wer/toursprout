@@ -9,8 +9,8 @@ directly to the output document are not read back and will be silently
 overwritten the next time this runs. KNOWN DIVERGENCE: commit de48b0d
 ("adjustment") hand-tuned the rephoto anchors in the output document to
 improve on-screen alignment; stops.json was never updated to match, so the
-next `make content` will revert that alignment work. See the schema-v2 task
-2 fix report for details before touching either file.
+next `make content` will revert that alignment work. See Outstanding item 2
+in docs/HANDOFF.md for details before touching either file.
 """
 
 from __future__ import annotations
@@ -62,28 +62,45 @@ def in_world_overlay(spec: dict, media_id: str, credit: dict,
                       pano_lng: float, pano_lat: float, index: int) -> dict:
     """Build one draped-photograph overlay.
 
+    Accepts a `rephotos[]` entry in either of two shapes, so that pasting
+    alignment mode's output straight into content/source/stops.json works:
+
+    - the split v2-flavoured shape alignment mode emits -- a `display` key
+      with `widthM`/`heightM` alongside a plain `{type, lng, lat, altitudeM}`
+      `anchor` -- preferred whenever `display` is present;
+    - the original flat shape, where `anchor` alone carries `altitude`,
+      `widthM` and `heightM` (and, unused, `headingDeg`).
+
     Pure and filesystem/network-free, so tests can call it directly to pin
     the one invariant that matters most here: the heading is DERIVED from
-    where the panorama actually stands, never taken from spec["anchor"].
-    Every hand-authored bearing in this project was wrong, one by 138
-    degrees, which put the subject behind the viewer.
+    where the panorama actually stands, never taken from either shape's
+    authored headingDeg. Every hand-authored bearing in this project was
+    wrong, one by 138 degrees, which put the subject behind the viewer.
     """
     anchor = spec["anchor"]
+    display = spec.get("display")
+    if display is not None:
+        altitude = anchor.get("altitudeM", anchor.get("altitude", 0.0))
+        width, height = display["widthM"], display["heightM"]
+    else:
+        altitude = anchor["altitude"]
+        width, height = anchor["widthM"], anchor["heightM"]
+
     heading = round(
         bearing_between(anchor["lng"], anchor["lat"], pano_lng, pano_lat), 1)
     return {
         "id": spec["id"],
         "kind": "image",
         "anchor": {"type": "geo", "lng": anchor["lng"], "lat": anchor["lat"],
-                   "altitudeM": anchor["altitude"]},
+                   "altitudeM": altitude},
         "display": {
             "mode": "inWorld",
             # One legible comparison at a time: several semi-transparent
             # photographs over one building overlap into a muddle.
             "opacity": 0.7 if index == 0 else 0.0,
             "headingDeg": heading,
-            "widthM": anchor["widthM"],
-            "heightM": anchor["heightM"],
+            "widthM": width,
+            "heightM": height,
         },
         "title": spec["title"],
         "mediaId": media_id,
