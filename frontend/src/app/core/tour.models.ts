@@ -99,10 +99,22 @@ export interface Attribution {
 
 export interface Tour {
   id: string;
-  schemaVersion: number;
+  /**
+   * Narrowed to the literal pydantic enforces (`Literal[2]` in
+   * backend/app/models.py), not `number`: a file-backed viewer with no
+   * Python in the path (the migration lives only in app.migration) must
+   * fail to compile against a v1 document rather than accept it silently.
+   */
+  schemaVersion: 2;
   title: string;
   description: string;
-  defaults: TourDefaults | null;
+  /**
+   * Optional, not just nullable: the on-disk content/tours/*.json has no
+   * `defaults` key at all when the author set none. The API fills it in as
+   * `"defaults": null` (pydantic's default), but a reader of the file
+   * directly sees no key, and both must satisfy this type.
+   */
+  defaults?: TourDefaults | null;
   attribution: Attribution[];
   stops: Stop[];
 }

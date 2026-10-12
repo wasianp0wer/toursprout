@@ -82,7 +82,10 @@ test('attribution for OpenStreetMap and Mapillary is always visible', async ({ p
 });
 
 test('selecting a stop on the map moves the tour', async ({ page }) => {
-  await expect(page.locator('.maplibregl-canvas')).toBeVisible({ timeout: 20_000 });
+  // MapLibre was removed for Leaflet (docs/HANDOFF.md, architecture table);
+  // `.leaflet-container` is the class Leaflet applies to the element it is
+  // given, not a MapLibre canvas.
+  await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 20_000 });
 });
 
 test('the courthouse offers a then/now comparison', async ({ page }) => {
