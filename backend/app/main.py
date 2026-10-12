@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .bundle import BundleError, write_bundle
 from .config import Settings
 from .config import settings as default_settings
 from .db import connect, init_schema, list_tours, load_tour, seed_from_dir
 from .media import RangeNotSatisfiable, guess_media_type, parse_range
+from .session import Session
 
 # Raster tiles carry the OSM usage policy; acceptable at prototype volume.
 TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -23,6 +26,17 @@ ATTRIBUTION = [
     {"text": "Street-level imagery (c) Mapillary contributors",
      "url": "https://www.mapillary.com", "license": "CC-BY-SA-4.0"},
 ]
+
+
+def _viewer_config(cfg: Settings) -> dict:
+    """What the viewer needs, identical in the editor and in a published site.
+
+    The Mapillary token travels with a published site. It is a public client
+    token — mapillary-js runs in the browser and cannot use anything else — so
+    this is not a leak, though it looks like one.
+    """
+    return {"mapillaryToken": cfg.mapillary_token, "tileUrl": TILE_URL,
+            "attribution": ATTRIBUTION}
 
 
 def create_app(settings_override: Settings | None = None) -> FastAPI:
@@ -40,6 +54,9 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             seed_from_dir(conn, cfg.tours_dir)
         conn.close()
         app.state.cfg = cfg
+        app.state.session = Session(cfg.work_dir)
+        if app.state.session.is_open:
+            app.state.session.write_config(_viewer_config(cfg))
         yield
 
     app = FastAPI(title="clio-wired", lifespan=lifespan)
@@ -114,8 +131,76 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             },
         )
 
+    @app.get("/api/session")
+    def get_session() -> dict:
+        return app.state.session.summary()
+
+    @app.post("/api/session/new")
+    def new_session(body: dict) -> dict:
+        title = (body.get("title") or "Untitled tour").strip() or "Untitled tour"
+        session = app.state.session
+        session.new(title)
+        session.write_config(_viewer_config(app.state.cfg))
+        return session.summary()
+
+    @app.put("/api/session/tour")
+    def put_tour(doc: dict) -> dict:
+        try:
+            app.state.session.write_tour(doc)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return app.state.session.summary()
+
+    @app.post("/api/session/import")
+    async def import_bundle(file: UploadFile) -> dict:
+        session = app.state.session
+        # Spool to disk rather than holding the archive in memory: the caps in
+        # bundle.py are about what is INSIDE the zip, and a bundle with media
+        # is tens of megabytes.
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            tmp.write(await file.read())
+            staged = Path(tmp.name)
+        try:
+            warnings = session.replace_from(staged)
+        except BundleError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            staged.unlink(missing_ok=True)
+        session.write_config(_viewer_config(app.state.cfg))
+        return {**session.summary(), "warnings": warnings}
+
+    @app.get("/api/session/export")
+    def export_bundle() -> Response:
+        session = app.state.session
+        if not session.is_open:
+            raise HTTPException(status_code=409, detail="no tour is open")
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "tour.zip"
+            write_bundle(session.path, out)
+            data = out.read_bytes()
+        name = f"{session.tour().id}.zip"
+        return Response(
+            content=data, media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        )
+
+    _mount_tour_data(app, cfg)
     _mount_frontend(app, cfg)
     return app
+
+
+def _mount_tour_data(app: FastAPI, cfg: Settings) -> None:
+    """Serve the working directory at the same relative path a published site
+    uses, so the viewer has exactly one set of URLs and no deployment
+    detection. StaticFiles handles Range, which the narration audio needs.
+
+    `check_dir=False` because the working directory legitimately does not
+    exist until a tour is opened; requests 404 until it does.
+    """
+    cfg.work_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/tour-data",
+              StaticFiles(directory=cfg.work_dir, check_dir=False),
+              name="tour-data")
 
 
 def _mount_frontend(app: FastAPI, cfg: Settings) -> None:
