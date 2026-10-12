@@ -2,6 +2,15 @@
 
 Validates the result against app.models.Tour before writing, so a broken tour
 never reaches the database.
+
+This script REGENERATES content/tours/fairfax-old-town.json from
+content/source/stops.json (plus the media manifest). Hand-edits made
+directly to the output document are not read back and will be silently
+overwritten the next time this runs. KNOWN DIVERGENCE: commit de48b0d
+("adjustment") hand-tuned the rephoto anchors in the output document to
+improve on-screen alignment; stops.json was never updated to match, so the
+next `make content` will revert that alignment work. See the schema-v2 task
+2 fix report for details before touching either file.
 """
 
 from __future__ import annotations
@@ -47,6 +56,39 @@ def _sourced(credit: dict) -> dict:
     """Manifest credits all name an external source."""
     return {"type": "sourced", "source": credit["source"], "url": credit["url"],
             "license": credit["license"], "creator": credit.get("creator")}
+
+
+def in_world_overlay(spec: dict, media_id: str, credit: dict,
+                      pano_lng: float, pano_lat: float, index: int) -> dict:
+    """Build one draped-photograph overlay.
+
+    Pure and filesystem/network-free, so tests can call it directly to pin
+    the one invariant that matters most here: the heading is DERIVED from
+    where the panorama actually stands, never taken from spec["anchor"].
+    Every hand-authored bearing in this project was wrong, one by 138
+    degrees, which put the subject behind the viewer.
+    """
+    anchor = spec["anchor"]
+    heading = round(
+        bearing_between(anchor["lng"], anchor["lat"], pano_lng, pano_lat), 1)
+    return {
+        "id": spec["id"],
+        "kind": "image",
+        "anchor": {"type": "geo", "lng": anchor["lng"], "lat": anchor["lat"],
+                   "altitudeM": anchor["altitude"]},
+        "display": {
+            "mode": "inWorld",
+            # One legible comparison at a time: several semi-transparent
+            # photographs over one building overlap into a muddle.
+            "opacity": 0.7 if index == 0 else 0.0,
+            "headingDeg": heading,
+            "widthM": anchor["widthM"],
+            "heightM": anchor["heightM"],
+        },
+        "title": spec["title"],
+        "mediaId": media_id,
+        "credit": credit,
+    }
 
 
 def main() -> int:
@@ -109,30 +151,9 @@ def main() -> int:
             media_id = f"{spec['id']}.jpg"
             if media_id not in manifest:
                 sys.exit(f"missing rephoto {media_id}; run fetch_rephotos.py first")
-            anchor = spec["anchor"]
-            # A photograph must face the viewer, or it renders edge-on. Derived
-            # from where the panorama actually stands: all six hand-authored
-            # bearings were wrong, one by 138 degrees.
-            heading = round(
-                bearing_between(anchor["lng"], anchor["lat"], pano_lng, pano_lat), 1)
-            overlays.append({
-                "id": spec["id"],
-                "kind": "image",
-                "anchor": {"type": "geo", "lng": anchor["lng"], "lat": anchor["lat"],
-                           "altitudeM": anchor["altitude"]},
-                "display": {
-                    "mode": "inWorld",
-                    # One legible comparison at a time: several semi-transparent
-                    # photographs over one building overlap into a muddle.
-                    "opacity": 0.7 if index == 0 else 0.0,
-                    "headingDeg": heading,
-                    "widthM": anchor["widthM"],
-                    "heightM": anchor["heightM"],
-                },
-                "title": spec["title"],
-                "mediaId": media_id,
-                "credit": _sourced(manifest[media_id]["credit"]),
-            })
+            overlays.append(in_world_overlay(
+                spec, media_id, _sourced(manifest[media_id]["credit"]),
+                pano_lng, pano_lat, index))
 
         stops.append({
             "id": src["id"],

@@ -29,6 +29,7 @@ serve: build
 
 ## Regenerate tour content: panoramas, archival images, narration, tour JSON.
 content:
+	@echo "content: regenerates fairfax-old-town.json from stops.json; hand-edits to the JSON (e.g. de48b0d's rephoto alignment) are NOT read back and will be overwritten."
 	cd backend && uv run python ../content/scripts/probe_coverage.py
 	cd backend && uv run python ../content/scripts/fetch_media.py
 	cd backend && uv run python ../content/scripts/fetch_rephotos.py

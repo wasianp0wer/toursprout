@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "content" / "scripts"))
+
+from build_tour import in_world_overlay
+from geo import bearing_between
 
 CONTENT = Path(__file__).resolve().parents[2] / "content" / "source" / "stops.json"
 
@@ -62,13 +68,42 @@ def test_anchor_offsets_are_small_enough_to_stay_at_the_stop():
 
 
 def test_build_tour_emits_schema_version_two():
-    """content/scripts is not an importable package, so this reads the source.
-    That the OUTPUT is valid is already proven by the migration suite against
-    the real on-disk document; what is checked here is that the generator was
-    not left behind emitting v1 shapes."""
+    """A cheap source-text backstop against the v1 shapes this module used to
+    emit. That the OUTPUT is valid is already proven by the migration suite
+    against the real on-disk document; behavioural coverage of the one
+    highest-stakes invariant (derived, not authored, heading) lives in
+    test_rephoto_heading_is_derived_not_authored below."""
     src = Path(__file__).resolve().parents[2] / "content" / "scripts" / "build_tour.py"
     text = src.read_text()
     assert '"schemaVersion": SCHEMA_VERSION' in text
     assert '"kind": "rephoto"' not in text
     assert '"type": "geoQuad"' not in text
     assert '"altitude":' not in text
+
+
+def test_rephoto_heading_is_derived_not_authored():
+    """The spec's authored headingDeg must never reach the output. The display
+    heading is derived from where the panorama actually stands, computed
+    independently here with the same bearing_between the generator uses."""
+    spec = {
+        "id": "test-rephoto",
+        "title": "Test rephoto",
+        "anchor": {
+            "type": "geoQuad",
+            "lng": -77.307,
+            "lat": 38.846,  # north of the panorama, so the photo must face south (~180)
+            "altitude": 8.0,
+            "headingDeg": 200,  # deliberately wrong authored value
+            "widthM": 30,
+            "heightM": 24,
+        },
+    }
+    pano_lng, pano_lat = -77.307, 38.845
+    credit = {"type": "sourced", "source": "s", "url": "u", "license": "l", "creator": None}
+
+    overlay = in_world_overlay(spec, "test-rephoto.jpg", credit, pano_lng, pano_lat, 0)
+
+    expected = round(
+        bearing_between(spec["anchor"]["lng"], spec["anchor"]["lat"], pano_lng, pano_lat), 1)
+    assert overlay["display"]["headingDeg"] == expected
+    assert overlay["display"]["headingDeg"] != spec["anchor"]["headingDeg"]
