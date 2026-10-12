@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+import app.session as session_module
 from app.bundle import BundleError, write_bundle
 from app.session import Session
 
@@ -80,3 +81,42 @@ def test_write_config_emits_what_the_viewer_needs(session):
     session.write_config({"mapillaryToken": "tok", "tileUrl": "u", "attribution": []})
     cfg = json.loads((session.path / "config.json").read_text())
     assert cfg["mapillaryToken"] == "tok"
+
+
+def _no_tmp_leftovers(directory) -> bool:
+    return not any(".tmp" in p.name for p in directory.iterdir())
+
+
+def test_write_tour_cleans_up_its_temp_file_on_success(session):
+    session.new("My Tour")
+    doc = json.loads((session.path / "tour.json").read_text())
+    doc["title"] = "Renamed"
+    session.write_tour(doc)
+    assert _no_tmp_leftovers(session.path)
+
+
+def test_write_config_cleans_up_its_temp_file_on_success(session):
+    session.new("My Tour")
+    session.write_config({"mapillaryToken": "tok", "tileUrl": "u", "attribution": []})
+    assert _no_tmp_leftovers(session.path)
+
+
+def test_a_failed_write_tour_leaves_the_previous_file_intact(session, monkeypatch):
+    session.new("Original")
+    original_bytes = (session.path / "tour.json").read_bytes()
+    doc = json.loads((session.path / "tour.json").read_text())
+    doc["title"] = "Renamed"
+
+    def boom(*_args, **_kwargs):
+        raise OSError("disk full (simulated)")
+
+    monkeypatch.setattr(session_module.os, "replace", boom)
+
+    with pytest.raises(OSError):
+        session.write_tour(doc)
+
+    # The previous tour.json is untouched, byte for byte, and still parses.
+    assert (session.path / "tour.json").read_bytes() == original_bytes
+    assert session.tour().title == "Original"
+    # The temp file that never got to replace it is cleaned up too.
+    assert _no_tmp_leftovers(session.path)

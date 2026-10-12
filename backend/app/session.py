@@ -8,7 +8,9 @@ writes through to it immediately. The zip is only its portable form.
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import tempfile
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -16,6 +18,36 @@ from pydantic import ValidationError
 from .bundle import BUNDLE_VERSION, read_bundle
 from .migration import migrate_v1_to_v2
 from .models import Tour
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write `text` to `path` so a crash mid-write can never leave `path`
+    truncated or otherwise corrupted.
+
+    `Path.write_text` truncates the file in place: a process death between
+    the truncation and the write completing leaves an unparseable file
+    behind. Writing to a sibling temp file and swapping it in with
+    `os.replace` avoids that window, because the replace is a single atomic
+    rename — but only because the temp file is a SIBLING (same directory,
+    same filesystem) of `path` rather than one in `$TMPDIR`, which may be a
+    different filesystem where no such atomicity guarantee holds.
+
+    This covers crash-during-write. It does not, and cannot, guarantee the
+    CONTENT being written is valid — callers that care about that (see
+    `Session.write_tour`) must validate before calling this.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(tmp_path, path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def skeleton(title: str) -> dict:
@@ -67,14 +99,21 @@ class Session:
         return self.write_tour(doc)
 
     def write_tour(self, doc: dict) -> Tour:
-        """Validate, then persist. Validation first means tour.json on disk
-        always parses — the editor can crash mid-edit without corrupting it."""
+        """Validate, then persist atomically.
+
+        Validation first means an invalid document is never written at
+        all — tour.json on disk is always SCHEMA-valid. Writing through
+        `_atomic_write_text` additionally means tour.json on disk always
+        PARSES, because a crash mid-write lands on the old file or the new
+        one, never a half-written mix of both; a plain `write_text` could
+        not make that second promise, since it truncates in place.
+        """
         try:
             tour = Tour.model_validate(doc)
         except ValidationError as exc:
             raise ValueError(str(exc)) from exc
         self.path.mkdir(parents=True, exist_ok=True)
-        (self.path / "tour.json").write_text(json.dumps(doc, indent=2) + "\n")
+        _atomic_write_text(self.path / "tour.json", json.dumps(doc, indent=2) + "\n")
         return tour
 
     def replace_from(self, zip_path: Path) -> list[str]:
@@ -83,7 +122,10 @@ class Session:
         return read_bundle(zip_path, self.path)
 
     def write_config(self, cfg: dict) -> None:
-        (self.path / "config.json").write_text(json.dumps(cfg, indent=2) + "\n")
+        """Persist the viewer's config atomically — see `_atomic_write_text`.
+        A half-written config.json breaks the viewer just as thoroughly as a
+        half-written tour.json breaks the editor."""
+        _atomic_write_text(self.path / "config.json", json.dumps(cfg, indent=2) + "\n")
 
     def summary(self) -> dict:
         if not self.is_open:
@@ -100,5 +142,8 @@ class Session:
         }
 
     def _write_bundle_json(self, tour_id: str) -> None:
-        (self.path / "bundle.json").write_text(json.dumps(
-            {"bundleVersion": BUNDLE_VERSION, "tourId": tour_id}, indent=2) + "\n")
+        _atomic_write_text(
+            self.path / "bundle.json",
+            json.dumps({"bundleVersion": BUNDLE_VERSION, "tourId": tour_id}, indent=2)
+            + "\n",
+        )
