@@ -104,7 +104,7 @@ describe('alignModeEnabled', () => {
 });
 
 describe('alignTarget', () => {
-  function rephoto(id: string): Overlay {
+  function photo(id: string): Overlay {
     return {
       id, kind: 'image',
       anchor: { type: 'geo', lng: -77.3, lat: 38.84, altitudeM: 6 },
@@ -114,7 +114,7 @@ describe('alignTarget', () => {
     };
   }
 
-  const photos = [rephoto('court-1863'), rephoto('court-1918')];
+  const photos = [photo('court-1863'), photo('court-1918')];
 
   it('aligns the selected photograph', () => {
     // The bug: arrow keys always moved the first photograph, so the second

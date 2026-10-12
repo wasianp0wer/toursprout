@@ -1,11 +1,11 @@
 import type { OverlayMarker, PanoramaViewer } from './panorama-viewer';
-import type { InWorldPlacement } from './rephoto-placement';
+import type { InWorldPlacement } from './in-world-placement';
 
 /** Records interactions so component behaviour can be asserted without WebGL. */
 export class FakeViewer implements PanoramaViewer {
   loaded: { imageId: string; bearing: number }[] = [];
   markers: OverlayMarker[][] = [];
-  rephotos: InWorldPlacement[][] = [];
+  inWorldPlacements: InWorldPlacement[][] = [];
   opacity: Record<string, number> | null = null;
   destinationBearing: number | null = null;
   destroyed = false;
@@ -41,11 +41,11 @@ export class FakeViewer implements PanoramaViewer {
     this.markerHandler?.(id);
   }
 
-  setRephotos(rephotos: InWorldPlacement[]): void {
-    this.rephotos.push(rephotos);
+  setInWorldPlacements(placements: InWorldPlacement[]): void {
+    this.inWorldPlacements.push(placements);
   }
 
-  setRephotoOpacity(opacities: Record<string, number>): void {
+  setInWorldOpacity(opacities: Record<string, number>): void {
     this.opacity = opacities;
   }
 

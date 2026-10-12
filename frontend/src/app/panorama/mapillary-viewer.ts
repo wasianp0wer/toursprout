@@ -7,9 +7,9 @@ import {
 } from 'mapillary-js';
 import { pickEdgeToward, type DirectionEdge } from './edge-picker';
 import type { OverlayMarker, PanoramaViewer } from './panorama-viewer';
-import type { InWorldPlacement } from './rephoto-placement';
+import type { InWorldPlacement } from './in-world-placement';
 import { diagnosticsEnabled } from './diagnostics';
-import { RephotoRenderer } from './rephoto-renderer';
+import { InWorldRenderer } from './in-world-renderer';
 
 const SELECTED = '#e8b04b';
 const UNSELECTED = '#2f7fd4';
@@ -35,7 +35,7 @@ export class MapillaryViewer implements PanoramaViewer {
   private viewer: Viewer | null = null;
   private markerComponent: MarkerComponent | null = null;
   private directionComponent: DirectionComponent | null = null;
-  private rephotoRenderer: RephotoRenderer | null = null;
+  private inWorldRenderer: InWorldRenderer | null = null;
 
   private destinationBearing: number | null = null;
   private latestEdges: DirectionEdge[] = [];
@@ -53,10 +53,10 @@ export class MapillaryViewer implements PanoramaViewer {
     this.markerComponent = this.viewer.getComponent('marker') as MarkerComponent;
     this.directionComponent = this.viewer.getComponent('direction') as DirectionComponent;
 
-    this.rephotoRenderer = new RephotoRenderer(
+    this.inWorldRenderer = new InWorldRenderer(
       typeof location === 'undefined' ? false : diagnosticsEnabled(location.search),
     );
-    this.viewer.addCustomRenderer(this.rephotoRenderer);
+    this.viewer.addCustomRenderer(this.inWorldRenderer);
 
     this.viewer.on('click', (event) => {
       const point = event.pixelPoint;
@@ -138,13 +138,13 @@ export class MapillaryViewer implements PanoramaViewer {
     this.markerHandler = handler;
   }
 
-  setRephotos(rephotos: InWorldPlacement[]): void {
-    this.rephotoRenderer?.setRephotos(rephotos);
+  setInWorldPlacements(placements: InWorldPlacement[]): void {
+    this.inWorldRenderer?.setPlacements(placements);
     this.requestRedraw();
   }
 
-  setRephotoOpacity(opacities: Record<string, number>): void {
-    this.rephotoRenderer?.setOpacity(opacities);
+  setInWorldOpacity(opacities: Record<string, number>): void {
+    this.inWorldRenderer?.setOpacity(opacities);
     this.requestRedraw();
   }
 
@@ -152,9 +152,9 @@ export class MapillaryViewer implements PanoramaViewer {
    * Ask the viewer to draw another frame.
    *
    * mapillary-js renders on demand, and custom renderers are only invoked
-   * during its own redraws. Without this, changing a rephoto or moving the
-   * opacity slider has no visible effect until the user happens to drag the
-   * panorama.
+   * during its own redraws. Without this, changing an in-world placement or
+   * moving the opacity slider has no visible effect until the user happens to
+   * drag the panorama.
    */
   private requestRedraw(): void {
     this.viewer?.triggerRerender();
@@ -172,10 +172,10 @@ export class MapillaryViewer implements PanoramaViewer {
   }
 
   destroy(): void {
-    if (this.viewer && this.rephotoRenderer) {
-      this.viewer.removeCustomRenderer(this.rephotoRenderer.id);
+    if (this.viewer && this.inWorldRenderer) {
+      this.viewer.removeCustomRenderer(this.inWorldRenderer.id);
     }
-    this.rephotoRenderer = null;
+    this.inWorldRenderer = null;
     this.directionComponent = null;
     this.viewer?.remove();
     this.viewer = null;

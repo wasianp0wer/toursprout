@@ -1,7 +1,7 @@
 /**
  * Opt-in renderer tracing, enabled with ?diag=1.
  *
- * The rephoto renderer runs inside a WebGL context that cannot be inspected
+ * The in-world renderer runs inside a WebGL context that cannot be inspected
  * from the build environment, so its boundaries report themselves instead:
  * whether it was added, what reference frame it got, where the planes landed,
  * and where the camera thinks it is.
@@ -24,12 +24,12 @@ export function createDiagnostics(enabled: boolean): Diagnostics {
     log(label, detail) {
       // Stringify rather than pass the object: console readers collapse
       // objects to "Object", which hides exactly the numbers being traced.
-      console.log(`[rephoto] ${label} ${detail === undefined ? '' : JSON.stringify(detail)}`);
+      console.log(`[in-world] ${label} ${detail === undefined ? '' : JSON.stringify(detail)}`);
     },
     once(label, detail) {
       if (seen.has(label)) return;
       seen.add(label);
-      console.log(`[rephoto] ${label} ${detail === undefined ? '' : JSON.stringify(detail)}`);
+      console.log(`[in-world] ${label} ${detail === undefined ? '' : JSON.stringify(detail)}`);
     },
   };
 }

@@ -5,7 +5,7 @@ import { FakeViewer } from './fake-viewer';
 import { TourStore } from '../core/tour-store';
 import type { Overlay, Tour } from '../core/tour.models';
 
-const REPHOTO_OVERLAY: Overlay = {
+const IN_WORLD_OVERLAY: Overlay = {
   id: 'court-1863',
   kind: 'image',
   anchor: {
@@ -35,7 +35,7 @@ const AMBIENT_OVERLAY: Overlay = {
 };
 
 const INWORLD_NO_MEDIA: Overlay = {
-  ...REPHOTO_OVERLAY,
+  ...IN_WORLD_OVERLAY,
   id: 'no-media',
   mediaId: null,
 };
@@ -143,35 +143,35 @@ describe('PanoramaPane', () => {
     expect(fake.destroyed).toBe(true);
   });
 
-  it('sends rephoto placements to the viewer', async () => {
+  it('sends in-world placements to the viewer', async () => {
     const t = tour();
-    t.stops[0].overlays = [...t.stops[0].overlays, REPHOTO_OVERLAY];
+    t.stops[0].overlays = [...t.stops[0].overlays, IN_WORLD_OVERLAY];
     store.load(t);
     await render();
-    const sent = fake.rephotos.at(-1)!;
+    const sent = fake.inWorldPlacements.at(-1)!;
     expect(sent).toHaveLength(1);
     expect(sent[0].id).toBe('court-1863');
     expect(sent[0].imageUrl).toBe('/api/media/court-1863.jpg');
     expect(sent[0].headingDeg).toBe(200);
   });
 
-  it('sends no rephotos for a stop that has none', async () => {
+  it('sends no in-world placements for a stop that has none', async () => {
     store.load(tour());
     await render();
-    expect(fake.rephotos.at(-1)).toEqual([]);
+    expect(fake.inWorldPlacements.at(-1)).toEqual([]);
   });
 
-  it('does not send point overlays as rephotos', async () => {
+  it('does not send point overlays as in-world placements', async () => {
     const t = tour();
-    t.stops[0].overlays = [...t.stops[0].overlays, REPHOTO_OVERLAY];
+    t.stops[0].overlays = [...t.stops[0].overlays, IN_WORLD_OVERLAY];
     store.load(t);
     await render();
-    expect(fake.rephotos.at(-1)!.map((r) => r.id)).toEqual(['court-1863']);
+    expect(fake.inWorldPlacements.at(-1)!.map((r) => r.id)).toEqual(['court-1863']);
   });
 
-  it('does not place a marker for a rephoto', async () => {
+  it('does not place a marker for an in-world photograph', async () => {
     const t = tour();
-    t.stops[0].overlays = [...t.stops[0].overlays, REPHOTO_OVERLAY];
+    t.stops[0].overlays = [...t.stops[0].overlays, IN_WORLD_OVERLAY];
     store.load(t);
     await render();
     expect(fake.markers.at(-1)!.map((m) => m.id)).not.toContain('court-1863');
@@ -188,15 +188,15 @@ describe('PanoramaPane', () => {
     const markerIds = fake.markers.at(-1)!.map((m) => m.id);
     expect(markerIds).toContain('ov-1');
     expect(markerIds).not.toContain('ambient-1');
-    expect(fake.rephotos.at(-1)!.map((r) => r.id)).not.toContain('ambient-1');
+    expect(fake.inWorldPlacements.at(-1)!.map((r) => r.id)).not.toContain('ambient-1');
   });
 
   it('skips an inWorld overlay with no mediaId rather than placing a broken image', async () => {
     const t = tour();
-    t.stops[0].overlays = [...t.stops[0].overlays, REPHOTO_OVERLAY, INWORLD_NO_MEDIA];
+    t.stops[0].overlays = [...t.stops[0].overlays, IN_WORLD_OVERLAY, INWORLD_NO_MEDIA];
     store.load(t);
     await expect(render()).resolves.toBeTruthy();
-    const placements = fake.rephotos.at(-1)!;
+    const placements = fake.inWorldPlacements.at(-1)!;
     expect(placements.map((p) => p.id)).toEqual(['court-1863']);
     expect(placements.map((p) => p.id)).not.toContain('no-media');
   });
@@ -240,9 +240,10 @@ describe('PanoramaPane', () => {
 
   it('pushes opacity to the viewer on first render, not only on change', async () => {
     // If opacity only reached the renderer when a slider moved, every
-    // rephoto would start fully transparent and look like a missing image.
+    // in-world photograph would start fully transparent and look like a
+    // missing image.
     const t = tour();
-    t.stops[0].overlays = [...t.stops[0].overlays, REPHOTO_OVERLAY];
+    t.stops[0].overlays = [...t.stops[0].overlays, IN_WORLD_OVERLAY];
     store.load(t);
     await render();
     expect(fake.opacity).not.toBeNull();
@@ -251,7 +252,7 @@ describe('PanoramaPane', () => {
 
   it('pushes a per-photograph opacity change down to the viewer', async () => {
     const t = tour();
-    t.stops[0].overlays = [...t.stops[0].overlays, REPHOTO_OVERLAY];
+    t.stops[0].overlays = [...t.stops[0].overlays, IN_WORLD_OVERLAY];
     store.load(t);
     const fixture = await render();
     store.setOverlayOpacity('court-1863', 0.25);

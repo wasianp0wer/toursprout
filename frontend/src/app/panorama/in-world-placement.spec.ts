@@ -3,9 +3,9 @@ import { Euler, Vector3 } from 'three';
 import {
   geodeticAltitude,
   planeTransform,
-  rephotoMaterialOptions,
+  inWorldMaterialOptions,
   type InWorldPlacement,
-} from './rephoto-placement';
+} from './in-world-placement';
 
 function placement(over: Partial<InWorldPlacement> = {}): InWorldPlacement {
   return {
@@ -108,22 +108,22 @@ describe('geodeticAltitude', () => {
   });
 });
 
-describe('rephotoMaterialOptions', () => {
+describe('inWorldMaterialOptions', () => {
   it('renders both sides so a grazing angle does not cull the photograph', () => {
     // DoubleSide is 2 in three.js. FrontSide (0) makes the plane vanish as
     // soon as the viewer is behind its normal.
-    expect(rephotoMaterialOptions(0.7).side).toBe(2);
+    expect(inWorldMaterialOptions(0.7).side).toBe(2);
   });
 
   it('carries the requested opacity', () => {
-    expect(rephotoMaterialOptions(0.42).opacity).toBeCloseTo(0.42, 6);
+    expect(inWorldMaterialOptions(0.42).opacity).toBeCloseTo(0.42, 6);
   });
 
   it('is transparent so the present view shows through', () => {
-    expect(rephotoMaterialOptions(0.7).transparent).toBe(true);
+    expect(inWorldMaterialOptions(0.7).transparent).toBe(true);
   });
 
   it('does not write depth, so it cannot occlude the panorama', () => {
-    expect(rephotoMaterialOptions(0.7).depthWrite).toBe(false);
+    expect(inWorldMaterialOptions(0.7).depthWrite).toBe(false);
   });
 });

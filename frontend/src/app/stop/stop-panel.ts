@@ -57,17 +57,17 @@ import { TourStore } from '../core/tour-store';
       }
 
       @if (store.hasInWorldOverlays()) {
-        <div class="rephoto-control">
-          <p class="rephoto-heading">Then and now</p>
+        <div class="in-world-control">
+          <p class="in-world-heading">Then and now</p>
           @for (photo of store.inWorldOverlays(); track photo.id) {
-            <div class="rephoto-slider" data-rephoto-slider>
+            <div class="in-world-slider" data-in-world-slider>
               <label [for]="'opacity-' + photo.id">{{ photo.title }}</label>
               <div class="slider-row">
                 <span>now</span>
                 <input
                   [id]="'opacity-' + photo.id"
-                  data-rephoto-opacity
-                  [attr.data-rephoto-id]="photo.id"
+                  data-in-world-opacity
+                  [attr.data-in-world-id]="photo.id"
                   type="range"
                   min="0" max="1" step="0.01"
                   [value]="store.opacityFor(photo.id)"

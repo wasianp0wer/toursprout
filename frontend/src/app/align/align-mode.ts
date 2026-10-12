@@ -73,13 +73,13 @@ export function nudgeAnchor(anchor: InWorldPlacementLike, key: string): InWorldP
 /**
  * Which photograph the arrow keys move.
  *
- * Selecting a rephoto row in the stop panel chooses it; otherwise the first is
- * aligned. Without this the keys always moved the first photograph, leaving
- * any others impossible to position.
+ * Selecting a photograph row in the stop panel chooses it; otherwise the
+ * first is aligned. Without this the keys always moved the first photograph,
+ * leaving any others impossible to position.
  */
-export function alignTarget(rephotos: Overlay[], selectedId: string | null): Overlay | null {
-  if (rephotos.length === 0) return null;
-  return rephotos.find((o) => o.id === selectedId) ?? rephotos[0];
+export function alignTarget(overlays: Overlay[], selectedId: string | null): Overlay | null {
+  if (overlays.length === 0) return null;
+  return overlays.find((o) => o.id === selectedId) ?? overlays[0];
 }
 
 export function alignModeEnabled(search: string): boolean {
@@ -105,7 +105,7 @@ export function alignModeEnabled(search: string): boolean {
         <button type="button" data-align-copy (click)="copy()">copy anchor JSON</button>
       </aside>
     } @else {
-      <aside class="align" data-align-panel><p>No rephoto on this stop to align.</p></aside>
+      <aside class="align" data-align-panel><p>No photograph on this stop to align.</p></aside>
     }
   `,
   styles: [`

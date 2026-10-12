@@ -19,9 +19,9 @@ import { createDiagnostics, type Diagnostics } from './diagnostics';
 import {
   geodeticAltitude,
   planeTransform,
-  rephotoMaterialOptions,
+  inWorldMaterialOptions,
   type InWorldPlacement,
-} from './rephoto-placement';
+} from './in-world-placement';
 
 /**
  * Draws historical photographs as planes standing in the world.
@@ -31,8 +31,8 @@ import {
  * deliberately not installed separately: two three.js copies sharing one WebGL
  * context fail in ways that are hard to diagnose.
  */
-export class RephotoRenderer implements ICustomRenderer {
-  readonly id = 'rephoto-renderer';
+export class InWorldRenderer implements ICustomRenderer {
+  readonly id = 'in-world-renderer';
   readonly renderPass = RenderPass.Opaque;
 
   private renderer: WebGLRenderer | null = null;
@@ -51,7 +51,7 @@ export class RephotoRenderer implements ICustomRenderer {
     if (diagnosticsOn && typeof window !== 'undefined') {
       // Diagnostics only: lets the scene graph be interrogated from the
       // console, since a WebGL scene cannot be inspected any other way.
-      (window as unknown as { __rephoto?: unknown }).__rephoto = this;
+      (window as unknown as { __inWorld?: unknown }).__inWorld = this;
     }
   }
 
@@ -116,8 +116,8 @@ export class RephotoRenderer implements ICustomRenderer {
     this.renderer = null;
   }
 
-  setRephotos(placements: InWorldPlacement[]): void {
-    this.diag.log('setRephotos', {
+  setPlacements(placements: InWorldPlacement[]): void {
+    this.diag.log('setPlacements', {
       count: placements.length,
       ids: placements.map((p) => p.id),
       haveReference: this.reference !== null,
@@ -190,7 +190,7 @@ export class RephotoRenderer implements ICustomRenderer {
       ) as [number, number, number];
 
       const transform = planeTransform(placement, enu);
-      const material = new MeshBasicMaterial(rephotoMaterialOptions(this.opacityOf(placement.id)));
+      const material = new MeshBasicMaterial(inWorldMaterialOptions(this.opacityOf(placement.id)));
 
       // A texture that fails to load leaves an untextured plane rather than
       // breaking the tour.
@@ -206,7 +206,7 @@ export class RephotoRenderer implements ICustomRenderer {
         },
         undefined,
         (err) => {
-          console.warn(`rephoto texture failed to load: ${placement.imageUrl}`, err);
+          console.warn(`in-world texture failed to load: ${placement.imageUrl}`, err);
           this.diag.log('texture failed', placement.imageUrl);
         },
       );

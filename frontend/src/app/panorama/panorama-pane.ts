@@ -12,7 +12,7 @@ import { ConfigStore } from '../core/config-store';
 import { TourApi } from '../core/tour-api';
 import { TourStore } from '../core/tour-store';
 import type { OverlayMarker } from './panorama-viewer';
-import type { InWorldPlacement } from './rephoto-placement';
+import type { InWorldPlacement } from './in-world-placement';
 import { MapillaryViewer } from './mapillary-viewer';
 import type { PanoramaViewer } from './panorama-viewer';
 
@@ -112,14 +112,14 @@ export class PanoramaPane {
       // effect of each keypress without a reload. Match by id: matching by
       // position meant only the first photograph could ever be aligned.
       const override = this.store.alignmentOverride();
-      this.viewer.setRephotos(
+      this.viewer.setInWorldPlacements(
         override
           ? placements.map((r) => (r.id === override.id ? { ...r, ...override.anchor } : r))
           : placements,
       );
     });
 
-    effect(() => this.viewer.setRephotoOpacity(this.store.overlayOpacities()));
+    effect(() => this.viewer.setInWorldOpacity(this.store.overlayOpacities()));
 
     effect(() => this.viewer.setDestinationBearing(this.store.bearingToNextStop()));
   }

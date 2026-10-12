@@ -28,7 +28,7 @@ describe('createDiagnostics', () => {
   it('logs when enabled', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     createDiagnostics(true).log('hello', { a: 1 });
-    expect(spy).toHaveBeenCalledWith('[rephoto] hello {"a":1}');
+    expect(spy).toHaveBeenCalledWith('[in-world] hello {"a":1}');
     spy.mockRestore();
   });
 

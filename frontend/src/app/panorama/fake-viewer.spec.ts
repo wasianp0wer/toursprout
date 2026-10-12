@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { FakeViewer } from './fake-viewer';
-import type { InWorldPlacement } from './rephoto-placement';
+import type { InWorldPlacement } from './in-world-placement';
 
-const REPHOTO: InWorldPlacement = {
+const PLACEMENT: InWorldPlacement = {
   id: 'court-1863', imageUrl: '/api/media/court-1863.jpg',
   lng: -77.30732, lat: 38.84562, altitudeM: 6,
   headingDeg: 200, widthM: 18, heightM: 14,
 };
 
 describe('FakeViewer', () => {
-  it('records rephotos', () => {
+  it('records in-world placements', () => {
     const v = new FakeViewer();
-    v.setRephotos([REPHOTO]);
-    expect(v.rephotos.at(-1)).toEqual([REPHOTO]);
+    v.setInWorldPlacements([PLACEMENT]);
+    expect(v.inWorldPlacements.at(-1)).toEqual([PLACEMENT]);
   });
 
   it('records opacity per photograph', () => {
     const v = new FakeViewer();
-    v.setRephotoOpacity({ 'court-1863': 0.4, 'court-1918': 0 });
+    v.setInWorldOpacity({ 'court-1863': 0.4, 'court-1918': 0 });
     expect(v.opacity).toEqual({ 'court-1863': 0.4, 'court-1918': 0 });
   });
 

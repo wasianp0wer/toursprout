@@ -77,7 +77,7 @@ export function geodeticAltitude(anchorAltitude: number, referenceAltitude: numb
  * authored by eye it will often be roughly edge-on. A photograph standing in
  * the world should be legible from either side rather than disappearing.
  */
-export function rephotoMaterialOptions(opacity: number) {
+export function inWorldMaterialOptions(opacity: number) {
   return {
     transparent: true,
     opacity,
