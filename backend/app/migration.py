@@ -66,6 +66,12 @@ def _migrate_overlays(overlays: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _rephoto_to_in_world(ov: dict[str, Any], index: int) -> dict[str, Any]:
     anchor = ov["anchor"]
+    for field in ("headingDeg", "widthM", "heightM"):
+        if field not in anchor:
+            raise ValueError(
+                f"overlay {ov.get('id')!r} is a rephoto but its anchor has no "
+                f"{field!r}; a plain geo anchor cannot migrate to an inWorld display"
+            )
     return {
         "id": ov["id"],
         "kind": "image",

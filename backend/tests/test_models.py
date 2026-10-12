@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from typing import get_args
+
 import pytest
 from pydantic import ValidationError
 
-from app.models import GeoAnchor, Overlay, Stop, Tour
+from app import models
+from app.models import DISPLAY_MODES_BY_KIND, GeoAnchor, Overlay, Stop, Tour
 
 VALID_CREDIT = {
     "type": "sourced",
@@ -76,7 +79,10 @@ def test_valid_tour_parses():
     assert tour.stops[0].overlays[0].credit.source == "Library of Congress"
 
 
-def test_geo_anchor_is_discriminated_by_type():
+def test_geo_anchor_round_trips_its_type_literal():
+    """`Anchor` is a plain alias for `GeoAnchor` today, not a discriminated
+    union (pydantic's `discriminator` requires 2+ members) — this only checks
+    that the literal `type` field parses and reads back."""
     anchor = GeoAnchor.model_validate(
         {"type": "geo", "lng": -77.3, "lat": 38.8, "altitudeM": 2.0})
     assert anchor.type == "geo"
@@ -275,3 +281,12 @@ def test_schema_version_one_is_rejected_by_the_model():
 
 def test_a_stop_may_have_no_overlays():
     assert Stop.model_validate(_stop(overlays=[])).overlays == []
+
+
+def test_display_modes_table_covers_every_kind():
+    """A fourth `kind` added without a matching DISPLAY_MODES_BY_KIND row must
+    fail loudly as a ValidationError, not a bare KeyError out of the
+    validator. This pins the table's keys to the Literal's members so the two
+    cannot silently drift apart."""
+    kind_literal = models.Overlay.model_fields["kind"].annotation
+    assert set(DISPLAY_MODES_BY_KIND.keys()) == set(get_args(kind_literal))

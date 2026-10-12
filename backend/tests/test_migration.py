@@ -116,6 +116,18 @@ def test_migrating_a_v2_document_is_a_no_op():
     assert twice == once
 
 
+def test_rephoto_with_a_plain_geo_anchor_is_refused_loudly():
+    """A v1 rephoto's anchor should always be a geoQuad carrying headingDeg,
+    widthM and heightM, but the migration must not trust that unconditionally:
+    a plain `geo` anchor on a rephoto must raise a clear error naming the
+    overlay, not a bare KeyError."""
+    bad = {"id": "r-bad", "kind": "rephoto",
+           "anchor": {"type": "geo", "lng": -77.3, "lat": 38.84, "altitude": 4.0},
+           "title": "Photo", "body": None, "mediaId": "r-bad.jpg", "credit": V1_CREDIT}
+    with pytest.raises(ValueError, match="r-bad"):
+        migrate_v1_to_v2(_v1_doc([bad]))
+
+
 def test_unknown_kind_is_refused_loudly():
     bad = {"id": "x", "kind": "hologram",
            "anchor": {"type": "geo", "lng": 0.0, "lat": 0.0, "altitude": 0.0},

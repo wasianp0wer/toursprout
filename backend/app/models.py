@@ -157,7 +157,9 @@ class Overlay(Strict):
             raise ValueError("text overlays require a body")
         if self.kind in ("image", "audio") and not self.media_id:
             raise ValueError(f"{self.kind} overlays require a mediaId")
-        allowed = DISPLAY_MODES_BY_KIND[self.kind]
+        allowed = DISPLAY_MODES_BY_KIND.get(self.kind)
+        if allowed is None:
+            raise ValueError(f"no display modes are configured for kind {self.kind!r}")
         if self.display.mode not in allowed:
             raise ValueError(
                 f"{self.kind} overlays cannot be displayed as "
@@ -171,8 +173,8 @@ class TourDefaults(Strict):
     """Pre-fills an OriginalCredit when the author adds their own work, so
     recording a clip does not mean retyping your own name."""
 
-    creator: str = Field(min_length=1)
-    license: str = Field(min_length=1)
+    creator: NonBlank
+    license: NonBlank
 
 
 class Panorama(Strict):
