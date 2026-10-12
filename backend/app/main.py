@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shutil
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -63,7 +65,11 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:4200"],
-        allow_methods=["GET"],
+        # The session routes added in Task 2 are mutating (POST/PUT), so a
+        # browser preflights them; GET-only here would refuse every one of
+        # them from day one, with three more tasks before Task 4's planned
+        # widening. Widening now removes no behaviour, so it stays additive.
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["*"],
     )
 
@@ -154,12 +160,29 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     @app.post("/api/session/import")
     async def import_bundle(file: UploadFile) -> dict:
         session = app.state.session
-        # Spool to disk rather than holding the archive in memory: the caps in
-        # bundle.py are about what is INSIDE the zip, and a bundle with media
-        # is tens of megabytes.
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-            tmp.write(await file.read())
-            staged = Path(tmp.name)
+        # Spool to disk with a genuine streaming copy: `UploadFile.file` is
+        # the underlying spooled file FastAPI already parsed the upload into,
+        # and `copyfileobj` moves it to our own temp file in chunks rather
+        # than materialising the whole archive as one `bytes` object first —
+        # the caps in bundle.py are about what is INSIDE the zip, and a
+        # bundle with media is tens of megabytes, which must never be held
+        # in memory all at once.
+        #
+        # The temp file's lifetime is guarded from the moment it is
+        # created — `mkstemp` plus this `try` — rather than from inside a
+        # `with` block, so a failure during the copy itself (disk full, I/O
+        # error) still unlinks the file and surfaces as an ordinary 400
+        # instead of leaking the file and crashing the route as a 500.
+        fd, tmp_name = tempfile.mkstemp(suffix=".zip")
+        staged = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "wb") as tmp:
+                shutil.copyfileobj(file.file, tmp)
+        except OSError as exc:
+            staged.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=400, detail=f"could not save the upload: {exc}"
+            ) from exc
         try:
             warnings = session.replace_from(staged)
         except BundleError as exc:
