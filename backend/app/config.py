@@ -24,5 +24,9 @@ class Settings(BaseSettings):
     def tours_dir(self) -> Path:
         return self.content_dir / "tours"
 
+    @property
+    def work_dir(self) -> Path:
+        return self.content_dir / "work"
+
 
 settings = Settings()

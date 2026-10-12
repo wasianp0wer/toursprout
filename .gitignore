@@ -16,3 +16,4 @@ frontend/playwright-report/
 .ruff_cache/
 backend/.ruff_cache/
 backend/.pytest_cache/
+content/work/
