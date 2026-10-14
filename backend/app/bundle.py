@@ -44,16 +44,31 @@ def write_bundle(work: Path, zip_path: Path) -> None:
     """Zip a working directory. Deflate: media is already compressed, but the
     document and any SVG are not, and the cost is negligible at this size.
 
-    Dotfiles (`.DS_Store` and the like) are never picked up: they are the
-    filesystem's business, not the tour's, and have no place in something
-    an author will later re-import.
+    Dotfiles (`.DS_Store` and the like) are never picked up, and that check
+    is applied to every PART of the relative path, not just the file's own
+    name — a leaf-only check would miss a dotfile sitting inside a hidden
+    directory (`.git/config` has a leaf name of `config`). They are the
+    filesystem's business, not the tour's, and have no place in something an
+    author will later re-import.
+
+    `config.json` is excluded too. It is derived state (rebuilt from the
+    backend's own settings every time a session opens or publishes), not
+    part of the document, and was never meant to be the bundle's undocumented
+    fourth member. `publish.py` still emits it for a published site, which is
+    the one place it belongs.
     """
     work = Path(work)
     zip_path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(work.rglob("*")):
-            if path.is_file() and not path.name.startswith("."):
-                zf.write(path, path.relative_to(work).as_posix())
+            if not path.is_file():
+                continue
+            rel = path.relative_to(work)
+            if any(part.startswith(".") for part in rel.parts):
+                continue
+            if rel.as_posix() == "config.json":
+                continue
+            zf.write(path, rel.as_posix())
 
 
 def read_bundle(zip_path: Path, dest: Path) -> list[str]:
@@ -144,11 +159,11 @@ def _extract_safely(zf: zipfile.ZipFile, staging: Path) -> None:
     total = 0
     for info in zf.infolist():
         target = staging / info.filename
-        if info.filename.endswith("/"):
-            target.mkdir(parents=True, exist_ok=True)
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
         try:
+            if info.filename.endswith("/"):
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info) as src, open(target, "wb") as dst:
                 while True:
                     chunk = src.read(chunk_size)
@@ -177,6 +192,17 @@ def _extract_safely(zf: zipfile.ZipFile, staging: Path) -> None:
             raise BundleError(
                 f"{info.filename!r} is corrupt, or its declared size does "
                 f"not match its real contents: {exc}"
+            ) from exc
+        except OSError as exc:
+            # An entry named `.`, a file/directory name collision (e.g.
+            # `media/x` then `media/x/y.jpg`), or a name past the
+            # filesystem's length limit (ENAMETOOLONG) all surface here as
+            # OSError from `mkdir`/`open` rather than from the zip-reading
+            # code above. Without this, any of those turns an untrusted
+            # upload into an unhandled 500 instead of the ordinary 400
+            # `BundleError` this function's callers are promised.
+            raise BundleError(
+                f"could not extract {info.filename!r}: {exc}"
             ) from exc
 
 
@@ -225,7 +251,90 @@ def _swap_in(staging: Path, dest: Path) -> None:
         shutil.rmtree(outgoing)
 
 
+# The bundle format, per docs/superpowers/specs/2026-10-12-bundle-and-publish-
+# design.md, is exactly these three root files plus `media/`. Everything in
+# the working directory is later copied straight onto the author's own
+# published origin by publish.py, so an archive that smuggled in, say,
+# `evil.html` or `payload.js` would plant it there. Nothing short of an
+# explicit allow-list closes that off, because "reject known-bad names" is a
+# losing game against an attacker who picks the name.
+_ALLOWED_ROOT_FILES = {"bundle.json", "tour.json", "config.json"}
+
+
+def _check_allowed_contents(root: Path) -> None:
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root)
+        if rel.parts[0] == "media":
+            continue
+        if len(rel.parts) == 1 and rel.parts[0] in _ALLOWED_ROOT_FILES:
+            continue
+        raise BundleError(f"bundle contains an unexpected file: {rel.as_posix()}")
+
+
+def _check_bundle_version(root: Path) -> None:
+    """Refuse a bundle whose container format is newer than this build
+    understands. `bundleVersion` is independent of `schemaVersion` — see the
+    module docstring — so this is a separate check from the `tour.json`
+    migration below.
+
+    A bundle with no `bundle.json` at all still imports: it predates this
+    file existing in exports at all (every export before this sub-project),
+    and refusing it would be a regression, not a safety improvement.
+    """
+    bundle_json = root / "bundle.json"
+    if not bundle_json.is_file():
+        return
+    try:
+        meta = json.loads(bundle_json.read_text())
+    except json.JSONDecodeError as exc:
+        raise BundleError(f"bundle.json is not valid JSON: {exc}") from exc
+    version = meta.get("bundleVersion")
+    if isinstance(version, int) and version > BUNDLE_VERSION:
+        raise BundleError(
+            f"this bundle needs bundleVersion {version}, but this build "
+            f"only understands up to {BUNDLE_VERSION}"
+        )
+
+
+def _media_sets(tour: Tour, media_dir: Path) -> tuple[set[str], set[str]]:
+    """`(present, referenced)` media names, as POSIX paths relative to
+    `media/`. Walked recursively — not just the immediate children — so a
+    nested layout like `media/pano/pano-historic-courthouse.jpg` (the
+    spec's own example) is visible to both the referenced-media check below
+    and `missing_media`, rather than only the top-level entry `pano` ever
+    being seen."""
+    present = (
+        {p.relative_to(media_dir).as_posix() for p in media_dir.rglob("*") if p.is_file()}
+        if media_dir.is_dir()
+        else set()
+    )
+    referenced = {
+        ov.media_id for stop in tour.stops for ov in stop.overlays if ov.media_id
+    }
+    return present, referenced
+
+
+def missing_media(root: Path) -> list[str]:
+    """Names the open tour's document references under `media/` that are not
+    actually there. Shared by import's `_validate_tree` below and the export
+    route in `main.py`: without this, only import enforced "every referenced
+    mediaId exists", so a broken save could sit in the working directory
+    indefinitely and the author would only learn of it when they tried to
+    reopen the bundle they had just exported.
+    """
+    root = Path(root)
+    raw = json.loads((root / "tour.json").read_text())
+    tour = Tour.model_validate(migrate_v1_to_v2(raw))
+    present, referenced = _media_sets(tour, root / "media")
+    return sorted(referenced - present)
+
+
 def _validate_tree(root: Path) -> list[str]:
+    _check_allowed_contents(root)
+    _check_bundle_version(root)
+
     tour_path = root / "tour.json"
     if not tour_path.is_file():
         raise BundleError("the archive has no tour.json at its root")
@@ -249,11 +358,7 @@ def _validate_tree(root: Path) -> list[str]:
     # nothing downstream has to migrate again.
     tour_path.write_text(json.dumps(doc, indent=2) + "\n")
 
-    media_dir = root / "media"
-    present = {p.name for p in media_dir.iterdir()} if media_dir.is_dir() else set()
-    referenced = {
-        ov.media_id for stop in tour.stops for ov in stop.overlays if ov.media_id
-    }
+    present, referenced = _media_sets(tour, root / "media")
 
     missing = sorted(referenced - present)
     if missing:

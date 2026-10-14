@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 import app.bundle as bundle_module
-from app.bundle import BUNDLE_VERSION, BundleError, read_bundle, write_bundle
+from app.bundle import BUNDLE_VERSION, BundleError, missing_media, read_bundle, write_bundle
 from app.models import Tour
 
 REPO = Path(__file__).resolve().parents[2]
@@ -113,7 +113,11 @@ def test_path_traversal_entries_are_refused(tmp_path, entry):
         zf.writestr(entry, "pwned")
     with pytest.raises(BundleError, match="unsafe"):
         read_bundle(zip_path, tmp_path / "dest")
-    assert not (tmp_path / "escape.txt").exists()
+    # (No further assertion about where "escape.txt" might have landed:
+    # extraction stages under `$TMPDIR`, never under `tmp_path`, so an
+    # assertion phrased against `tmp_path` here could never fail regardless
+    # of whether this guard worked. The `pytest.raises` above is the real
+    # coverage.)
 
 
 def test_a_symlink_entry_is_refused(tmp_path):
@@ -129,12 +133,26 @@ def test_a_symlink_entry_is_refused(tmp_path):
         read_bundle(zip_path, tmp_path / "dest")
 
 
+def _write_zeros(zf: zipfile.ZipFile, name: str, total_bytes: int) -> None:
+    """Write `total_bytes` of zero bytes to a new entry, one chunk at a time,
+    so building a huge entry for a test never allocates the whole payload as
+    a single Python `bytes` object (600 MB and 520 MB, in the two tests that
+    use this)."""
+    chunk = b"\0" * (1024 * 1024)
+    with zf.open(name, "w") as f:
+        written = 0
+        while written < total_bytes:
+            n = min(len(chunk), total_bytes - written)
+            f.write(chunk[:n])
+            written += n
+
+
 def test_an_oversized_archive_is_refused_before_extraction(tmp_path):
     zip_path = tmp_path / "bomb.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("bundle.json", json.dumps({"bundleVersion": 1, "tourId": "t"}))
         zf.writestr("tour.json", json.dumps(_minimal_doc()))
-        zf.writestr("media/big.bin", b"\0" * (600 * 1024 * 1024))
+        _write_zeros(zf, "media/big.bin", 600 * 1024 * 1024)
     with pytest.raises(BundleError, match="too large"):
         read_bundle(zip_path, tmp_path / "dest")
 
@@ -180,9 +198,11 @@ def test_an_invalid_document_is_refused(tmp_path):
 
 
 def test_a_zip_without_a_tour_is_refused(tmp_path):
+    # An allowed root filename, deliberately, so this test exercises the
+    # missing-tour.json rejection and not the unexpected-file one above it.
     zip_path = tmp_path / "empty.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
-        zf.writestr("readme.txt", "nope")
+        zf.writestr("bundle.json", json.dumps({"bundleVersion": 1, "tourId": "t"}))
     with pytest.raises(BundleError, match="tour.json"):
         read_bundle(zip_path, tmp_path / "dest")
 
@@ -278,7 +298,7 @@ def test_the_streamed_cap_is_enforced_on_an_honestly_large_archive(tmp_path):
     ever removed from the extraction loop itself."""
     zip_path = tmp_path / "honest-big.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("media/big.bin", b"\0" * (520 * 1024 * 1024))
+        _write_zeros(zf, "media/big.bin", 520 * 1024 * 1024)
 
     staging = tmp_path / "staging"
     staging.mkdir()
@@ -334,3 +354,123 @@ def test_dotfiles_are_excluded_from_written_bundles(tmp_path):
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
     assert not any(Path(n).name.startswith(".") for n in names)
+
+
+def test_a_dotfile_inside_a_hidden_directory_is_also_excluded(tmp_path):
+    """The leaf-only version of this filter (`path.name.startswith(".")`)
+    missed a dotfile sitting inside a hidden directory, e.g. `.git/config`,
+    because `config`'s own leaf name does not start with a dot. The filter
+    must be applied to every component of the relative path."""
+    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": b"a"})
+    (work / ".git").mkdir()
+    (work / ".git" / "config").write_text("[core]\n")
+    zip_path = tmp_path / "clean.zip"
+    write_bundle(work, zip_path)
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+    assert not any(n.startswith(".git") for n in names)
+
+
+def test_config_json_is_excluded_from_exported_bundles(tmp_path):
+    """config.json is derived state — rebuilt from the backend's settings,
+    Mapillary token included — not part of the document. It is excluded
+    from exports (publish.py still emits it for a published site, which is
+    the one place it belongs)."""
+    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": b"a"})
+    work.joinpath("config.json").write_text(
+        json.dumps({"mapillaryToken": "secret", "tileUrl": "u", "attribution": []})
+    )
+    zip_path = tmp_path / "out.zip"
+    write_bundle(work, zip_path)
+    with zipfile.ZipFile(zip_path) as zf:
+        assert "config.json" not in zf.namelist()
+
+
+def test_an_unexpected_root_file_is_refused(tmp_path):
+    """The bundle format is exactly bundle.json, tour.json, config.json and
+    files under media/. Anything else would otherwise land in the working
+    directory and get copied straight onto the author's published origin by
+    publish.py."""
+    zip_path = tmp_path / "evil.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("bundle.json", json.dumps({"bundleVersion": 1, "tourId": "t"}))
+        zf.writestr("tour.json", json.dumps(_minimal_doc(media_id="m.jpg")))
+        zf.writestr("media/m.jpg", "x")
+        zf.writestr("evil.html", "<script>pwned</script>")
+    with pytest.raises(BundleError, match="evil.html"):
+        read_bundle(zip_path, tmp_path / "dest")
+
+
+def test_an_unexpected_file_outside_media_in_a_subdirectory_is_refused(tmp_path):
+    zip_path = tmp_path / "evil.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("bundle.json", json.dumps({"bundleVersion": 1, "tourId": "t"}))
+        zf.writestr("tour.json", json.dumps(_minimal_doc(media_id="m.jpg")))
+        zf.writestr("media/m.jpg", "x")
+        zf.writestr("assets/payload.js", "pwned();")
+    with pytest.raises(BundleError, match="assets/payload.js"):
+        read_bundle(zip_path, tmp_path / "dest")
+
+
+def test_a_bundle_version_newer_than_this_build_understands_is_refused(tmp_path):
+    zip_path = tmp_path / "future.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("bundle.json", json.dumps({"bundleVersion": BUNDLE_VERSION + 1, "tourId": "t"}))
+        zf.writestr("tour.json", json.dumps(_minimal_doc(media_id="m.jpg")))
+        zf.writestr("media/m.jpg", "x")
+    with pytest.raises(BundleError, match="bundleVersion"):
+        read_bundle(zip_path, tmp_path / "dest")
+
+
+def test_a_bundle_with_no_bundle_json_at_all_still_imports(tmp_path):
+    """Older exports lack bundle.json entirely (it was added after this
+    sub-project started); refusing them would be a regression, not a safety
+    improvement."""
+    zip_path = tmp_path / "old.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("tour.json", json.dumps(_minimal_doc(media_id="m.jpg")))
+        zf.writestr("media/m.jpg", "x")
+    dest = tmp_path / "dest"
+    read_bundle(zip_path, dest)
+    assert dest.is_dir()
+
+
+def test_a_name_collision_during_extraction_is_a_bundle_error_not_a_500(tmp_path):
+    """`media/x` as a file, then `media/x/y.jpg` needing `media/x` to be a
+    directory, is exactly the kind of OSError (here, a file/directory name
+    collision) that extraction can hit outside of the zip-corruption cases
+    already handled. It must surface as an ordinary BundleError, the same
+    promise every other rejection in this module makes, not escape as a raw
+    OSError that would become an unhandled 500 at the API boundary."""
+    zip_path = tmp_path / "collide.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("bundle.json", json.dumps({"bundleVersion": 1, "tourId": "t"}))
+        zf.writestr("tour.json", json.dumps(_minimal_doc(media_id="m.jpg")))
+        zf.writestr("media/x", "i am a file")
+        zf.writestr("media/x/y.jpg", "i need media/x to be a directory")
+    with pytest.raises(BundleError):
+        read_bundle(zip_path, tmp_path / "dest")
+
+
+def test_missing_media_reports_what_export_would_be_missing(tmp_path):
+    """`missing_media` is the function the export route calls so the same
+    referenced-media invariant import enforces is also enforced on export —
+    see the export/import asymmetry fix in main.py."""
+    work = _make_work(tmp_path, _minimal_doc(media_id="gone.jpg"), {})
+    assert missing_media(work) == ["gone.jpg"]
+
+
+def test_missing_media_is_empty_when_everything_referenced_is_present(tmp_path):
+    work = _make_work(tmp_path, _minimal_doc(media_id="m.jpg"), {"m.jpg": b"a"})
+    assert missing_media(work) == []
+
+
+def test_missing_media_sees_a_nested_media_layout(tmp_path):
+    """`present` is built by walking `media/` recursively, so a nested
+    reference like `pano/pano-x.jpg` — the layout the bundle spec's own
+    example shows — is found, not reported as missing just because it is
+    not a direct child of `media/`."""
+    work = _make_work(tmp_path, _minimal_doc(media_id="pano/pano-x.jpg"), {})
+    (work / "media" / "pano").mkdir()
+    (work / "media" / "pano" / "pano-x.jpg").write_bytes(b"x")
+    assert missing_media(work) == []
