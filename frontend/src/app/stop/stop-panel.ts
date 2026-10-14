@@ -1,6 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
 import { creditLine } from '../core/credit';
-import { TourApi } from '../core/tour-api';
+import { TourApi, audioType } from '../core/tour-api';
 import { TourStore } from '../core/tour-store';
 
 @Component({
@@ -41,7 +41,12 @@ import { TourStore } from '../core/tour-store';
               <img [src]="api.mediaUrl(selected.mediaId!)" [alt]="selected.title" />
             }
             @case ('audio') {
-              <audio controls preload="none" [src]="api.mediaUrl(selected.mediaId!)"></audio>
+              <audio controls preload="none">
+                <source
+                  [src]="api.mediaUrl(selected.mediaId!)"
+                  [type]="audioType(selected.mediaId!)"
+                />
+              </audio>
             }
           }
 
@@ -95,6 +100,7 @@ export class StopPanel {
   protected readonly store = inject(TourStore);
   protected readonly api = inject(TourApi);
   protected readonly credit = creditLine;
+  protected readonly audioType = audioType;
 
   protected onOpacity(id: string, event: Event): void {
     this.store.setOverlayOpacity(id, Number((event.target as HTMLInputElement).value));

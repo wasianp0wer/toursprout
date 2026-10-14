@@ -88,7 +88,21 @@ describe('StopPanel', () => {
   it('renders an audio element for audio overlays', () => {
     store.load(tour([overlay({ id: 'ov-a', kind: 'audio', body: null, mediaId: 'narration-s1.m4a' })]));
     store.selectOverlay('ov-a');
-    expect(render().querySelector('audio')?.getAttribute('src')).toBe('tour-data/media/narration-s1.m4a');
+    expect(render().querySelector('audio')).not.toBeNull();
+  });
+
+  // I2: a published static site has no FastAPI process to apply
+  // `mimetypes.add_type`, and some static hosts answer `.m4a` with
+  // "audio/mp4a-latm" (not a browser-recognised container) rather than
+  // "audio/mp4". The `<audio>` tag itself carries no `[src]`/`type` any
+  // more; the `<source>` child supplies a browser-recognised type derived
+  // from the mediaId, so playback does not depend on the host's MIME table.
+  it('gives an .m4a overlay a source with a browser-recognised type', () => {
+    store.load(tour([overlay({ id: 'ov-a', kind: 'audio', body: null, mediaId: 'narration-s1.m4a' })]));
+    store.selectOverlay('ov-a');
+    const source = render().querySelector('audio source');
+    expect(source?.getAttribute('src')).toBe('tour-data/media/narration-s1.m4a');
+    expect(source?.getAttribute('type')).toBe('audio/mp4');
   });
 
   it('renders an img for image overlays', () => {

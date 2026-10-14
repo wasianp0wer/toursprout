@@ -111,9 +111,11 @@ describe('the real Fairfax tour', () => {
       const audio = store.overlaysForCurrentStop().find((o) => o.kind === 'audio');
       expect(audio, `stop ${i + 1} has no narration`).toBeDefined();
       store.selectOverlay(audio!.id);
-      expect(render().querySelector('audio')?.getAttribute('src')).toMatch(
+      const source = render().querySelector('audio source');
+      expect(source?.getAttribute('src')).toMatch(
         /^tour-data\/media\/narration-.+\.m4a$/,
       );
+      expect(source?.getAttribute('type')).toBe('audio/mp4');
     }
   });
 

@@ -109,12 +109,43 @@ That replacement had one caveat that was not free: Python's stdlib
 about `.wav`, answering `audio/x-wav` rather than `audio/wav`. `media.py`'s own
 table had pinned the browser-correct answers for the prototype's entire life;
 losing that table without comment would have silently broken narration
-playback, since the `<audio [src]>` in `stop-panel.ts` has no `type` attribute
-to fall back on. `main.py` now calls `mimetypes.add_type` for both extensions
-at import time, specifically to restore what the deleted table was quietly
-doing. This is the one piece of `media.py` that could not simply be deleted in
-favor of the framework doing the job — the framework's answer for these two
-extensions is wrong, not merely different.
+playback in the editor. `main.py` now calls `mimetypes.add_type` for both
+extensions at import time, specifically to restore what the deleted table was
+quietly doing.
+
+**That fix covers the editor only, and this document used to leave the
+opposite impression.** `mimetypes.add_type` patches a table inside this
+Python process; it has no effect on any other process, and a published
+static site has no FastAPI process at all. Verified: serving a real
+publish-output `tour-data/` under plain `python3 -m http.server` returns
+`.m4a` as `audio/mp4a-latm` — exactly the value this document's own words
+above call "an RTP/SDP payload name, not a browser-recognised container" —
+because the stdlib table the override lives in belongs to the editor's
+process, not to whatever static host an author eventually publishes to.
+Depending on the host to get this right was the actual risk, not something
+this ADR had closed off.
+
+The fix now lives in the viewer instead: `stop-panel.ts`'s `<audio>` no
+longer carries a bare `[src]`; it has a `<source [src] [type]>` child, with
+the type derived from the `mediaId`'s extension (`audioType` in
+`tour-api.ts`, `.m4a` → `audio/mp4`, `.mp3` → `audio/mpeg`, `.wav` →
+`audio/wav`, unknown extensions get no asserted type). Browsers choose
+playback by the `<source>`'s own `type` attribute, not by what the server
+answered in `Content-Type`, so narration playback on a published site no
+longer depends on the host's MIME table agreeing with anything. The
+`add_type` calls in `main.py` stay — they are still correct, and still
+load-bearing, for the editor's own `/tour-data` mount — but they are no
+longer the thing standing between a published site and silent narration
+failure.
+
+No browser can be opened in this environment, so nothing here constitutes
+having watched the clip play. **The one thing this fix has not been able to
+verify directly: the author should play a narration clip on an actually
+published site once, by ear, to confirm.** Everything else about this
+caveat — the wrong stdlib value, the missing type attribute, the fact that
+a static host runs no Python at all — was confirmed by reading code and by
+serving the real publish output with a plain static server, not by hearing
+it play.
 
 **The Mapillary token travels with a published site.** `config.json` is
 generated at publish time from the backend's settings and copied into the
