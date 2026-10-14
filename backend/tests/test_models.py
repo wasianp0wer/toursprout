@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import get_args
 
 import pytest
@@ -290,3 +291,18 @@ def test_display_modes_table_covers_every_kind():
     cannot silently drift apart."""
     kind_literal = models.Overlay.model_fields["kind"].annotation
     assert set(DISPLAY_MODES_BY_KIND.keys()) == set(get_args(kind_literal))
+
+
+def test_the_frontend_mode_table_matches_this_one():
+    """frontend/src/app/editor/document-ops.ts carries a copy of
+    DISPLAY_MODES_BY_KIND so the editor can offer only legal modes without a
+    round trip. Two copies of a rule drift; this fails when they do."""
+    src = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "app"
+           / "editor" / "document-ops.ts").read_text()
+    block = src.split("DISPLAY_MODES_BY_KIND", 1)[1].split("}", 1)[0]
+    for kind, modes in DISPLAY_MODES_BY_KIND.items():
+        line = next(ln for ln in block.splitlines() if ln.strip().startswith(kind))
+        for mode in modes:
+            assert f"'{mode}'" in line, f"{kind} should allow {mode}"
+        for mode in {"marker", "inWorld", "ambient"} - set(modes):
+            assert f"'{mode}'" not in line, f"{kind} should not allow {mode}"
