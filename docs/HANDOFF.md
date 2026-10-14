@@ -56,19 +56,81 @@ make content   # regenerate panoramas, images, narration, tour JSON
 reads that file into the open session automatically (that bridge is sub-project
 3's job), so there is no SQLite seeding left to restart the backend over. To
 open, save and ship the tour the editor will drive through the session API
-directly:
+directly. `PUT` and `POST` bodies are JSON, so every command that sends one
+needs the content-type header — `curl -d` alone sends
+`application/x-www-form-urlencoded`, which FastAPI hands to pydantic as raw
+bytes and pydantic refuses with a 422 (`{"type":"dict_type",...}`):
 
 ```sh
-curl -X POST localhost:8000/api/session/new -d '{"title": "A tour"}'   # start empty
-curl -X POST localhost:8000/api/session/import -F file=@tour.zip       # open a bundle
-curl -X PUT localhost:8000/api/session/tour -d @tour.json              # write the document
-curl localhost:8000/api/session/export -o tour.zip                     # save it out as a zip
-curl localhost:8000/api/session/publish -o site.zip                    # a backend-free static site
+curl -X POST localhost:8000/api/session/new \
+  -H 'Content-Type: application/json' -d '{"title": "A tour"}'      # start empty
+curl -X POST localhost:8000/api/session/import -F file=@tour.zip    # open a bundle
+curl -X PUT localhost:8000/api/session/tour \
+  -H 'Content-Type: application/json' -d @tour.json                 # write the document
+curl localhost:8000/api/session/export -o tour.zip                  # save it out as a zip
+curl localhost:8000/api/session/publish -o site.zip                 # a backend-free static site
 ```
 
 Every edit above writes straight through to `content/work/`; there is no
 explicit save. See `docs/decisions/0002-the-tour-is-a-portable-document.md`
 for why "save" works this way instead of writing back to an opened file.
+
+`POST /api/session/new` refuses with 409 if a tour is already open — export
+it first, or pass `{"force": true}` in the body to discard it on purpose.
+`PUT /api/session/tour` refuses with 409 if nothing is open yet. All three
+mutating routes (`new`, `tour`, `import`) also refuse a request whose
+`Sec-Fetch-Site` header is `cross-site`, as one more layer against another
+page quietly POSTing to this backend while it happens to be running; `curl`
+never sends that header, so none of this is visible from the command line.
+
+### Opening the existing six-stop tour
+
+Nothing above, and nothing elsewhere in the repo, actually gets the
+hand-authored Old Town Fairfax tour into the application — there is no
+bundle of it checked in, and no command that makes one. `content/tours/
+fairfax-old-town.json` is the document; `content/media/` is its media,
+committed alongside it but never copied anywhere by any script. The working
+sequence, run from the repo root with the backend already up
+(`make serve`):
+
+```sh
+curl -X POST localhost:8000/api/session/new \
+  -H 'Content-Type: application/json' -d '{"title": "Old Town Fairfax"}'
+
+curl -X PUT localhost:8000/api/session/tour \
+  -H 'Content-Type: application/json' -d @content/tours/fairfax-old-town.json
+
+cp content/media/* content/work/media/   # the step nothing else documents
+
+curl localhost:8000/api/session/export -o fairfax-old-town.zip
+```
+
+**Step 3 is not optional and nothing else performs it.** Without it,
+`GET /api/session` reports `"mediaCount": 0`, every photograph and narration
+clip the viewer tries to load 404s, and the bundle `export` produces is one
+`import` later refuses — the document references media the archive doesn't
+have.
+
+This was run end to end against a live session (`TestClient` against a copy
+of this repo's real `content/`, not by memory) to write this section, not
+assumed from reading the code:
+
+- After step 2, `GET /api/session` already reports `"stopCount": 6` but
+  `"mediaCount": 0` — the document is in, the media is not.
+- `cp content/media/* content/work/media/` prints one harmless line to
+  stderr, `cp: content/media/pano is a directory (not copied)`, and exits
+  non-zero for that reason alone; every file the six stops actually
+  reference (`court-1863.jpg`, `court-1918.jpg`, `courthouse-photo.jpg`, and
+  the six `narration-*.m4a` clips) is copied regardless, because `cp *`
+  simply skips the one subdirectory and continues. `mediaCount` reads back
+  as `10` (the nine media files plus `content/media/manifest.json`, which
+  gets swept in by the same glob and is harmless — it is not referenced by
+  any overlay, so it rides along as an unused file, not an error).
+- `GET /api/session/export` then returns a 2.6&nbsp;MB zip.
+- Re-importing that zip into a fresh session (`POST /api/session/import`)
+  succeeds with one warning, `media/manifest.json is not referenced by any
+  overlay` — confirming the exported bundle is one the importer actually
+  accepts, which is the whole point of exporting it in the first place.
 
 `?diag=1` exposes `window.__tour` and `window.__inWorld` and logs renderer
 boundaries. `?align=1` enables alignment mode.
