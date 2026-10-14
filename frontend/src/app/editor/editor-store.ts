@@ -72,6 +72,15 @@ export class EditorStore {
   }
 
   /**
+   * Marks the draft as having no unsaved changes, without touching it —
+   * for Autosave to call once a save has actually landed. Distinct from
+   * `load()`: it leaves the selection and undo stack exactly as they are.
+   */
+  markClean(): void {
+    this._dirty.set(false);
+  }
+
+  /**
    * Run a pure document transform against the current draft.
    *
    * A throwing transform (e.g. LastStopError) leaves the draft and undo

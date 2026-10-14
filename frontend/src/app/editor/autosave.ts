@@ -9,6 +9,13 @@
  * changes the draft, which the watcher below reacts to regardless of
  * whether `dirty` itself changed value — that is what makes the retry
  * automatic rather than a deadlock the author has to notice and work around.
+ *
+ * At most one `putTour` is ever on the wire at once: a save requested while
+ * one is already in flight is deferred until it settles and then retried
+ * against whatever the draft has become by then, rather than firing a
+ * second, concurrent PUT. Two concurrent PUTs for two different document
+ * versions could resolve out of order, letting the older one overwrite the
+ * newer one on disk with the author never told.
  */
 import { EffectRef, Injectable, Injector, effect, inject, signal } from '@angular/core';
 import { EditorStore } from './editor-store';
@@ -50,6 +57,23 @@ export class Autosave {
 
   private watcher: EffectRef | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Non-null while a `putTour` is on the wire. Guards against ever having
+   * two PUTs in flight at once for two different versions of the document —
+   * if the server resolved them out of order, the OLDER one would win and
+   * overwrite the newer one on disk, silently.
+   */
+  private inFlight: Promise<void> | null = null;
+
+  /**
+   * At most one save queued behind the in-flight one. Several debounce
+   * firings that all land while a save is in flight coalesce into this one
+   * follow-up, which reads the draft again when it finally runs — so it
+   * always picks up the latest version, however many edits landed while the
+   * first save was still pending.
+   */
+  private queued: Promise<void> | null = null;
 
   private readonly _status = signal<AutosaveStatus>('idle');
   readonly status = this._status.asReadonly();
@@ -97,17 +121,44 @@ export class Autosave {
     this.timer = null;
   }
 
-  private async save(): Promise<void> {
+  /**
+   * Save the current draft — unless one is already in flight, in which
+   * case this call is folded into the single queued follow-up (see
+   * `queued` above) rather than firing a second, concurrent PUT.
+   */
+  private save(): Promise<void> {
+    if (this.inFlight) {
+      if (!this.queued) {
+        // `runSave` catches its own errors (see below) and so never
+        // rejects, which is what makes chaining with a plain `.then` safe.
+        const after = this.inFlight.then(() => this.runSave());
+        this.queued = after.finally(() => {
+          if (this.queued === after) this.queued = null;
+        });
+      }
+      return this.queued;
+    }
+    return this.runSave();
+  }
+
+  /** Does the actual PUT. Only ever called when nothing else is in flight. */
+  private async runSave(): Promise<void> {
     const draft = this.store.draft();
     if (!draft) return;
     this._status.set('saving');
-    try {
-      await this.api.putTour(draft);
-      this._status.set('idle');
-      this._message.set(null);
-    } catch (err) {
-      this._status.set('error');
-      this._message.set(messageFrom(err));
-    }
+    this.inFlight = (async () => {
+      try {
+        await this.api.putTour(draft);
+        this._status.set('idle');
+        this._message.set(null);
+        this.store.markClean();
+      } catch (err) {
+        this._status.set('error');
+        this._message.set(messageFrom(err));
+      } finally {
+        this.inFlight = null;
+      }
+    })();
+    await this.inFlight;
   }
 }

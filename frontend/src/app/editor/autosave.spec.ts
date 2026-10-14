@@ -141,4 +141,72 @@ describe('Autosave', () => {
     expect(putTour).toHaveBeenCalledTimes(1);
     expect(autosave.status()).toBe('idle');
   });
+
+  it('clears dirty on a successful save', async () => {
+    store.load(tour());
+    autosave.start();
+    store.apply((t) => addStop(t, 'Second'));
+    flush();
+    expect(store.dirty()).toBe(true);
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    expect(store.dirty()).toBe(false);
+  });
+
+  it('leaves dirty set when the save is rejected', async () => {
+    putTour.mockRejectedValue({ status: 422, error: { detail: 'nope' } });
+    store.load(tour());
+    autosave.start();
+    store.apply((t) => addStop(t, 'Second'));
+    flush();
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    expect(store.dirty()).toBe(true);
+  });
+
+  // Review Focus 4, concurrency case: the debounce can refire while a save
+  // from an earlier edit is still on the wire (a slow network, a slow
+  // backend). A naive implementation fires a second, concurrent PUT for a
+  // different version of the document; if the server resolves them out of
+  // order, the OLDER one wins and silently overwrites the newer one on
+  // disk. This must never happen: at most one PUT is ever in flight, and
+  // whatever runs next always reads the draft again, so it is never stale.
+  it('never lets an older save overwrite a newer one when saves overlap', async () => {
+    const sent: unknown[] = [];
+    const resolvers: Array<(value: SessionSummary) => void> = [];
+    putTour.mockImplementation((doc: unknown) => {
+      sent.push(doc);
+      return new Promise<SessionSummary>((resolve) => { resolvers.push(resolve); });
+    });
+
+    store.load(tour());
+    autosave.start();
+
+    store.apply((t) => addStop(t, 'Second'));
+    flush();
+    vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    expect(putTour).toHaveBeenCalledTimes(1); // save #1 is now in flight
+
+    // A further edit lands while save #1 is still unresolved.
+    store.apply((t) => addStop(t, 'Third'));
+    flush();
+    vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    // The debounce elapsed again, but save #1 has not settled yet: this
+    // must NOT have fired a second, concurrent PUT.
+    expect(putTour).toHaveBeenCalledTimes(1);
+
+    const latestDraft = store.draft();
+    resolvers[0]({ open: true } as SessionSummary); // let save #1 settle
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Only now does the queued follow-up fire — reading the draft again,
+    // so it sends the LATEST version, not the stale one from before.
+    expect(putTour).toHaveBeenCalledTimes(2);
+    expect(sent[1]).toBe(latestDraft);
+
+    resolvers[1]({ open: true } as SessionSummary);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(autosave.status()).toBe('idle');
+  });
 });

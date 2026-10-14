@@ -106,4 +106,13 @@ describe('EditorStore', () => {
     store.apply((t) => addTextOverlay(t, 'only', 'A note'));
     expect(store.lastError()).toBeNull();
   });
+
+  it('markClean clears dirty without touching the draft', () => {
+    store.load(tour());
+    store.apply((t) => addTextOverlay(t, 's1', 'A note'));
+    const draft = store.draft();
+    store.markClean();
+    expect(store.dirty()).toBe(false);
+    expect(store.draft()).toBe(draft);
+  });
 });
