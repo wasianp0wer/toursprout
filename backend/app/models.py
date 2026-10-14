@@ -219,12 +219,3 @@ class Tour(Strict):
         if orders != list(range(1, len(orders) + 1)):
             raise ValueError("stop orders must be contiguous starting at 1")
         return self
-
-
-class TourSummary(Strict):
-    """What `GET /api/tours` returns: enough to list, not the whole document."""
-
-    id: str
-    title: str
-    description: str
-    stop_count: int = Field(alias="stopCount")

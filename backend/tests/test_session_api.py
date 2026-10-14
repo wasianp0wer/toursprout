@@ -202,14 +202,20 @@ def test_publish_without_a_build_is_a_409(client):
 
 
 @pytest.fixture
-def media_clip(client_with_frontend, tmp_path):
-    """Opens a session and drops a distinguishable 1024-byte file into its
-    media directory, returning the client and the exact bytes written."""
+def media_dir(client_with_frontend, tmp_path):
+    """Opens a session and returns (client, its media directory)."""
     client_with_frontend.post("/api/session/new", json={"title": "My Tour"})
-    media_dir = tmp_path / "content" / "work" / "media"
+    return client_with_frontend, tmp_path / "content" / "work" / "media"
+
+
+@pytest.fixture
+def media_clip(media_dir):
+    """Drops a distinguishable 1024-byte file into the open session's media
+    directory, returning the client and the exact bytes written."""
+    client, media_path = media_dir
     payload = bytes(range(256)) * 4  # 1024 distinguishable bytes
-    (media_dir / "clip.bin").write_bytes(payload)
-    return client_with_frontend, payload
+    (media_path / "clip.bin").write_bytes(payload)
+    return client, payload
 
 
 def test_tour_data_media_range_request_returns_a_slice(media_clip):
@@ -250,3 +256,59 @@ def test_tour_data_media_unsatisfiable_range_returns_416(media_clip):
 def test_tour_data_media_missing_file_is_404(media_clip):
     client, _ = media_clip
     assert client.get("/tour-data/media/nope.bin").status_code == 404
+
+
+@pytest.mark.parametrize("filename,content_type", [
+    # media.py's deleted MEDIA_TYPES table mapped these; Python's stdlib
+    # `mimetypes` disagrees with it (and with browsers) for exactly these
+    # two extensions, which is why main.py overrides them at import time.
+    # The narration audio actually shipped is .m4a, and its <audio> tag has
+    # no `type` attribute to fall back on, so this is the one that matters
+    # most, but .wav gets the same treatment so it is pinned too.
+    ("narration.m4a", "audio/mp4"),
+    ("clip.wav", "audio/wav"),
+    # Unaffected by the override — stdlib already agrees with media.py here
+    # — but real content ships as .jpg, so it is worth pinning too.
+    ("photo.jpg", "image/jpeg"),
+])
+def test_tour_data_media_reports_a_browser_recognised_content_type(
+    media_dir, filename, content_type
+):
+    client, media_path = media_dir
+    (media_path / filename).write_bytes(b"not real media, just bytes")
+    r = client.get(f"/tour-data/media/{filename}")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == content_type
+
+
+def test_tour_data_media_path_traversal_is_refused(media_clip):
+    """StaticFiles, not a hand-rolled resolver, is now the only thing
+    guarding this path. `_resolve_media`'s eight parametrized rejection
+    cases went with it when media.py was deleted; this pins the same
+    guarantee through the real mount instead of against a resolver that no
+    longer exists.
+
+    A literal `../../etc/passwd` in the URL is collapsed by the HTTP client
+    itself before the request is even sent (every real browser does the
+    same), so it never reaches the mount as a traversal attempt — it lands
+    on the unrelated path `/etc/passwd`, which the SPA catch-all answers
+    with its own shell page. That case is asserted here anyway, purely to
+    pin that no passwd content ever comes back. The percent-encoded variant
+    is the real test: it reaches `StaticFiles` with the traversal sequence
+    intact, and must be refused there.
+    """
+    client, payload = media_clip
+
+    r = client.get("/tour-data/media/../../../../../../etc/passwd")
+    assert b"root:" not in r.content
+
+    r = client.get("/tour-data/media/%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd")
+    assert r.status_code == 404
+    assert b"root:" not in r.content
+
+    r = client.get("/tour-data/media/..%2f..%2f..%2fetc%2fpasswd")
+    assert r.status_code == 404
+    assert b"root:" not in r.content
+
+    # The legitimate file must still be reachable afterward.
+    assert client.get("/tour-data/media/clip.bin").content == payload

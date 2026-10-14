@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mimetypes
 import os
 import shutil
 import tempfile
@@ -16,6 +17,22 @@ from .config import Settings
 from .config import settings as default_settings
 from .publish import PublishError, build_site
 from .session import Session
+
+# `StaticFiles` (used by the tour-data mount below, and by any static host a
+# published site lands on) guesses content types from Python's stdlib
+# `mimetypes` table, which disagrees with browsers for two extensions this
+# tour actually ships: `.m4a` comes back as "audio/mp4a-latm" — an RTP/SDP
+# payload name, not a browser-recognised container — instead of "audio/mp4",
+# and `.wav` comes back as "audio/x-wav" instead of "audio/wav". The
+# narration audio is `.m4a` and the `<audio [src]>` in stop-panel.ts has no
+# `type` attribute to fall back on, so this is load-bearing, not cosmetic.
+# media.py's hand-rolled table pinned exactly these two overrides for the
+# prototype's entire life; restore them at import time so deleting that
+# table doesn't silently change what a browser actually plays. Do not
+# remove this as "redundant with stdlib defaults" — it exists because the
+# stdlib defaults are wrong for these two extensions.
+mimetypes.add_type("audio/mp4", ".m4a")
+mimetypes.add_type("audio/wav", ".wav")
 
 # Raster tiles carry the OSM usage policy; acceptable at prototype volume.
 TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
