@@ -41,4 +41,13 @@ describe('SessionApi', () => {
     req.flush({ open: true, title: 'Old Town Fairfax' });
     expect((await promise).title).toBe('Old Town Fairfax');
   });
+
+  it('starts a new tour with the given title', async () => {
+    const promise = api.newTour('Untitled tour');
+    const req = http.expectOne('/api/session/new');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ title: 'Untitled tour' });
+    req.flush({ open: true, title: 'Untitled tour' });
+    expect((await promise).title).toBe('Untitled tour');
+  });
 });

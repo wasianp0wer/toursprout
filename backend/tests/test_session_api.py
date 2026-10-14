@@ -123,6 +123,63 @@ def test_put_tour_rejects_an_invalid_document_with_a_message(client):
     assert client.get("/tour-data/tour.json").json()["title"] == "My Tour"
 
 
+def test_put_tour_accepts_a_document_shaped_by_the_editors_own_transforms(client):
+    """The frontend's idea of a valid document is not evidence of anything —
+    only the backend's validator is. This takes the skeleton a new session
+    produces and applies the exact shapes frontend/src/app/editor/
+    document-ops.ts's `addStop` and `addTextOverlay` produce (a cloned
+    second stop, a text overlay with a default 'original' credit) rather
+    than a shape this test invents, so a pass here is the real contract the
+    whole editor depends on."""
+    client.post("/api/session/new", json={"title": "My Tour"})
+    doc = client.get("/tour-data/tour.json").json()
+    first = doc["stops"][0]
+
+    # Mirrors addStop: clone the previous stop's location and panorama
+    # rather than inventing new ones, a blank placeholder summary, and no
+    # OSM reference yet.
+    second_stop = {
+        "id": "stop-2",
+        "order": 2,
+        "title": "Second stop",
+        "summary": "Describe this place.",
+        "location": dict(first["location"]),
+        "osmRef": None,
+        "panorama": dict(first["panorama"]),
+        "overlays": [],
+    }
+    # Mirrors addTextOverlay: a text overlay anchored at the stop's own
+    # location, a placeholder body, and defaultCreditFor's fallback credit
+    # for a tour with no `defaults` set.
+    second_stop["overlays"].append({
+        "id": "a-text-overlay",
+        "kind": "text",
+        "anchor": {
+            "type": "geo",
+            "lng": second_stop["location"]["lng"],
+            "lat": second_stop["location"]["lat"],
+            "altitudeM": 2,
+        },
+        "display": {"mode": "marker", "icon": "note"},
+        "title": "A text overlay",
+        "body": "Write something about this.",
+        "mediaId": None,
+        "credit": {
+            "type": "original",
+            "creator": "Unknown",
+            "license": "All rights reserved",
+        },
+    })
+    doc["stops"].append(second_stop)
+
+    r = client.put("/api/session/tour", json=doc)
+    assert r.status_code == 200
+    saved = client.get("/tour-data/tour.json").json()
+    assert len(saved["stops"]) == 2
+    assert saved["stops"][1]["title"] == "Second stop"
+    assert saved["stops"][1]["overlays"][0]["credit"]["type"] == "original"
+
+
 def test_export_then_import_round_trips(client):
     client.post("/api/session/new", json={"title": "Exported"})
     blob = client.get("/api/session/export")

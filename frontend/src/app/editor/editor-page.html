@@ -1,0 +1,24 @@
+@if (loading()) {
+  <p class="loading">Loading the editor…</p>
+} @else if (error()) {
+  <p class="fatal" data-error>{{ error() }}</p>
+} @else if (!open()) {
+  <section class="empty" data-empty>
+    <h1>No tour is open</h1>
+    <p>Start a new tour to begin editing, or open an existing one from the command line.</p>
+    <button type="button" (click)="startNewTour()" [disabled]="starting()" data-new-tour>
+      {{ starting() ? 'Starting…' : 'New tour' }}
+    </button>
+  </section>
+} @else {
+  <section class="shell" data-shell>
+    <header>
+      <h1>{{ store.draft()?.title }}</h1>
+      <span class="autosave-status" data-autosave-status>{{ autosave.status() }}</span>
+    </header>
+    @if (autosave.status() === 'error' && autosave.message()) {
+      <p class="fatal" data-autosave-error>{{ autosave.message() }}</p>
+    }
+    <p class="placeholder">The outline, inspector, map and panorama panes arrive next.</p>
+  </section>
+}

@@ -27,4 +27,10 @@ export class SessionApi {
   putTour(doc: Tour): Promise<SessionSummary> {
     return firstValueFrom(this.http.put<SessionSummary>('/api/session/tour', doc));
   }
+
+  /** Starts a brand-new skeleton tour. Only valid while nothing is open —
+   * the editor page's empty state is the only caller today. */
+  newTour(title: string): Promise<SessionSummary> {
+    return firstValueFrom(this.http.post<SessionSummary>('/api/session/new', { title }));
+  }
 }
