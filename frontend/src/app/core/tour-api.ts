@@ -1,28 +1,33 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import type { AppConfig, Tour, TourSummary } from './tour.models';
+import type { AppConfig, Tour } from './tour.models';
 
-export const API_BASE = '/api';
+/**
+ * Everything the viewer needs, relative to the page.
+ *
+ * In the editor FastAPI serves these from the open working directory; in a
+ * published site they are plain files beside index.html. One set of URLs, so
+ * there is no deployment detection and no second code path — which is the
+ * whole reason a published tour needs no backend.
+ */
+export const TOUR_DATA = 'tour-data';
 
 @Injectable({ providedIn: 'root' })
 export class TourApi {
   private readonly http = inject(HttpClient);
 
   getConfig(): Promise<AppConfig> {
-    return firstValueFrom(this.http.get<AppConfig>(`${API_BASE}/config`));
+    return firstValueFrom(this.http.get<AppConfig>(`${TOUR_DATA}/config.json`));
   }
 
-  listTours(): Promise<TourSummary[]> {
-    return firstValueFrom(this.http.get<TourSummary[]>(`${API_BASE}/tours`));
+  getTour(): Promise<Tour> {
+    return firstValueFrom(this.http.get<Tour>(`${TOUR_DATA}/tour.json`));
   }
 
-  getTour(id: string): Promise<Tour> {
-    return firstValueFrom(this.http.get<Tour>(`${API_BASE}/tours/${id}`));
-  }
-
-  /** Media is streamed by the backend with range support; never inline it. */
+  /** Media is served with Range support by StaticFiles and by any static
+   * host, which is what the narration audio needs. Never inline it. */
   mediaUrl(mediaId: string): string {
-    return `${API_BASE}/media/${mediaId}`;
+    return `${TOUR_DATA}/media/${mediaId}`;
   }
 }

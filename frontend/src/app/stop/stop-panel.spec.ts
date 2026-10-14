@@ -88,13 +88,13 @@ describe('StopPanel', () => {
   it('renders an audio element for audio overlays', () => {
     store.load(tour([overlay({ id: 'ov-a', kind: 'audio', body: null, mediaId: 'narration-s1.m4a' })]));
     store.selectOverlay('ov-a');
-    expect(render().querySelector('audio')?.getAttribute('src')).toBe('/api/media/narration-s1.m4a');
+    expect(render().querySelector('audio')?.getAttribute('src')).toBe('tour-data/media/narration-s1.m4a');
   });
 
   it('renders an img for image overlays', () => {
     store.load(tour([overlay({ id: 'ov-i', kind: 'image', body: null, mediaId: 'photo.jpg' })]));
     store.selectOverlay('ov-i');
-    expect(render().querySelector('img')?.getAttribute('src')).toBe('/api/media/photo.jpg');
+    expect(render().querySelector('img')?.getAttribute('src')).toBe('tour-data/media/photo.jpg');
   });
 
   it('lists every overlay on the stop so all content is reachable', () => {
@@ -200,6 +200,6 @@ describe('StopPanel', () => {
     store.load(tour([IN_WORLD_PHOTO as never]));
     store.selectOverlay('court-1863');
     const img = render().querySelector<HTMLImageElement>('.overlay-detail img');
-    expect(img?.getAttribute('src')).toBe('/api/media/court-1863.jpg');
+    expect(img?.getAttribute('src')).toBe('tour-data/media/court-1863.jpg');
   });
 });

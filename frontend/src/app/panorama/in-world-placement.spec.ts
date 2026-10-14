@@ -10,7 +10,7 @@ import {
 function placement(over: Partial<InWorldPlacement> = {}): InWorldPlacement {
   return {
     id: 'court-1863',
-    imageUrl: '/api/media/court-1863.jpg',
+    imageUrl: 'tour-data/media/court-1863.jpg',
     lng: -77.30732, lat: 38.84562, altitudeM: 6,
     headingDeg: 200, widthM: 18, heightM: 14,
     ...over,

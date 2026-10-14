@@ -7,8 +7,6 @@ import { MapPane } from './map/map-pane';
 import { PanoramaPane } from './panorama/panorama-pane';
 import { StopPanel } from './stop/stop-panel';
 
-const TOUR_ID = 'fairfax-old-town';
-
 @Component({
   selector: 'app-root',
   imports: [AlignMode, MapPane, PanoramaPane, StopPanel],
@@ -37,7 +35,7 @@ export class App {
     try {
       const [config, tour] = await Promise.all([
         this.api.getConfig(),
-        this.api.getTour(TOUR_ID),
+        this.api.getTour(),
       ]);
       this.config.set(config);
       this.store.load(tour);

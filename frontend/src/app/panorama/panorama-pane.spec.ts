@@ -151,7 +151,7 @@ describe('PanoramaPane', () => {
     const sent = fake.inWorldPlacements.at(-1)!;
     expect(sent).toHaveLength(1);
     expect(sent[0].id).toBe('court-1863');
-    expect(sent[0].imageUrl).toBe('/api/media/court-1863.jpg');
+    expect(sent[0].imageUrl).toBe('tour-data/media/court-1863.jpg');
     expect(sent[0].headingDeg).toBe(200);
   });
 

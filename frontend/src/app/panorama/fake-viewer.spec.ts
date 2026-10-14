@@ -3,7 +3,7 @@ import { FakeViewer } from './fake-viewer';
 import type { InWorldPlacement } from './in-world-placement';
 
 const PLACEMENT: InWorldPlacement = {
-  id: 'court-1863', imageUrl: '/api/media/court-1863.jpg',
+  id: 'court-1863', imageUrl: 'tour-data/media/court-1863.jpg',
   lng: -77.30732, lat: 38.84562, altitudeM: 6,
   headingDeg: 200, widthM: 18, heightM: 14,
 };

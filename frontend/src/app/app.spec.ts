@@ -24,8 +24,8 @@ describe('App', () => {
   it('shows an actionable message when the backend is unreachable', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
-    http.expectOne('/api/config').error(new ProgressEvent('network'));
-    http.expectOne('/api/tours/fairfax-old-town').error(new ProgressEvent('network'));
+    http.expectOne('tour-data/config.json').error(new ProgressEvent('network'));
+    http.expectOne('tour-data/tour.json').error(new ProgressEvent('network'));
     // The bootstrap promise rejects on a microtask; whenStable alone can run
     // before the catch block has set the error signal.
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -40,7 +40,7 @@ describe('App', () => {
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
     expect(el.textContent).toContain('Loading the tour');
-    http.expectOne('/api/config');
-    http.expectOne('/api/tours/fairfax-old-town');
+    http.expectOne('tour-data/config.json');
+    http.expectOne('tour-data/tour.json');
   });
 });

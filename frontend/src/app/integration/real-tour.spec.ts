@@ -112,7 +112,7 @@ describe('the real Fairfax tour', () => {
       expect(audio, `stop ${i + 1} has no narration`).toBeDefined();
       store.selectOverlay(audio!.id);
       expect(render().querySelector('audio')?.getAttribute('src')).toMatch(
-        /^\/api\/media\/narration-.+\.m4a$/,
+        /^tour-data\/media\/narration-.+\.m4a$/,
       );
     }
   });
@@ -125,7 +125,7 @@ describe('the real Fairfax tour', () => {
     expect(image).toBeDefined();
     store.selectOverlay(image!.id);
     const img = render().querySelector('img');
-    expect(img?.getAttribute('src')).toBe('/api/media/courthouse-photo.jpg');
+    expect(img?.getAttribute('src')).toBe('tour-data/media/courthouse-photo.jpg');
     expect(image!.credit.type).toBe('sourced');
     expect(image!.credit.type === 'sourced' && image!.credit.source).toBe('Library of Congress');
   });
