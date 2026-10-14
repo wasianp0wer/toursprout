@@ -16,7 +16,7 @@ hard-authored tour. The **schema** is the part meant to survive.
 | Street-level imagery | Mapillary, CC-BY-SA 4.0 |
 | Archival photography | Library of Congress, public domain |
 | Narration | macOS speech synthesis, labelled as synthetic |
-| Backend | FastAPI, pydantic, SQLite, Python 3.14 |
+| Backend | FastAPI, pydantic, Python 3.14 |
 | Frontend | Angular 22, Leaflet 1.9, mapillary-js 4 |
 
 OpenStreetMap has no street-level imagery of its own; that is what Mapillary
@@ -88,7 +88,7 @@ alignment needs someone at a browser.
 ## Tests
 
 ```sh
-make check      # lint + 162 backend tests + 210 frontend tests + production build
+make check      # lint + 173 backend tests + 213 frontend tests + production build
 ```
 
 Browser end-to-end tests exist in `frontend/tests/e2e/` but **cannot run inside

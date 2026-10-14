@@ -200,13 +200,6 @@ the subject behind the viewer. `build_tour.py` now computes each stop's
 bearing from where its panorama actually stands, and each rephoto's heading so
 it faces the viewer. Never reintroduce a hand-guessed bearing.
 
-## The backend seeds tours at startup
-
-`content/tours/*.json` is read into SQLite when the app boots. Rebuilding tour
-content while the server is running serves the **old** tour and looks like the
-frontend ignoring your changes. Restart the backend after `make content`.
-
-
 ## A stop's panorama identifies it; its distance does not
 
 Arrival was decided by measuring from the viewer to each stop's location. That

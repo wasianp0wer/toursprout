@@ -1,6 +1,6 @@
 # Session handoff
 
-State as of 2026-10-12, commit `da9c59a`. Verified by running `make check`,
+State as of 2026-10-13, commit `e44633c`. Verified by running `make check`,
 not from memory.
 
 ## What this is
@@ -31,8 +31,18 @@ Ratcliffe-Allison-Pozer House, Fairfax Museum, City Hall.
 - **Alignment mode.** `?align=1` nudges the selected rephoto by keyboard and
   emits anchor JSON to paste into content.
 
-Tests: **162 backend (pytest), 210 frontend (Vitest)**, lint and production
-build clean via `make check`. Bundle 2.04 MB raw / 348 kB transferred.
+Tests: **173 backend (pytest), 213 frontend (Vitest)**, lint and production
+build clean via `make check`. Bundle 2.04 MB raw / 348.40 kB transferred.
+
+Since the state above was written, sub-project 2 (tasks 1-4, this branch)
+turned the tour into a portable document: the open tour is now an unpacked
+working directory (`content/work/`) that the backend writes through to
+immediately, a session API opens, edits, exports and publishes it as a
+`.zip`, and the viewer loads everything from `tour-data/` with no `/api` call
+at all. The read-only API, the SQLite database behind it, and `media.py`'s
+hand-rolled Range handling (superseded by `StaticFiles`) are gone. See
+`docs/decisions/0002-the-tour-is-a-portable-document.md` for why, including
+the one place this departs from the agreed design.
 
 ## Running it
 
@@ -42,9 +52,23 @@ make check     # lint + both suites + production build
 make content   # regenerate panoramas, images, narration, tour JSON
 ```
 
-**Restart the backend after `make content`.** Tours are seeded into SQLite at
-startup, so a running server keeps serving the old tour — this looked like the
-frontend ignoring changes more than once.
+`make content` only regenerates `content/tours/fairfax-old-town.json`; nothing
+reads that file into the open session automatically (that bridge is sub-project
+3's job), so there is no SQLite seeding left to restart the backend over. To
+open, save and ship the tour the editor will drive through the session API
+directly:
+
+```sh
+curl -X POST localhost:8000/api/session/new -d '{"title": "A tour"}'   # start empty
+curl -X POST localhost:8000/api/session/import -F file=@tour.zip       # open a bundle
+curl -X PUT localhost:8000/api/session/tour -d @tour.json              # write the document
+curl localhost:8000/api/session/export -o tour.zip                     # save it out as a zip
+curl localhost:8000/api/session/publish -o site.zip                    # a backend-free static site
+```
+
+Every edit above writes straight through to `content/work/`; there is no
+explicit save. See `docs/decisions/0002-the-tour-is-a-portable-document.md`
+for why "save" works this way instead of writing back to an opened file.
 
 `?diag=1` exposes `window.__tour` and `window.__inWorld` and logs renderer
 boundaries. `?align=1` enables alignment mode.
@@ -58,7 +82,7 @@ boundaries. `?align=1` enables alignment mode.
 | Panorama viewer | mapillary-js 4.1.2 | stale (2023) but the only viewer for its format; contained behind `PanoramaViewer` |
 | Rephoto rendering | three.js 0.134 via `addCustomRenderer` | tags cannot carry an image texture |
 | Minimap | **Leaflet 1.9** | see below |
-| Backend | FastAPI, pydantic, SQLite | pydantic models are the single source of truth for the schema |
+| Backend | FastAPI, pydantic | pydantic models are the single source of truth for the schema |
 
 **MapLibre was removed.** Under Angular's esbuild build, maplibre-gl 6.10
 renders raster tiles but **no GeoJSON source ever finishes loading** — no error
