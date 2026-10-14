@@ -59,6 +59,38 @@ def test_new_opens_a_skeleton(client):
     assert body["title"] == "My Tour"
 
 
+def test_new_refuses_with_409_when_a_tour_is_already_open(client):
+    client.post("/api/session/new", json={"title": "First"})
+    r = client.post("/api/session/new", json={"title": "Second"})
+    assert r.status_code == 409
+    assert "export" in r.json()["detail"]
+    # The first tour must still be the one open.
+    assert client.get("/api/session").json()["title"] == "First"
+
+
+def test_new_with_force_discards_what_was_open(client):
+    client.post("/api/session/new", json={"title": "First"})
+    r = client.post("/api/session/new", json={"title": "Second", "force": True})
+    assert r.status_code == 200
+    assert client.get("/api/session").json()["title"] == "Second"
+
+
+def test_put_tour_refuses_with_409_when_nothing_is_open(client):
+    doc = {
+        "id": "t", "schemaVersion": 2, "title": "T", "description": "",
+        "attribution": [], "stops": [{
+            "id": "s1", "order": 1, "title": "S", "summary": "sum",
+            "location": {"lng": -77.3, "lat": 38.84}, "osmRef": None,
+            "panorama": {"provider": "mapillary", "imageId": "1",
+                         "bearing": 0.0, "cachedPath": None},
+            "overlays": [],
+        }],
+    }
+    r = client.put("/api/session/tour", json=doc)
+    assert r.status_code == 409
+    assert client.get("/api/session").json() == {"open": False}
+
+
 def test_tour_data_serves_the_open_document(client):
     client.post("/api/session/new", json={"title": "My Tour"})
     doc = client.get("/tour-data/tour.json")
@@ -97,11 +129,35 @@ def test_export_then_import_round_trips(client):
     assert blob.status_code == 200
     assert blob.headers["content-type"] == "application/zip"
 
-    client.post("/api/session/new", json={"title": "Something Else"})
+    # Already exported, so discarding what's open now is safe; force says so.
+    client.post("/api/session/new", json={"title": "Something Else", "force": True})
     r = client.post("/api/session/import",
                     files={"file": ("t.zip", blob.content, "application/zip")})
     assert r.status_code == 200
     assert client.get("/api/session").json()["title"] == "Exported"
+
+
+def test_export_refuses_with_409_when_referenced_media_is_missing(client):
+    """The export/import asymmetry: `_validate_tree` enforces "every
+    referenced mediaId exists in media/" on import and nothing enforced it
+    on export, so a broken save sat in the working directory until the
+    author tried to reopen it. `PUT /api/session/tour` only validates the
+    document's SCHEMA, not that its media exists, so it is possible to end
+    up with a tour that references media nothing ever uploaded."""
+    client.post("/api/session/new", json={"title": "My Tour"})
+    doc = client.get("/tour-data/tour.json").json()
+    doc["stops"][0]["overlays"] = [{
+        "id": "o1", "kind": "image",
+        "anchor": {"type": "geo", "lng": -77.3, "lat": 38.84, "altitudeM": 0.0},
+        "display": {"mode": "marker", "icon": "photo"},
+        "title": "Photo", "body": None, "mediaId": "never-uploaded.jpg",
+        "credit": {"type": "original", "creator": "M", "license": "CC-BY-4.0"},
+    }]
+    assert client.put("/api/session/tour", json=doc).status_code == 200
+
+    r = client.get("/api/session/export")
+    assert r.status_code == 409
+    assert "never-uploaded.jpg" in r.json()["detail"]
 
 
 def test_importing_rubbish_is_a_400_and_keeps_the_open_tour(client):
@@ -112,7 +168,7 @@ def test_importing_rubbish_is_a_400_and_keeps_the_open_tour(client):
     assert client.get("/api/session").json()["title"] == "Keep Me"
 
 
-def test_importing_a_traversal_archive_is_refused(client, tmp_path):
+def test_importing_a_traversal_archive_is_refused(client):
     client.post("/api/session/new", json={"title": "Keep Me"})
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
@@ -122,7 +178,10 @@ def test_importing_a_traversal_archive_is_refused(client, tmp_path):
                     files={"file": ("e.zip", buf.getvalue(), "application/zip")})
     assert r.status_code == 400
     assert "unsafe" in r.json()["detail"]
-    assert not (tmp_path / "escape.txt").exists()
+    # (No assertion about where "escape.txt" might have landed: extraction
+    # stages under `$TMPDIR`, never under `tmp_path`, so a check phrased
+    # against `tmp_path` could never fail either way. The 400 and the
+    # "unsafe" message above are the real coverage.)
 
 
 def test_tour_data_404s_when_nothing_is_open(client):
@@ -173,6 +232,61 @@ def test_cors_allows_the_mutating_methods():
             assert {"GET", "POST", "PUT", "DELETE"} <= allow_methods
             return
     pytest.fail("CORSMiddleware is not configured")
+
+
+# --- CSRF defence in depth (I5) ----------------------------------------
+#
+# A multipart/form-data POST (and the plain POST/PUT the other two mutating
+# routes take) is a CORS-simple request: the browser never preflights it, so
+# `CORSMiddleware`'s origin allowlist runs too late to stop the side effect,
+# only the response. `Sec-Fetch-Site: cross-site` is what a real browser
+# sends when some OTHER page issued the request; refusing exactly that
+# value is the guard under test here. Absence of the header (what curl,
+# httpx and this test suite itself send on every other test in this file)
+# must keep working — that is the whole reason every test above this
+# section passes with no header at all.
+
+def test_new_refuses_a_cross_site_request(client):
+    r = client.post(
+        "/api/session/new", json={"title": "Attacker"},
+        headers={"Sec-Fetch-Site": "cross-site"},
+    )
+    assert r.status_code == 403
+    assert client.get("/api/session").json() == {"open": False}
+
+
+def test_put_tour_refuses_a_cross_site_request(client):
+    client.post("/api/session/new", json={"title": "Keep Me"})
+    doc = client.get("/tour-data/tour.json").json()
+    doc["title"] = "Attacker"
+    r = client.put(
+        "/api/session/tour", json=doc,
+        headers={"Sec-Fetch-Site": "cross-site"},
+    )
+    assert r.status_code == 403
+    assert client.get("/api/session").json()["title"] == "Keep Me"
+
+
+def test_import_refuses_a_cross_site_request(client):
+    client.post("/api/session/new", json={"title": "Keep Me"})
+    r = client.post(
+        "/api/session/import",
+        files={"file": ("t.zip", b"not a zip", "application/zip")},
+        headers={"Sec-Fetch-Site": "cross-site"},
+    )
+    assert r.status_code == 403
+    assert client.get("/api/session").json()["title"] == "Keep Me"
+
+
+def test_a_same_site_request_is_not_refused(client):
+    """Confirms the guard checks for the literal value `cross-site` rather
+    than refusing anything unexpected: a same-origin request must keep
+    working exactly like the no-header requests every other test sends."""
+    r = client.post(
+        "/api/session/new", json={"title": "Same Site"},
+        headers={"Sec-Fetch-Site": "same-origin"},
+    )
+    assert r.status_code == 200
 
 
 def test_tour_data_404s_not_the_spa_shell_when_unmatched(client_with_frontend):

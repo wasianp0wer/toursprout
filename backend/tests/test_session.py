@@ -6,7 +6,7 @@ import pytest
 
 import app.session as session_module
 from app.bundle import BundleError, write_bundle
-from app.session import Session
+from app.session import Session, SessionConflict
 
 
 @pytest.fixture
@@ -35,6 +35,37 @@ def test_summary_reports_the_open_document(session):
     assert summary["open"] is True
     assert summary["title"] == "My Tour"
     assert summary["mediaCount"] == 0
+
+
+def test_summary_counts_media_recursively(session):
+    """A non-recursive count treated a nested directory (`media/pano/`, the
+    layout the bundle spec's own example shows) as a single entry — the
+    directory itself — rather than counting the files inside it."""
+    session.new("My Tour")
+    (session.path / "media" / "pano").mkdir()
+    (session.path / "media" / "pano" / "pano-x.jpg").write_bytes(b"x")
+    (session.path / "media" / "flat.jpg").write_bytes(b"y")
+    assert session.summary()["mediaCount"] == 2
+
+
+def test_new_refuses_when_a_tour_is_already_open(session):
+    session.new("First")
+    with pytest.raises(SessionConflict):
+        session.new("Second")
+    assert session.tour().title == "First"
+
+
+def test_new_with_force_discards_what_was_open(session):
+    session.new("First")
+    session.new("Second", force=True)
+    assert session.tour().title == "Second"
+
+
+def test_a_fresh_session_accepts_new_without_force(session):
+    """The guard only fires when something is already open; starting the
+    very first tour must not require `force`."""
+    session.new("First")  # no force=True, and no SessionConflict
+    assert session.tour().title == "First"
 
 
 def test_write_tour_validates_and_persists(session):

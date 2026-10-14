@@ -20,6 +20,11 @@ from .migration import migrate_v1_to_v2
 from .models import Tour
 
 
+class SessionConflict(Exception):
+    """A destructive operation was attempted without replacing what is
+    already open. The message is shown to the author."""
+
+
 def _atomic_write_text(path: Path, text: str) -> None:
     """Write `text` to `path` so a crash mid-write can never leave `path`
     truncated or otherwise corrupted.
@@ -90,7 +95,22 @@ class Session:
         raw = json.loads((self.path / "tour.json").read_text())
         return Tour.model_validate(migrate_v1_to_v2(raw))
 
-    def new(self, title: str) -> Tour:
+    def new(self, title: str, *, force: bool = False) -> Tour:
+        """Start a brand-new skeleton tour, discarding whatever is open now.
+
+        `_swap_in` (via `replace_from`) stages, validates and swaps through
+        two renames specifically so an import can never lose what was open.
+        This method used to undo all of that by calling `shutil.rmtree`
+        unconditionally — unreachable from the route guard that makes export
+        safe. Refusing when a tour is already open, unless the caller
+        explicitly passes `force`, means the one remaining way to lose an
+        open document requires saying so on purpose.
+        """
+        if self.is_open and not force:
+            raise SessionConflict(
+                "a tour is already open; export it first, or pass force "
+                "to discard it"
+            )
         doc = skeleton(title)
         if self.path.exists():
             shutil.rmtree(self.path)
@@ -132,7 +152,16 @@ class Session:
             return {"open": False}
         tour = self.tour()
         media_dir = self.path / "media"
-        count = len(list(media_dir.iterdir())) if media_dir.is_dir() else 0
+        # Walked recursively and counting files, not directory entries: a
+        # non-recursive `iterdir()` counted a nested layout like `media/pano/`
+        # as a single entry (the directory itself), which both undercounts
+        # and disagrees with `bundle.py`'s own (now also recursive)
+        # referenced-media check.
+        count = (
+            sum(1 for p in media_dir.rglob("*") if p.is_file())
+            if media_dir.is_dir()
+            else 0
+        )
         return {
             "open": True,
             "tourId": tour.id,

@@ -7,30 +7,39 @@ import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .bundle import BundleError, write_bundle
+from .bundle import BundleError, missing_media, write_bundle
 from .config import Settings
 from .config import settings as default_settings
 from .publish import PublishError, build_site
-from .session import Session
+from .session import Session, SessionConflict
 
-# `StaticFiles` (used by the tour-data mount below, and by any static host a
-# published site lands on) guesses content types from Python's stdlib
-# `mimetypes` table, which disagrees with browsers for two extensions this
-# tour actually ships: `.m4a` comes back as "audio/mp4a-latm" — an RTP/SDP
-# payload name, not a browser-recognised container — instead of "audio/mp4",
-# and `.wav` comes back as "audio/x-wav" instead of "audio/wav". The
-# narration audio is `.m4a` and the `<audio [src]>` in stop-panel.ts has no
-# `type` attribute to fall back on, so this is load-bearing, not cosmetic.
-# media.py's hand-rolled table pinned exactly these two overrides for the
-# prototype's entire life; restore them at import time so deleting that
-# table doesn't silently change what a browser actually plays. Do not
-# remove this as "redundant with stdlib defaults" — it exists because the
-# stdlib defaults are wrong for these two extensions.
+# `StaticFiles` (used by the tour-data mount below) guesses content types
+# from Python's stdlib `mimetypes` table, which disagrees with browsers for
+# two extensions this tour actually ships: `.m4a` comes back as
+# "audio/mp4a-latm" — an RTP/SDP payload name, not a browser-recognised
+# container — instead of "audio/mp4", and `.wav` comes back as
+# "audio/x-wav" instead of "audio/wav". media.py's hand-rolled table pinned
+# exactly these two overrides for the prototype's entire life; restore them
+# at import time so deleting that table doesn't silently change what a
+# browser actually plays through THIS process. Do not remove this as
+# "redundant with stdlib defaults" — it exists because the stdlib defaults
+# are wrong for these two extensions.
+#
+# This only fixes the type for requests this FastAPI process answers — i.e.
+# the editor. A published static site has no FastAPI process; whatever
+# static host serves it may well answer `.m4a` with the same wrong stdlib
+# value (confirmed: Python's own `http.server` does). That used to be a live
+# bug, because `<audio [src]>` in stop-panel.ts had no `type` attribute to
+# fall back on. It no longer is: the viewer's `<audio><source [type]>` now
+# supplies the browser-correct type itself, derived from the mediaId's
+# extension (`audioType` in tour-api.ts), so playback on a published site
+# does not depend on this override at all. See
+# docs/decisions/0002-the-tour-is-a-portable-document.md.
 mimetypes.add_type("audio/mp4", ".m4a")
 mimetypes.add_type("audio/wav", ".wav")
 
@@ -43,6 +52,33 @@ ATTRIBUTION = [
     {"text": "Street-level imagery (c) Mapillary contributors",
      "url": "https://www.mapillary.com", "license": "CC-BY-SA-4.0"},
 ]
+
+
+def _reject_cross_site(request: Request) -> None:
+    """Defence in depth against CSRF on the mutating session routes.
+
+    A `multipart/form-data` POST (what `/api/session/import` takes) — and
+    the plain POST/PUT the other two mutating routes take — is a CORS-simple
+    request: the browser does not preflight it, so the origin allowlist in
+    `CORSMiddleware` above never runs before the request's side effect, only
+    before its response reaches the page that issued it. Concretely: any
+    page the author's browser has open while this backend is running on
+    localhost could POST a replacement bundle to `/api/session/import`
+    without the author ever knowing, and CORS would not have stopped it.
+
+    Browsers that implement Fetch Metadata send `Sec-Fetch-Site`, and
+    `cross-site` means the request was issued by a page on some other
+    origin, not this application's own frontend. Refusing exactly that
+    value, and nothing else, is the point: the header's ABSENCE must not be
+    treated as cross-site, because older browsers and every non-browser
+    client (curl, httpx, this test suite) never send it at all, and this is
+    not an authentication mechanism — there is no login here — it is one
+    more layer for a tool that otherwise has none.
+    """
+    if request.headers.get("sec-fetch-site") == "cross-site":
+        raise HTTPException(
+            status_code=403, detail="cross-site requests are not allowed"
+        )
 
 
 def _viewer_config(cfg: Settings) -> dict:
@@ -85,23 +121,33 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     def get_session() -> dict:
         return app.state.session.summary()
 
-    @app.post("/api/session/new")
+    @app.post("/api/session/new", dependencies=[Depends(_reject_cross_site)])
     def new_session(body: dict) -> dict:
         title = (body.get("title") or "Untitled tour").strip() or "Untitled tour"
+        force = bool(body.get("force", False))
         session = app.state.session
-        session.new(title)
+        try:
+            session.new(title, force=force)
+        except SessionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         session.write_config(_viewer_config(app.state.cfg))
         return session.summary()
 
-    @app.put("/api/session/tour")
+    @app.put("/api/session/tour", dependencies=[Depends(_reject_cross_site)])
     def put_tour(doc: dict) -> dict:
+        session = app.state.session
+        if not session.is_open:
+            raise HTTPException(
+                status_code=409,
+                detail="no tour is open; call POST /api/session/new first",
+            )
         try:
-            app.state.session.write_tour(doc)
+            session.write_tour(doc)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return app.state.session.summary()
+        return session.summary()
 
-    @app.post("/api/session/import")
+    @app.post("/api/session/import", dependencies=[Depends(_reject_cross_site)])
     async def import_bundle(file: UploadFile) -> dict:
         session = app.state.session
         # Spool to disk with a genuine streaming copy: `UploadFile.file` is
@@ -141,6 +187,23 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         session = app.state.session
         if not session.is_open:
             raise HTTPException(status_code=409, detail="no tour is open")
+        # `_validate_tree` enforces "every referenced mediaId exists in
+        # media/" on import; nothing enforced it on export, so an author's
+        # save artefact could be invalid and they would learn only when they
+        # tried to reopen it. A 409 here reuses the status this API already
+        # uses for "this request cannot succeed against the current state"
+        # (see the two guards above and `/api/session/publish` below),
+        # rather than introducing a second way to report the same class of
+        # problem.
+        missing = missing_media(session.path)
+        if missing:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "the open tour references media that is missing: "
+                    + ", ".join(missing)
+                ),
+            )
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "tour.zip"
             write_bundle(session.path, out)
