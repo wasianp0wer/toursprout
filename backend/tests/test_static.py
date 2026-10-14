@@ -1,22 +1,15 @@
 from __future__ import annotations
 
-import json
-
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from tests.test_models import _tour
 
 
 def _settings(tmp_path, dist):
-    (tmp_path / "tours").mkdir(exist_ok=True)
-    (tmp_path / "media").mkdir(exist_ok=True)
-    (tmp_path / "tours" / "t.json").write_text(json.dumps(_tour()))
     return Settings(
         mapillary_token="MLY|t",
-        database_path=tmp_path / "t.db",
         content_dir=tmp_path,
         frontend_dist=dist,
     )
@@ -54,7 +47,9 @@ def test_unknown_path_falls_back_to_index(tmp_path, dist):
 def test_api_routes_still_win_over_the_spa_fallback(tmp_path, dist):
     with TestClient(create_app(_settings(tmp_path, dist))) as c:
         assert c.get("/api/health").json() == {"status": "ok"}
-        assert c.get("/api/tours/nope").status_code == 404
+        # An unmatched path under /api/ is a real 404, not the SPA shell.
+        assert c.get("/api/nope").status_code == 404
+        assert "tour app" not in c.get("/api/nope").text
 
 
 def test_app_works_without_a_built_frontend(tmp_path):

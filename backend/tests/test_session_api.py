@@ -18,8 +18,7 @@ def client(tmp_path):
     # frontend_dist is pinned at a path that does not exist so these tests
     # never depend on whether `make build` has been run. Task 3's
     # publish-without-a-build test relies on this.
-    cfg = Settings(content_dir=tmp_path, database_path=tmp_path / "t.db",
-                   frontend_dist=tmp_path / "nodist",
+    cfg = Settings(content_dir=tmp_path, frontend_dist=tmp_path / "nodist",
                    mapillary_token="test-token")
     with TestClient(create_app(cfg)) as c:
         yield c
@@ -42,7 +41,7 @@ def client_with_frontend(tmp_path):
     frontend_dist.mkdir()
     (frontend_dist / "index.html").write_text("<html>SPA shell</html>")
     (frontend_dist / "app.js").write_text("console.log('stub asset');")
-    cfg = Settings(content_dir=tmp_path / "content", database_path=tmp_path / "t.db",
+    cfg = Settings(content_dir=tmp_path / "content",
                    frontend_dist=frontend_dist, mapillary_token="test-token")
     with TestClient(create_app(cfg)) as c:
         yield c
@@ -202,19 +201,52 @@ def test_publish_without_a_build_is_a_409(client):
     assert "make build" in r.json()["detail"]
 
 
-def test_tour_data_media_range_request_returns_a_slice(client_with_frontend, tmp_path):
-    """Range requests through the tour-data mount must work: this is the
-    narration-audio guarantee, and it is also the permanent home of the
-    range-request coverage that `test_media.py`'s hand-rolled handling in
-    `/api/media/{id}` provides today — that handler is deleted in Task 4,
-    once the frontend stops using it."""
+@pytest.fixture
+def media_clip(client_with_frontend, tmp_path):
+    """Opens a session and drops a distinguishable 1024-byte file into its
+    media directory, returning the client and the exact bytes written."""
     client_with_frontend.post("/api/session/new", json={"title": "My Tour"})
     media_dir = tmp_path / "content" / "work" / "media"
     payload = bytes(range(256)) * 4  # 1024 distinguishable bytes
     (media_dir / "clip.bin").write_bytes(payload)
+    return client_with_frontend, payload
 
-    r = client_with_frontend.get("/tour-data/media/clip.bin",
-                                 headers={"Range": "bytes=10-19"})
+
+def test_tour_data_media_range_request_returns_a_slice(media_clip):
+    """Range requests through the tour-data mount must work: this is the
+    narration-audio guarantee, and it is also the permanent home of the
+    range-request coverage that `test_media.py`'s hand-rolled handling in
+    `/api/media/{id}` provided before Task 4 deleted it along with the
+    frontend's last use of that route."""
+    client, payload = media_clip
+    r = client.get("/tour-data/media/clip.bin", headers={"Range": "bytes=10-19"})
     assert r.status_code == 206
     assert r.headers["content-range"] == "bytes 10-19/1024"
     assert r.content == payload[10:20]
+
+
+def test_tour_data_media_full_request_returns_200(media_clip):
+    client, payload = media_clip
+    r = client.get("/tour-data/media/clip.bin")
+    assert r.status_code == 200
+    assert r.headers["accept-ranges"] == "bytes"
+    assert r.content == payload
+
+
+def test_tour_data_media_suffix_range(media_clip):
+    client, payload = media_clip
+    r = client.get("/tour-data/media/clip.bin", headers={"Range": "bytes=-100"})
+    assert r.status_code == 206
+    assert r.headers["content-range"] == "bytes 924-1023/1024"
+    assert r.content == payload[-100:]
+
+
+def test_tour_data_media_unsatisfiable_range_returns_416(media_clip):
+    client, _ = media_clip
+    r = client.get("/tour-data/media/clip.bin", headers={"Range": "bytes=5000-"})
+    assert r.status_code == 416
+
+
+def test_tour_data_media_missing_file_is_404(media_clip):
+    client, _ = media_clip
+    assert client.get("/tour-data/media/nope.bin").status_code == 404

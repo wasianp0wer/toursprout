@@ -6,17 +6,14 @@ import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .bundle import BundleError, write_bundle
 from .config import Settings
 from .config import settings as default_settings
-from .db import connect, init_schema, list_tours, load_tour, seed_from_dir
-from .media import RangeNotSatisfiable, guess_media_type, parse_range
 from .publish import PublishError, build_site
 from .session import Session
 
@@ -47,15 +44,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # Seed once at startup with a connection local to this thread, then
-        # close it. Routes open their own connection per request: FastAPI runs
-        # sync handlers in a threadpool, and a SQLite connection may not cross
-        # threads.
-        conn = connect(cfg.database_path)
-        init_schema(conn)
-        if cfg.tours_dir.exists():
-            seed_from_dir(conn, cfg.tours_dir)
-        conn.close()
         app.state.cfg = cfg
         app.state.session = Session(cfg.work_dir)
         if app.state.session.is_open:
@@ -66,10 +54,8 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:4200"],
-        # The session routes added in Task 2 are mutating (POST/PUT), so a
-        # browser preflights them; GET-only here would refuse every one of
-        # them from day one, with three more tasks before Task 4's planned
-        # widening. Widening now removes no behaviour, so it stays additive.
+        # The session routes are mutating (POST/PUT/DELETE), so a browser
+        # preflights them; GET-only would refuse every one of them.
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["*"],
     )
@@ -77,66 +63,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     @app.get("/api/health")
     def health() -> dict:
         return {"status": "ok"}
-
-    @app.get("/api/config")
-    def get_config() -> dict:
-        return {
-            "mapillaryToken": app.state.cfg.mapillary_token,
-            "tileUrl": TILE_URL,
-            "attribution": ATTRIBUTION,
-        }
-
-    @app.get("/api/tours")
-    def get_tours() -> list[dict]:
-        conn = connect(app.state.cfg.database_path)
-        try:
-            return [t.model_dump(by_alias=True) for t in list_tours(conn)]
-        finally:
-            conn.close()
-
-    @app.get("/api/tours/{tour_id}")
-    def get_tour(tour_id: str) -> dict:
-        conn = connect(app.state.cfg.database_path)
-        try:
-            tour = load_tour(conn, tour_id)
-        finally:
-            conn.close()
-        if tour is None:
-            raise HTTPException(status_code=404, detail="tour not found")
-        return tour.model_dump(by_alias=True)
-
-    @app.get("/api/media/{media_id}")
-    def get_media(media_id: str, request: Request) -> Response:
-        path = _resolve_media(app.state.cfg.media_dir, media_id)
-        if path is None:
-            raise HTTPException(status_code=404, detail="media not found")
-
-        size = path.stat().st_size
-        media_type = guess_media_type(path)
-
-        try:
-            byte_range = parse_range(request.headers.get("range"), size)
-        except RangeNotSatisfiable:
-            return Response(
-                status_code=416,
-                headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
-            )
-
-        if byte_range is None:
-            return FileResponse(path, media_type=media_type,
-                                headers={"Accept-Ranges": "bytes"})
-
-        start, end = byte_range
-        return Response(
-            content=_read_slice(path, start, end),
-            status_code=206,
-            media_type=media_type,
-            headers={
-                "Content-Range": f"bytes {start}-{end}/{size}",
-                "Content-Length": str(end - start + 1),
-                "Accept-Ranges": "bytes",
-            },
-        )
 
     @app.get("/api/session")
     def get_session() -> dict:
@@ -288,22 +214,6 @@ class _SpaFiles(StaticFiles):
         if path.endswith(".html") or path in ("", "."):
             response.headers["Cache-Control"] = "no-cache, must-revalidate"
         return response
-
-
-def _resolve_media(media_dir: Path, media_id: str) -> Path | None:
-    """A media id is a bare filename. Anything path-like is refused."""
-    if not media_id or "/" in media_id or "\\" in media_id or ".." in media_id:
-        return None
-    path = (media_dir / media_id).resolve()
-    if not path.is_file() or media_dir.resolve() not in path.parents:
-        return None
-    return path
-
-
-def _read_slice(path: Path, start: int, end: int) -> bytes:
-    with path.open("rb") as fh:
-        fh.seek(start)
-        return fh.read(end - start + 1)
 
 
 app = create_app()
