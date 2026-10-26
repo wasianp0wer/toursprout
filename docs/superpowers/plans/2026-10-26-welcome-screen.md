@@ -407,14 +407,14 @@ it('sends each loose part under its relative path', () => {
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd frontend && npx vitest run src/app/core/session-api.spec.ts`
+Run: `cd frontend && npx ng test --watch=false --include='**/core/session-api.spec.ts'`
 Expected: FAIL — methods are not functions.
 
 - [ ] **Step 3: Implement the methods**
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cd frontend && npx vitest run src/app/core/session-api.spec.ts`
+Run: `cd frontend && npx ng test --watch=false --include='**/core/session-api.spec.ts'`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -471,7 +471,7 @@ In `app.spec.ts`, replace `routes '' to the viewer` with `routes '' to the entry
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd frontend && npx vitest run src/app/entry src/app/app.spec.ts`
+Run: `cd frontend && npx ng test --watch=false --include='**/{entry/*,app}.spec.ts'`
 Expected: FAIL — no `EntryPage`.
 
 - [ ] **Step 3: Implement `EntryPage`**
@@ -484,7 +484,7 @@ Probe with `firstValueFrom(this.http.get('/api/session').pipe(timeout(SESSION_PR
 
 - [ ] **Step 5: Run to verify they pass**
 
-Run: `cd frontend && npx vitest run`
+Run: `cd frontend && npx ng test --watch=false`
 Expected: PASS (the welcome `@defer` block can reference `WelcomePage` only once Task 6 exists — if that blocks, land the `@defer` in Task 6 and assert `decision()` here).
 
 - [ ] **Step 6: Commit**
@@ -543,7 +543,7 @@ it('shows the backend message when an import is refused', async () => { /* 400 d
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd frontend && npx vitest run src/app/welcome`
+Run: `cd frontend && npx ng test --watch=false --include='**/welcome/*.spec.ts'`
 Expected: FAIL — no `WelcomePage`.
 
 - [ ] **Step 3: Implement `WelcomePage`**
@@ -562,7 +562,7 @@ derived rather than a third hand-written copy, with `.jpeg` present because the 
 
 - [ ] **Step 5: Run the frontend suite and confirm the welcome screen is its own chunk**
 
-Run: `cd frontend && npx vitest run` then `make build`
+Run: `cd frontend && npx ng test --watch=false` then `make build`
 Expected: tests PASS; the build output lists a lazy chunk for the welcome screen and the eager bundle has not grown meaningfully from 2.13 MB raw / 371.39 kB transferred. Record both figures in the commit message.
 
 - [ ] **Step 6: Commit**
@@ -623,7 +623,7 @@ it('stops autosave and navigates to / after a confirmed close', async () => {
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd frontend && npx vitest run src/app/editor`
+Run: `cd frontend && npx ng test --watch=false --include='**/editor/*.spec.ts'`
 Expected: FAIL — no `CloseDialog`; the empty-state test fails as written against the old template.
 
 - [ ] **Step 3: Implement `CloseDialog`**
@@ -634,7 +634,7 @@ Delete the `[data-empty]` section from the template and `startNewTour`/`newTitle
 
 - [ ] **Step 5: Run to verify they pass**
 
-Run: `cd frontend && npx vitest run`
+Run: `cd frontend && npx ng test --watch=false`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
