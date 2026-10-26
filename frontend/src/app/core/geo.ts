@@ -30,3 +30,11 @@ export function distanceBetween(from: LngLatLike, to: LngLatLike): number {
   const a = Math.sin(dPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda / 2) ** 2;
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(a));
 }
+
+const METRES_PER_DEGREE_LAT = 111_320;
+
+/** Metres north to degrees of latitude. */
+export const metresToLat = (m: number) => m / METRES_PER_DEGREE_LAT;
+/** Metres east to degrees of longitude at `lat`. Diverges toward the poles. */
+export const metresToLng = (m: number, lat: number) =>
+  m / (METRES_PER_DEGREE_LAT * Math.cos((lat * Math.PI) / 180));

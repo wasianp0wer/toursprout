@@ -1,6 +1,10 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { TourStore } from '../core/tour-store';
+import { metresToLat, metresToLng } from '../core/geo';
 import type { Overlay } from '../core/tour.models';
+
+// Re-exported for existing importers; the conversions live in core/geo.ts.
+export { metresToLat, metresToLng };
 
 /** The subset of an inWorld display that alignment mode moves. */
 export interface InWorldPlacementLike {
@@ -15,13 +19,8 @@ export interface InWorldPlacementLike {
 /** One metre per keypress, converted to degrees at the working latitude. */
 export const STEP_M = 1;
 export const STEP_DEG = 2;
-const METRES_PER_DEGREE_LAT = 111_320;
 const SCALE_FACTOR = 1.05;
 const MIN_SIZE_M = 0.5;
-
-export const metresToLat = (m: number) => m / METRES_PER_DEGREE_LAT;
-export const metresToLng = (m: number, lat: number) =>
-  m / (METRES_PER_DEGREE_LAT * Math.cos((lat * Math.PI) / 180));
 
 /** Pure reducer: an anchor and a key in, a new anchor out. */
 export function nudgeAnchor(anchor: InWorldPlacementLike, key: string): InWorldPlacementLike {

@@ -1,5 +1,5 @@
 import {
-  AfterViewInit, Component, DestroyRef, ElementRef, effect, inject, untracked, viewChild,
+  Component, DestroyRef, ElementRef, effect, inject, untracked, viewChild,
 } from '@angular/core';
 import {
   DivIcon, LayerGroup, Map as LeafletMap, Marker, Polygon, Polyline, TileLayer, type LeafletEvent,
@@ -47,7 +47,7 @@ const WEDGE_FOV_DEG = 90;
   `,
   styleUrl: './edit-map-pane.css',
 })
-export class EditMapPane implements AfterViewInit {
+export class EditMapPane {
   protected readonly store = inject(EditorStore);
   private readonly config = inject(ConfigStore);
   private readonly container = viewChild<ElementRef<HTMLElement>>('container');
@@ -74,11 +74,6 @@ export class EditMapPane implements AfterViewInit {
       if (host && stop && !this.map) this.mount(host);
       if (this.map && stop) this.paint();
     });
-  }
-
-  ngAfterViewInit(): void {
-    // Effects run before the first view check; nothing to do but keep the
-    // hook symmetrical with the viewer's pane.
   }
 
   private mount(host: HTMLElement): void {
@@ -150,10 +145,13 @@ export class EditMapPane implements AfterViewInit {
       zIndexOffset: selected ? 1000 : 0,
     }).addTo(this.layers);
     this.tag(marker, 'data-overlay-marker', o.id);
-    marker.on('click dragstart', () => this.store.select(o.id));
+    // Select on click and on dragend, never dragstart: changing the selection
+    // repaints (clearLayers), which would remove the marker mid-drag.
+    marker.on('click', () => this.store.select(o.id));
     marker.on('dragend', (e: LeafletEvent) => {
       const { lat, lng } = (e.target as Marker).getLatLng();
       this.store.apply((t) => setOverlayAnchor(t, o.id, { lng, lat }));
+      this.store.select(o.id);
     });
   }
 

@@ -5,6 +5,7 @@ import { EditorStore } from './editor-store';
 import { overlay, stop, tour } from './test-builders';
 import { bearingBetween, distanceBetween } from '../core/geo';
 import { rotationHandleAt } from './footprint';
+import { deriveOverlayHeading } from './document-ops';
 import type { Overlay } from '../core/tour.models';
 
 /**
@@ -112,6 +113,15 @@ describe('EditMapPane', () => {
     expect(anchorOf('o1')).toEqual(before);
   });
 
+  it('dragging an UNSELECTED marker moves it, and selects it', async () => {
+    await start([inWorld(), note()], 'o1');
+    const before = anchorOf('o2');
+    await drag(q('[data-overlay-marker="o2"]')!, 60, 0);
+    expect(anchorOf('o2').lng).toBeGreaterThan(before.lng);
+    expect(anchorOf('o1')).toEqual(ANCHOR);
+    expect(store.selectedId()).toBe('o2');
+  });
+
   it('draws a footprint and a rotation handle for the selected in-world overlay only', async () => {
     await start([inWorld(), note()], 'o1');
     expect(qa('[data-footprint]')).toHaveLength(1);
@@ -163,9 +173,9 @@ describe('EditMapPane', () => {
     expect(distanceBetween(a, h)).toBeCloseTo(6, 0);
     expect(store.manualHeadings().has('o1')).toBe(true);
     expect(JSON.stringify(store.draft())).not.toMatch(/manual/i);
-    // And way back: derived heading is still available through the gate.
-    const derived = bearingBetween(a, PANO);
-    expect(Math.abs(derived - after)).toBeGreaterThan(0.001);
+    // And the way back: deriving through the gate restores the derived heading.
+    store.apply((t) => deriveOverlayHeading(t, 'o1', PANO));
+    expect(headingOf('o1')).toBeCloseTo(bearingBetween(a, PANO), 6);
   });
 
   it('a handle drag never uses stop.location: the decoy building does not influence the result', async () => {
