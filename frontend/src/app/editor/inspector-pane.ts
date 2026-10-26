@@ -1,12 +1,14 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { EditorStore } from './editor-store';
 import {
   creditText, deriveOverlayHeading, legalKindsFor, legalModesFor, panoramaFixForStop, setCreditText, setInWorldField,
-  setOverlayAnchorKeepingHeading, setOverlayHeadingManual, setOverlayKind, setOverlayMode, setStopTitle, updateOverlay,
+  selectPanorama, setOverlayAnchorKeepingHeading, setStopLocation, setOverlayHeadingManual, setOverlayKind, setOverlayMode, setStopTitle, updateOverlay,
   type DisplayMode,
 } from './document-ops';
 import type { InWorldDisplay, OverlayKind } from '../core/tour.models';
+import { ToolsApi, type PanoramaCandidate, type PlaceCandidate } from '../core/tools-api';
+import type { PanoramaFix } from './document-ops';
 
 type Num = number | null;
 
@@ -25,6 +27,7 @@ type Num = number | null;
 })
 export class InspectorPane {
   protected readonly store = inject(EditorStore);
+  private readonly tools = inject(ToolsApi);
 
   protected readonly overlay = this.store.selectedOverlay;
   protected readonly kinds = computed<OverlayKind[]>(() => {
@@ -111,5 +114,95 @@ export class InspectorPane {
     if (!o || !this.fix()) return;
     this.store.apply((t) => deriveOverlayHeading(t, o.id, this.fix()));
     this.mark(o.id, false);
+  }
+
+  // --- placing a stop: location, panorama picker, places -------------------
+
+  /** A search in flight; the buttons stay off so results cannot interleave. */
+  protected readonly searching = signal(false);
+  protected readonly toolError = signal<string | null>(null);
+  /** Results are keyed to the stop searched for: a late reply never shows on another stop. */
+  private readonly found = signal<{
+    stopId: string; panoramas?: PanoramaCandidate[]; places?: PlaceCandidate[];
+  } | null>(null);
+  protected readonly candidates = computed(() => {
+    const f = this.found();
+    return f && f.stopId === this.stop()?.id ? f.panoramas ?? null : null;
+  });
+  protected readonly placeResults = computed(() => {
+    const f = this.found();
+    return f && f.stopId === this.stop()?.id ? f.places ?? null : null;
+  });
+
+  protected setLocation(field: 'lng' | 'lat', v: Num): void {
+    const s = this.stop();
+    if (!s || v === null) return;
+    const next = { ...s.location, [field]: v };
+    this.store.apply((t) => setStopLocation(t, s.id, next.lng, next.lat));
+  }
+
+  protected async findPanoramas(): Promise<void> {
+    const s = this.stop();
+    if (!s || this.searching()) return;
+    await this.search(s.id, async () => ({
+      stopId: s.id, panoramas: await this.tools.panoramas(s.location.lng, s.location.lat),
+    }));
+  }
+
+  protected async findPlaces(): Promise<void> {
+    const s = this.stop();
+    if (!s || this.searching()) return;
+    await this.search(s.id, async () => ({
+      stopId: s.id, places: await this.tools.places(s.location.lng, s.location.lat),
+    }));
+  }
+
+  /** The network call completes before anything else: a failure only sets the message. */
+  private async search(
+    _stopId: string, run: () => Promise<NonNullable<ReturnType<typeof this.found>>>,
+  ): Promise<void> {
+    this.searching.set(true);
+    this.toolError.set(null);
+    try {
+      this.found.set(await run());
+    } catch (err) {
+      this.toolError.set(err instanceof Error ? err.message : 'the search failed');
+    } finally {
+      this.searching.set(false);
+    }
+  }
+
+  /**
+   * Choose a panorama. The id written to the document and the position
+   * published to the store come from one `selectPanorama` call over this one
+   * candidate, so the gate (keyed on imageId) opens with the camera's real
+   * position for exactly that image.
+   */
+  protected usePanorama(candidate: PanoramaCandidate): void {
+    const s = this.stop();
+    if (!s) return;
+    let fix: PanoramaFix | null = null;
+    this.store.apply((t) => {
+      const r = selectPanorama(t, s.id, candidate);
+      fix = r?.fix ?? null;
+      return r ? r.tour : t;
+    });
+    if (fix) {
+      this.store.setPanoramaPosition(fix);
+      this.toolError.set(null);
+    } else {
+      this.toolError.set('That panorama has no usable position, so it was not selected.');
+    }
+  }
+
+  protected usePlace(place: PlaceCandidate): void {
+    const s = this.stop();
+    if (s) this.store.apply((t) => setStopLocation(t, s.id, place.lng, place.lat, place.osmRef));
+  }
+
+  protected captured(at: number | string | null): string {
+    if (at === null || at === '') return '';
+    const d = new Date(at);
+    return Number.isNaN(d.getTime()) ? '' : `, captured ${d.toISOString().slice(0, 10)}`;
   }
 }

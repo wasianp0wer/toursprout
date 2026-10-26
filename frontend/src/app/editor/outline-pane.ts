@@ -1,9 +1,11 @@
 import { Component, ElementRef, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
 import { EditorStore } from './editor-store';
 import {
-  addMediaOverlay, addStop, addTextOverlay, deleteOverlay, deleteStop, defaultsAnswerValid, hasDefaults, mediaKindOf, moveStop,
+  addMediaOverlay, addStop, archiveCredit, narrationCredit, narrationSource, addTextOverlay, deleteOverlay, deleteStop, defaultsAnswerValid, hasDefaults, mediaKindOf, moveStop,
 } from './document-ops';
 import { SessionApi } from '../core/session-api';
+import { ToolsApi, type ArchiveResult } from '../core/tools-api';
+import type { Credit } from '../core/tour.models';
 import { ActiveRecording, RecordingError, formatWarning, startRecording } from './recorder';
 
 type MediaKind = 'image' | 'audio';
@@ -18,6 +20,7 @@ type PromptKind = MediaKind | 'text' | 'record';
 export class OutlinePane implements OnDestroy {
   protected readonly store = inject(EditorStore);
   private readonly api = inject(SessionApi);
+  private readonly tools = inject(ToolsApi);
 
   private readonly imageInput = viewChild<ElementRef<HTMLInputElement>>('imageInput');
   private readonly audioInput = viewChild<ElementRef<HTMLInputElement>>('audioInput');
@@ -213,8 +216,10 @@ export class OutlinePane implements OnDestroy {
     await this.addUploaded(kind, file, stopId);
   }
 
-  /** The one upload-then-create path, shared by file choice and recording. */
-  private async addUploaded(kind: MediaKind, file: File, knownStop?: string): Promise<void> {
+  /** The one upload-then-create path, shared by file choice, recording and the archive. */
+  private async addUploaded(
+    kind: MediaKind, file: File, knownStop?: string, extra?: { title?: string; credit?: Credit },
+  ): Promise<void> {
     const stopId = knownStop ?? this.targetStopId ?? this.store.currentStop()?.id ?? null;
     this.targetStopId = null;
     if (!stopId) return;
@@ -229,20 +234,127 @@ export class OutlinePane implements OnDestroy {
       return;
     }
     this.busy.set(false);
+    this.createFromMedia(kind, mediaId, extra?.title ?? file.name, stopId, extra?.credit, 'The file was uploaded but not added.');
+  }
+
+  /**
+   * The create half, for media already stored (uploaded, or narrated). Called
+   * only after the network has resolved, so a refusal here is the document's
+   * and leaves it untouched.
+   */
+  private createFromMedia(
+    kind: MediaKind, mediaId: string, title: string, stopId: string, credit?: Credit, uploadedNote = '',
+  ): void {
     const stored = mediaKindOf(mediaId);
     if (stored !== kind) {
       this.mediaError.set(`That file is ${stored ?? 'not a supported type'}, not ${kind}.`);
       return;
     }
     const before = this.store.draft();
-    this.store.apply((t) => addMediaOverlay(t, stopId, kind, mediaId, file.name, this.store.pendingDefaults() ?? undefined));
+    this.store.apply((t) => addMediaOverlay(
+      t, stopId, kind, mediaId, title, this.store.pendingDefaults() ?? undefined, credit));
     const after = this.store.draft();
     if (after === before) {
-      this.mediaError.set(`${this.refusalMessage(stopId)} The file was uploaded but not added.`);
+      this.mediaError.set(`${this.refusalMessage(stopId)} ${uploadedNote}`.trim());
       return;
     }
     const added = after!.stops.find((s) => s.id === stopId)?.overlays.at(-1);
     if (added) this.store.select(added.id);
+  }
+
+  // --- narration -----------------------------------------------------------
+
+  /** What narrate would say right now: the selected stop's summary or overlay's body. */
+  protected readonly narration = computed(() => {
+    const doc = this.store.draft();
+    return doc ? narrationSource(doc, this.store.selectedId()) : null;
+  });
+
+  protected async narrate(): Promise<void> {
+    const src = this.narration();
+    if (!src || this.busy()) return;
+    this.busy.set(true);
+    this.mediaError.set(null);
+    let result: Awaited<ReturnType<ToolsApi['narrate']>>;
+    try {
+      result = await this.tools.narrate(src.text);
+    } catch (err) {
+      this.mediaError.set(err instanceof Error ? err.message : 'narration failed');
+      this.busy.set(false);
+      return;
+    }
+    this.busy.set(false);
+    this.createFromMedia('audio', result.mediaId, src.title, src.stopId, narrationCredit(result.credit),
+      'The narration was generated but not added.');
+  }
+
+  // --- archive search ------------------------------------------------------
+
+  protected readonly archiveOpen = signal(false);
+  protected readonly archiveQuery = signal('');
+  protected readonly archiveResults = signal<ArchiveResult[] | null>(null);
+  /** Licences the author typed for results that state no rights, by result index. */
+  protected readonly archiveLicenses = signal<Record<number, string>>({});
+
+  protected toggleArchive(): void {
+    this.archiveOpen.update((v) => !v);
+  }
+
+  protected setArchiveLicense(i: number, v: string): void {
+    this.archiveLicenses.update((m) => ({ ...m, [i]: v }));
+  }
+
+  protected async searchArchive(): Promise<void> {
+    const query = this.archiveQuery().trim();
+    if (!query || this.busy()) return;
+    this.busy.set(true);
+    this.mediaError.set(null);
+    try {
+      this.archiveResults.set(await this.tools.archiveSearch(query));
+      this.archiveLicenses.set({});
+    } catch (err) {
+      this.mediaError.set(err instanceof Error ? err.message : 'the archive search failed');
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /**
+   * Download the result's image, upload it, then add it. Every network step
+   * precedes the document change, so any failure leaves the document as it was.
+   * The credit is settled first: with no stated rights and no licence from
+   * the author nothing is fetched at all.
+   */
+  protected async insertArchive(i: number): Promise<void> {
+    const result = this.archiveResults()?.[i];
+    const stopId = this.store.currentStop()?.id;
+    if (!result || !stopId || this.busy()) return;
+    this.mediaError.set(null);
+    const credit = archiveCredit(result, this.archiveLicenses()[i]);
+    if (!credit) {
+      this.mediaError.set(result.rights?.trim() || this.archiveLicenses()[i]?.trim()
+        ? 'This item has no web address to credit, so it cannot be added.'
+        : 'This item states no rights. Enter the licence it is under before adding it.');
+      return;
+    }
+    if (!result.imageUrl) {
+      this.mediaError.set('This item has no image to download.');
+      return;
+    }
+    this.busy.set(true);
+    let file: File;
+    try {
+      const res = await fetch(result.imageUrl);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const blob = await res.blob();
+      file = new File([blob], archiveFileName(result.title, blob.type), { type: blob.type });
+    } catch {
+      this.mediaError.set('The image could not be downloaded from the archive, so nothing was added.');
+      this.busy.set(false);
+      return;
+    }
+    this.busy.set(false);
+    await this.addUploaded('image', file, stopId, { title: result.title, credit });
   }
 
   ngOnDestroy(): void {
@@ -262,4 +374,10 @@ export class OutlinePane implements OnDestroy {
     const stop = this.store.selectedStop();
     if (stop) this.store.apply((t) => moveStop(t, stop.id, delta));
   }
+}
+
+function archiveFileName(title: string, mime: string): string {
+  const ext = mime === 'image/png' ? '.png' : mime === 'image/webp' ? '.webp' : '.jpg';
+  const base = title.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'archive';
+  return base + ext;
 }

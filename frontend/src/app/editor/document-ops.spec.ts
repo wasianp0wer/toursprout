@@ -4,6 +4,7 @@ import {
   deleteStop, deriveHeading, legalModesFor, moveStop, renumberStops,
   setOverlayKind, slugify, uniqueId, updateOverlay,
   creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
+  setStopLocation, selectPanorama, archiveCredit, narrationCredit, narrationSource,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
 import type { Tour } from '../core/tour.models';
@@ -502,5 +503,119 @@ describe('text overlays and the defaults invariant', () => {
   it('addTextOverlay with defaults ignores a supplied answer', () => {
     const out = addTextOverlay(tour(), 's1', 'A note', { creator: 'X', license: 'Y' });
     expect(out.defaults).toEqual({ creator: 'M. Harrington', license: 'CC-BY-4.0' });
+  });
+});
+
+describe('stop location and panorama selection', () => {
+  const CAND = { imageId: 'cam-9', lng: -77.31, lat: 38.85 };
+
+  it('setStopLocation moves the stop and optionally sets osmRef; refusals keep the reference', () => {
+    const t = tour();
+    const out = setStopLocation(t, 's1', -77.4, 38.9);
+    expect(out.stops[0].location).toEqual({ lng: -77.4, lat: 38.9 });
+    expect(out.stops[0].osmRef).toBeNull();
+    expect(setStopLocation(t, 's1', -77.4, 38.9, 'way/12').stops[0].osmRef).toBe('way/12');
+    expect(setStopLocation(t, 's1', 181, 0)).toBe(t);
+    expect(setStopLocation(t, 's1', 0, -91)).toBe(t);
+    expect(setStopLocation(t, 's1', NaN, 0)).toBe(t);
+    expect(setStopLocation(t, 'nope', 1, 1)).toBe(t);
+  });
+
+  it('selectPanorama writes the imageId and returns a fix built from the SAME candidate', () => {
+    const t = tour();
+    const r = selectPanorama(t, 's1', CAND)!;
+    expect(r.tour.stops[0].panorama.imageId).toBe('cam-9');
+    expect(r.fix).toEqual({ imageId: 'cam-9', lng: -77.31, lat: 38.85 });
+    expect(r.tour.stops[0].location).toEqual(t.stops[0].location);
+  });
+
+  it('selectPanorama drops the cached file of the panorama it replaces', () => {
+    const t = tour([stop('s1', 1, [], { panorama: { provider: 'mapillary', imageId: 'old', bearing: 90, cachedPath: 'old.jpg' } })]);
+    expect(selectPanorama(t, 's1', CAND)!.tour.stops[0].panorama.cachedPath).toBeNull();
+  });
+
+  it('selectPanorama refuses an unknown stop, a blank id and a non-finite position', () => {
+    const t = tour();
+    expect(selectPanorama(t, 'nope', CAND)).toBeNull();
+    expect(selectPanorama(t, 's1', { ...CAND, imageId: ' ' })).toBeNull();
+    expect(selectPanorama(t, 's1', { ...CAND, lat: NaN })).toBeNull();
+    expect(selectPanorama(t, 's1', { ...CAND, lng: 200 })).toBeNull();
+  });
+
+  it('the fix opens the gate for the selected stop and for no other', () => {
+    const t = tour([stop('s1', 1), stop('s2', 2)]);
+    const r = selectPanorama(t, 's1', CAND)!;
+    const anchor = { type: 'geo' as const, lng: -77.3, lat: 38.841, altitudeM: 2 };
+    const withOv = {
+      ...r.tour,
+      stops: r.tour.stops.map((s) => s.id === 's1' ? { ...s, overlays: [overlay('o1', {
+        kind: 'image', mediaId: 'p.jpg', anchor,
+        display: { mode: 'inWorld', opacity: 0.8, headingDeg: 5, widthM: 4, heightM: 3 },
+      })] } : s),
+    };
+    const derived = deriveOverlayHeading(withOv, 'o1', r.fix);
+    expect((derived.stops[0].overlays[0].display as { headingDeg: number }).headingDeg)
+      .toBeCloseTo(deriveHeading(anchor, CAND), 6);
+    // The same fix against a stop that did not select it stays closed.
+    expect(deriveOverlayHeading(withOv, 'o1', { ...r.fix, imageId: 'img-2' })).toBe(withOv);
+  });
+});
+
+describe('sourced and narration credits', () => {
+  const found = {
+    title: 'Courthouse, 1920', creator: 'A. Photographer',
+    itemUrl: 'https://loc.gov/item/1/', imageUrl: 'https://tile.loc.gov/1.jpg',
+  };
+
+  it('archiveCredit builds a sourced credit from the result and its stated rights', () => {
+    expect(archiveCredit({ ...found, rights: 'No known restrictions' })).toEqual({
+      type: 'sourced', source: 'Library of Congress', url: 'https://loc.gov/item/1/',
+      license: 'No known restrictions', creator: 'A. Photographer',
+    });
+  });
+
+  it('with null rights the author must supply the licence; none is invented', () => {
+    expect(archiveCredit({ ...found, rights: null })).toBeNull();
+    expect(archiveCredit({ ...found, rights: null }, '  ')).toBeNull();
+    expect(archiveCredit({ ...found, rights: null }, 'Public domain')!.license).toBe('Public domain');
+  });
+
+  it('stated rights win over a typed licence', () => {
+    expect(archiveCredit({ ...found, rights: 'Stated' }, 'Typed')!.license).toBe('Stated');
+  });
+
+  it('archiveCredit falls back to the image url, and refuses with no url at all', () => {
+    expect(archiveCredit({ ...found, itemUrl: null, rights: 'R' })!).toMatchObject({ url: found.imageUrl });
+    expect(archiveCredit({ ...found, itemUrl: null, imageUrl: null, rights: 'R' })).toBeNull();
+  });
+
+  it('narrationCredit is an original credit naming the synthesiser, not the author', () => {
+    expect(narrationCredit({ source: 's', license: 'Generated', creator: 'macOS voice' }))
+      .toEqual({ type: 'original', creator: 'macOS voice', license: 'Generated' });
+  });
+
+  it('addMediaOverlay uses a given credit and needs no tour defaults for it', () => {
+    const t: Tour = { ...tour(), defaults: null };
+    const credit = archiveCredit({ ...found, rights: 'R' })!;
+    const out = addMediaOverlay(t, 's1', 'image', 'm-1.jpg', 'Courthouse', undefined, credit);
+    expect(out.stops[0].overlays[0].credit).toEqual(credit);
+    expect(out.defaults).toBeNull();
+    expect(addMediaOverlay(t, 's1', 'image', 'm-1.jpg', 'Courthouse')).toBe(t);
+  });
+});
+
+describe('narrationSource', () => {
+  it('uses a stop summary or an overlay body, with the owning stop', () => {
+    const t = tour([stop('s1', 1, [overlay('o1', { body: 'Overlay words' })], { summary: 'Stop words' })]);
+    expect(narrationSource(t, 's1')).toMatchObject({ stopId: 's1', text: 'Stop words' });
+    expect(narrationSource(t, 'o1')).toMatchObject({ stopId: 's1', text: 'Overlay words' });
+  });
+
+  it('is null for nothing selected, a blank text, or an unknown id', () => {
+    const t = tour([stop('s1', 1, [overlay('o1', { body: null })], { summary: '  ' })]);
+    expect(narrationSource(t, 's1')).toBeNull();
+    expect(narrationSource(t, 'o1')).toBeNull();
+    expect(narrationSource(t, 'zz')).toBeNull();
+    expect(narrationSource(t, null)).toBeNull();
   });
 });

@@ -445,10 +445,13 @@ export function setTourDefaults(tour: Tour, creator: string, license: string): T
 export function addMediaOverlay(
   tour: Tour, stopId: string, kind: 'image' | 'audio', mediaId: string, title: string,
   supplied?: { creator: string; license: string },
+  credit?: Credit,
 ): Tour {
   const stop = tour.stops.find((s) => s.id === stopId);
   if (!stop || mediaKindOf(mediaId) !== kind) return tour;
-  const base = withDefaults(tour, supplied);
+  // A credit given by the caller (an archive's, or the narrator's) already
+  // names who made the work, so the tour's defaults are not needed for it.
+  const base = credit ? tour : withDefaults(tour, supplied);
   if (!base) return tour;
   const text = title.trim() || (kind === 'image' ? 'New image' : 'New audio');
   const overlay: Overlay = {
@@ -456,7 +459,7 @@ export function addMediaOverlay(
     anchor: { type: 'geo', lng: stop.location.lng, lat: stop.location.lat, altitudeM: 2 },
     display: { mode: 'marker', icon: kind === 'image' ? 'photo' : 'audio' },
     title: text, body: null, mediaId,
-    credit: defaultCreditFor(base),
+    credit: credit ?? defaultCreditFor(base),
   };
   return mapStop(base, stopId, (s) => ({ ...s, overlays: [...s.overlays, overlay] }));
 }
@@ -477,4 +480,87 @@ export function setCreditText(tour: Tour, overlayId: string, text: string): Tour
 
 export function setStopTitle(tour: Tour, stopId: string, title: string): Tour {
   return mapStop(tour, stopId, (s) => ({ ...s, title }));
+}
+
+/**
+ * Move a stop. `osmRef` is set only when given (a place picked from the OSM
+ * search); undefined leaves it alone. Same reference for a bad coordinate.
+ */
+export function setStopLocation(
+  tour: Tour, stopId: string, lng: number, lat: number, osmRef?: string | null,
+): Tour {
+  if (!tour.stops.some((s) => s.id === stopId)) return tour;
+  if (!isNum(lng) || !isNum(lat) || Math.abs(lng) > 180 || Math.abs(lat) > 90) return tour;
+  return mapStop(tour, stopId, (s) => ({
+    ...s, location: { lng, lat }, ...(osmRef === undefined ? {} : { osmRef }),
+  }));
+}
+
+/**
+ * Choose a panorama for a stop from a search candidate. Returns the new tour
+ * AND the fix to publish, both built from this one `candidate`, so the
+ * position can never belong to a different image than the id written.
+ * The stop's own location is never consulted: a candidate's lng/lat is where
+ * the camera stood. Null (nothing to change or publish) for an unknown stop,
+ * a blank id or an unusable position.
+ *
+ * The replaced panorama's cached file is dropped: it is a render of the old
+ * image and would show the wrong place.
+ */
+export function selectPanorama(
+  tour: Tour, stopId: string, candidate: PanoramaFix,
+): { tour: Tour; fix: PanoramaFix } | null {
+  const { imageId, lng, lat } = candidate;
+  if (!tour.stops.some((s) => s.id === stopId)) return null;
+  if (typeof imageId !== 'string' || !imageId.trim()) return null;
+  if (!isNum(lng) || !isNum(lat) || Math.abs(lng) > 180 || Math.abs(lat) > 90) return null;
+  const next = mapStop(tour, stopId, (s) => ({
+    ...s, panorama: { ...s.panorama, imageId, cachedPath: null },
+  }));
+  return { tour: next, fix: { imageId, lng, lat } };
+}
+
+/**
+ * A sourced credit for an archive result. The licence is the archive's
+ * stated rights; when it states none, only what the author typed is used,
+ * and with neither this is null: nothing is invented. Null also when the
+ * result has no url to cite.
+ */
+export function archiveCredit(
+  result: {
+    creator: string | null; itemUrl: string | null; imageUrl: string | null; rights: string | null;
+  },
+  authorLicense?: string,
+): Credit | null {
+  const license = result.rights?.trim() || authorLicense?.trim() || '';
+  const url = result.itemUrl?.trim() || result.imageUrl?.trim() || '';
+  if (!license || !url) return null;
+  return {
+    type: 'sourced', source: 'Library of Congress', url, license,
+    creator: result.creator?.trim() || null,
+  };
+}
+
+/** The synthesiser's credit as an original credit: there is no url to cite, and the author did not make it. */
+export function narrationCredit(c: { source?: string; creator: string; license: string }): Credit {
+  return { type: 'original', creator: c.creator, license: c.license };
+}
+
+/** The words to narrate for a selection, and the stop the audio belongs to. */
+export function narrationSource(
+  tour: Tour, selectedId: string | null,
+): { stopId: string; text: string; title: string } | null {
+  if (!selectedId) return null;
+  for (const s of tour.stops) {
+    if (s.id === selectedId) {
+      const text = s.summary.trim();
+      return text ? { stopId: s.id, text, title: `Narration: ${s.title}` } : null;
+    }
+    const o = s.overlays.find((x) => x.id === selectedId);
+    if (o) {
+      const text = (o.body ?? '').trim();
+      return text ? { stopId: s.id, text, title: `Narration: ${o.title}` } : null;
+    }
+  }
+  return null;
 }
