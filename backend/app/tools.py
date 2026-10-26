@@ -275,6 +275,35 @@ def score_title(title: object, required: list[str], excluded: list[str]) -> floa
     return hits + 1.0 / (1.0 + len(text))
 
 
+def _text_field(value: object) -> str | None:
+    """A non-blank string, or the non-blank strings of a list joined with '; '."""
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, list):
+        parts = [v.strip() for v in value if isinstance(v, str) and v.strip()]
+        return "; ".join(parts) or None
+    return None
+
+
+def _creator(result: dict) -> str | None:
+    """Observed against the live API: search results have NO top-level `creator`.
+    The photographer is `item.creators[].title` (display case, dated), else
+    `item.contributors[]` (strings), else the top-level `contributor` list,
+    which is lowercased and so the last resort."""
+    item = result.get("item") if isinstance(result.get("item"), dict) else {}
+    titles = [c.get("title") for c in item.get("creators") or [] if isinstance(c, dict)]
+    return (_text_field(titles) or _text_field(item.get("contributors"))
+            or _text_field(result.get("creator")) or _text_field(result.get("contributor")))
+
+
+def _rights(result: dict) -> str | None:
+    """Observed: results carry no top-level `rights`; the statement is
+    `item.rights_advisory` (and an identical `item.rights_information`)."""
+    item = result.get("item") if isinstance(result.get("item"), dict) else {}
+    return (_text_field(item.get("rights_advisory")) or _text_field(item.get("rights_information"))
+            or _text_field(result.get("rights")))
+
+
 def _image_url(raw: str) -> str:
     url = raw.split("#")[0]
     return "https:" + url if url.startswith("//") else url
@@ -297,19 +326,19 @@ def search_archive(client: httpx.Client, query: str, terms: list[str],
         score = score_title(item.get("title"), terms, excluded_places)
         if score <= 0:
             continue
-        rights = _first(item.get("rights"))
         scored.append((score, {
             "title": _first(item.get("title")) or "",
             "date": _first(item.get("date")),
-            "creator": _first(item.get("creator")),
+            "creator": _creator(item),
             "thumbUrl": _image_url(images[0]),
             # fetch_rephotos.py: the last entry is the largest rendition.
             "imageUrl": _image_url(images[-1]),
-            "itemUrl": item.get("id") or item.get("url"),
+            # `url` is https; `id` is the same address over http.
+            "itemUrl": item.get("url") or item.get("id"),
             # Not read by any script (they hardcode a licence string). Reported
             # only when the item carries one, so the editor never shows an
             # invented rights statement.
-            "rights": rights if isinstance(rights, str) and rights.strip() else None,
+            "rights": _rights(item),
         }))
     scored.sort(key=lambda s: -s[0])
     return [r for _, r in scored]

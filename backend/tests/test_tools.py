@@ -22,9 +22,11 @@ from app.media_store import sniff
 
 # Shape implied by content/scripts/probe_coverage.py `probe()`: it reads
 # data["data"][*] with id, computed_geometry|geometry {coordinates: [lng, lat]},
-# is_pano, captured_at (epoch ms), compass_angle. `thumb_256_url` is a field of
-# the same /images endpoint per Mapillary's Graph API docs (fetch_media.py
-# requests `thumb_2048_url` the same way); no script reads it.
+# is_pano, captured_at (epoch ms), compass_angle. VERIFIED LIVE (0004):
+# `thumb_256_url` is a real field (a 256x128 scontent.xx.fbcdn.net URL) and the
+# call returns 200; an unknown field is silently ignored, not a 400. Ids are
+# strings. A bad token is HTTP 400 {"error": {"message", "type":
+# "OAuthException", "code": 190, "fbtrace_id"}}.
 MAPILLARY_LIST = {"data": [
     {"id": "flat1", "computed_geometry": {"type": "Point", "coordinates": [-77.3062, 38.8460]},
      "is_pano": False, "captured_at": 1600000000000, "compass_angle": 10.0,
@@ -41,6 +43,8 @@ MAPILLARY_LIST = {"data": [
 
 # Shape implied by probe_coverage.py `discover_sites()`: elements[*] with
 # type, id, lat/lon (nodes) or center.{lat,lon} (ways/relations), tags.name.
+# VERIFIED LIVE (0004): that is the real shape, with the envelope keys
+# version/generator/osm3s beside `elements` (and `remark` on a runtime error).
 OVERPASS = {"elements": [
     {"type": "node", "id": 11, "lat": 38.8460, "lon": -77.3062,
      "tags": {"name": "Old Town Hall", "historic": "building"}},
@@ -52,21 +56,34 @@ OVERPASS = {"elements": [
     {"type": "node", "id": 11, "lat": 38.8460, "lon": -77.3062,
      "tags": {"name": "Old Town Hall", "historic": "building"}}]}
 
-# Shape implied by fetch_rephotos.py / relevance.py: results[*] with
-# image_url (LIST of sizes, smallest first, protocol-relative and `#h=..`
-# fragments possible), title/date/creator as str or list, id (item URL).
-# `rights` is NOT read by any script (they hardcode a licence string); it is
-# the loc.gov item field of that name, so it is optional here.
+# Shape OBSERVED from the live loc.gov /photos/ API (docs/decisions/0004):
+# results[*] have `url` (https) and `id` (the same address over http), a str
+# `title` and `date`, `image_url` as a LIST (index 0 is a 150px JPEG, then a GIF
+# thumbnail, ~640px, ~1024px; some items have one IIIF entry; `#h=..&w=..`
+# fragments), a lowercased `contributor` list, and NO top-level `creator` or
+# `rights`: the photographer is `item.creators[].title` and the rights text is
+# `item.rights_advisory`. The scripts also tolerate protocol-relative URLs and
+# list-valued titles, so those variants are kept below.
 LOC = {"results": [
     {"title": "Fairfax Court House, Virginia", "date": "1863",
-     "id": "http://www.loc.gov/item/1/", "creator": ["Brady, Mathew"],
-     "image_url": ["//tile.loc.gov/t/1_thumb.jpg#h=150&w=100", "//tile.loc.gov/t/1_full.jpg#h=900"],
-     "rights": "No known restrictions."},
+     "id": "http://www.loc.gov/item/1/", "url": "https://www.loc.gov/item/1/",
+     "contributor": ["o'sullivan, timothy h.", "gardner, alexander"],
+     "image_url": ["https://tile.loc.gov/t/1_150px.jpg#h=114&w=150",
+                   "https://tile.loc.gov/t/1t.gif#h=114&w=150",
+                   "https://tile.loc.gov/t/1r.jpg#h=488&w=640",
+                   "https://tile.loc.gov/t/1v.jpg#h=780&w=1024"],
+     "item": {"creators": [{"link": "https://www.loc.gov/pictures/related/?fi=name",
+                            "role": "photographer", "title": "O'Sullivan, Timothy H., 1840-1882"},
+                           {"role": "photographer", "title": "Gardner, Alexander, 1821-1882"}],
+              "contributors": ["O'Sullivan, Timothy H., 1840-1882, photographer."],
+              "rights_advisory": "No known restrictions on publication.",
+              "rights_information": "No known restrictions on publication."}},
     {"title": ["Alexandria Court House"], "date": ["1900"], "id": "http://www.loc.gov/item/2/",
      "image_url": ["https://tile.loc.gov/t/2.jpg"]},
     {"title": "Fairfax Court House, no image", "date": "1910", "id": "http://www.loc.gov/item/3/"},
-    {"title": "Fairfax Court House interior", "date": "1920", "id": "http://www.loc.gov/item/4/",
-     "image_url": ["https://tile.loc.gov/t/4.jpg"]}]}
+    {"title": "Fairfax Court House interior", "date": "1920",
+     "id": "http://www.loc.gov/item/4/", "url": "https://www.loc.gov/item/4/",
+     "image_url": ["//tile.loc.gov/t/4.jpg"], "item": {"rights_advisory": None}}]}
 
 
 @pytest.fixture
@@ -263,11 +280,12 @@ def test_archive_search_parses_and_filters(client):
         "Fairfax Court House interior", "Fairfax Court House, Virginia"]
     first = res[1]  # the 1863 item
     assert first["date"] == "1863"
-    assert first["thumbUrl"] == "https://tile.loc.gov/t/1_thumb.jpg"
-    assert first["imageUrl"] == "https://tile.loc.gov/t/1_full.jpg"
-    assert first["itemUrl"] == "http://www.loc.gov/item/1/"
-    assert first["rights"] == "No known restrictions."
-    assert first["creator"] == "Brady, Mathew"
+    assert first["thumbUrl"] == "https://tile.loc.gov/t/1_150px.jpg"
+    assert first["imageUrl"] == "https://tile.loc.gov/t/1v.jpg"
+    assert first["itemUrl"] == "https://www.loc.gov/item/1/"
+    assert first["rights"] == "No known restrictions on publication."
+    assert first["creator"] == ("O'Sullivan, Timothy H., 1840-1882; "
+                                "Gardner, Alexander, 1821-1882")
     # Absent rights are reported as such, not invented.
     assert res[0]["rights"] is None  # the interior item carries none
     u = seen["url"]
