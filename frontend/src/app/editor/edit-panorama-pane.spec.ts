@@ -5,7 +5,7 @@ import { EditorStore } from './editor-store';
 import { overlay, stop, tour } from './test-builders';
 import { PANORAMA_VIEWER } from '../panorama/panorama-pane';
 import { FakeViewer } from '../panorama/fake-viewer';
-import { panoramaFixForStop } from './document-ops';
+import { deriveHeading, panoramaFixForStop } from './document-ops';
 import type { Overlay } from '../core/tour.models';
 
 describe('EditPanoramaPane', () => {
@@ -276,6 +276,19 @@ describe('EditPanoramaPane', () => {
       await settle();
       expect(fake.rerenders).toBeGreaterThan(before);
       expect(lastPlacements()[0].lat).toBe(38.8456);
+    });
+
+    it('keeps a derived heading true as the overlay is nudged, but not a manual one', async () => {
+      await start([photo()], 'o1');
+      const pano = { lng: -77.3069, lat: 38.8455 };
+      fake.emitPositionChange(pano, 'img-1');
+      key('ArrowRight');
+      const derived = disp().headingDeg;
+      expect(derived).toBeCloseTo(deriveHeading(o1().anchor, pano), 6);
+      store.markHeadingManual('o1', true);
+      key('ArrowRight');
+      key('ArrowRight');
+      expect(disp().headingDeg).toBe(derived);
     });
 
     it('shows the moved position to the viewer', async () => {

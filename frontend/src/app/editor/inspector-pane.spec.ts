@@ -143,10 +143,11 @@ describe('InspectorPane', () => {
       anchor: { type: 'geo', lng: -77.30732, lat: 38.84562, altitudeM: 2 },
       display: { mode: 'inWorld', opacity: 0.8, headingDeg: 0, widthM: 4, heightM: 3 },
     });
-    // DECOY: stop.location is the building, 38.7 m from the camera. Deriving
-    // from it gives about 283 (backwards); the panorama position gives about 105.
+    // DECOY: stop.location is on the far side of the anchor from the camera,
+    // so deriving from it gives about 285 (backwards); the panorama position
+    // gives about 105.
     await start(court, { imageId: 'img-1', lng: -77.306888, lat: 38.845534 },
-      { lng: -77.30732, lat: 38.84562 });
+      { lng: -77.30732 * 2 + 77.306888, lat: 38.84562 * 2 - 38.845534 });
     (q('[data-derive-heading]') as HTMLElement).click(); await settle();
     expect(heading()).toBeGreaterThan(100);
     expect(heading()).toBeLessThan(110);
@@ -194,6 +195,47 @@ describe('InspectorPane', () => {
     expect(q('[data-heading-override]')).toBeNull();
     expect(heading()).toBeCloseTo(deriveHeading(ANCHOR, PANO), 6);
     expect(JSON.stringify(store.draft())).not.toMatch(/override/i);
+  });
+
+  it('refuses a typed heading while the panorama position is unknown, and does not mark it manual', async () => {
+    await start(inWorld(), null);
+    expect(input('[data-field="headingDeg"]').disabled).toBe(true);
+    await type('[data-field="headingDeg"]', '45');
+    expect(heading()).toBe(10);
+    expect(store.manualHeadings().has('o1')).toBe(false);
+    expect(q('[data-heading-override]')).toBeNull();
+    expect(store.canUndo()).toBe(false);
+  });
+
+  it('refuses a typed heading for a different panorama\'s position', async () => {
+    await start(inWorld(), { ...PANO, imageId: 'previous-pano' });
+    await type('[data-field="headingDeg"]', '45');
+    expect(heading()).toBe(10);
+    expect(store.manualHeadings().has('o1')).toBe(false);
+  });
+
+  it('editing the anchor re-derives a derived heading', async () => {
+    await start(inWorld());
+    await type('[data-field="lng"]', '-77.2995');
+    expect(heading()).toBeCloseTo(deriveHeading(ov().anchor, PANO), 6);
+  });
+
+  it('editing the anchor leaves a manual heading alone', async () => {
+    await start(inWorld());
+    await type('[data-field="headingDeg"]', '45');
+    await type('[data-field="lng"]', '-77.2995');
+    expect(heading()).toBe(45);
+  });
+
+  it('a refused mode switch does not clear the manual flag', async () => {
+    await start(inWorld());
+    await type('[data-field="headingDeg"]', '45');
+    expect(store.manualHeadings().has('o1')).toBe(true);
+    store.setPanoramaPosition(null);
+    // Switching to the mode it already has is refused (same reference).
+    const comp = fixture.componentInstance as unknown as { setMode(m: string): void };
+    comp.setMode('inWorld');
+    expect(store.manualHeadings().has('o1')).toBe(true);
   });
 
   it('shows stop fields for a selected stop', async () => {

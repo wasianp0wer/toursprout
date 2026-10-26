@@ -8,7 +8,7 @@
  * so the footprint line runs along heading + 90.
  *
  * Method: a local equirectangular offset, using the metres-to-degrees
- * helpers (core/geo.ts, shared with align mode). Its limits, stated rather than
+ * helpers (core/geo.ts, shared with nudge.ts). Its limits, stated rather than
  * hidden:
  *  - Accurate for the tens of metres a footprint spans at the latitudes this
  *    tour lives at (38.8 N), and fine well into the 60s. The longitude scale

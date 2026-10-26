@@ -3,7 +3,7 @@ import {
   LastStopError, addStop, addTextOverlay, defaultCreditFor, deleteOverlay,
   deleteStop, deriveHeading, legalModesFor, moveStop, renumberStops,
   setOverlayKind, slugify, uniqueId, updateOverlay,
-  creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayMode, setStopTitle, legalKindsFor,
+  creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
 
@@ -297,16 +297,68 @@ describe('inspector helpers', () => {
     expect(legalKindsFor(overlay('a', { kind: 'image', mediaId: null }))).toEqual(['text', 'image']);
   });
 
-  it('regression: courthouse 1863 derives from the real panorama (about 105, not 283)', () => {
-    // DECOY: stop.location is the building, 38.7 m from the camera. Deriving
-    // from it gives about 283, facing exactly backwards; from the real
-    // panorama position it is about 105.
+  describe('setOverlayAnchorKeepingHeading', () => {
+    const NONE: ReadonlySet<string> = new Set();
+    const MOVE = { lng: -77.2995 }; // a few hundred metres east: the bearing must change
+
+    it('re-derives a derived heading from the new anchor', () => {
+      const before = inWorldTour();
+      const after = setOverlayAnchorKeepingHeading(before, 'o1', MOVE, PANO, NONE);
+      expect(get(after).anchor.lng).toBe(-77.2995);
+      expect(heading(after)).toBeCloseTo(deriveHeading(get(after).anchor, PANO), 6);
+      expect(heading(after)).not.toBeCloseTo(heading(before), 0);
+    });
+
+    it('leaves a manual heading alone', () => {
+      const before = inWorldTour();
+      const after = setOverlayAnchorKeepingHeading(before, 'o1', MOVE, PANO, new Set(['o1']));
+      expect(get(after).anchor.lng).toBe(-77.2995);
+      expect(heading(after)).toBe(heading(before));
+    });
+
+    it('leaves the heading alone, but still moves, when no fix is available', () => {
+      const before = inWorldTour();
+      const after = setOverlayAnchorKeepingHeading(before, 'o1', MOVE, null, NONE);
+      expect(get(after).anchor.lng).toBe(-77.2995);
+      expect(heading(after)).toBe(heading(before));
+    });
+
+    it('ignores a fix for another stop\'s panorama', () => {
+      const before = inWorldTour();
+      const after = setOverlayAnchorKeepingHeading(before, 'o1', MOVE, { ...PANO, imageId: 'other' }, NONE);
+      expect(heading(after)).toBe(heading(before));
+    });
+
+    it('moves a marker overlay without trying to derive anything', () => {
+      const before = t();
+      const after = setOverlayAnchorKeepingHeading(before, 'o1', MOVE, PANO, NONE);
+      expect(get(after).anchor.lng).toBe(-77.2995);
+      expect(get(after).display.mode).toBe('marker');
+    });
+
+    it('returns the same reference when the move itself is refused', () => {
+      const before = inWorldTour();
+      expect(setOverlayAnchorKeepingHeading(before, 'o1', { lat: 99 }, PANO, NONE)).toBe(before);
+    });
+  });
+
+  it('regression: courthouse 1863 derives from the real panorama (about 105, not about 285)', () => {
+    // DECOY: stop.location sits on the far side of the anchor from the
+    // camera, so a derivation that wrongly reads the stop gets about 285,
+    // facing exactly backwards; from the real panorama position it is about 105.
+    const COURT_ANCHOR = { lng: -77.30732, lat: 38.84562 };
+    const CAMERA = { imageId: 'img-1', lng: -77.306888, lat: 38.845534 };
+    const decoy = {
+      lng: COURT_ANCHOR.lng * 2 - CAMERA.lng,
+      lat: COURT_ANCHOR.lat * 2 - CAMERA.lat,
+    };
+    expect(Math.abs(deriveHeading(COURT_ANCHOR, decoy) - 285)).toBeLessThan(10);
     const x = tour([stop('s1', 1, [overlay('o1', {
       kind: 'image', mediaId: 'c.jpg',
       anchor: { type: 'geo', lng: -77.30732, lat: 38.84562, altitudeM: 2 },
       display: { mode: 'inWorld', opacity: 0.8, headingDeg: 0, widthM: 4, heightM: 3 },
-    })], { location: { lng: -77.30732, lat: 38.84562 } })]);
-    const out = deriveOverlayHeading(x, 'o1', { imageId: 'img-1', lng: -77.306888, lat: 38.845534 });
+    })], { location: decoy })]);
+    const out = deriveOverlayHeading(x, 'o1', CAMERA);
     expect(heading(out)).toBeGreaterThan(100);
     expect(heading(out)).toBeLessThan(110);
   });

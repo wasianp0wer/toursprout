@@ -6,6 +6,7 @@ import {
   geodeticToEnu,
 } from 'mapillary-js';
 import {
+  Cache,
   Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
@@ -47,6 +48,9 @@ export class InWorldRenderer implements ICustomRenderer {
   private frames = 0;
 
   constructor(diagnosticsOn = false) {
+    // Let TextureLoader reuse a fetched image instead of re-requesting it when
+    // a mesh is genuinely rebuilt (reference change, new image set).
+    Cache.enabled = true;
     this.diag = createDiagnostics(diagnosticsOn);
     if (diagnosticsOn && typeof window !== 'undefined') {
       // Diagnostics only: lets the scene graph be interrogated from the
@@ -122,8 +126,50 @@ export class InWorldRenderer implements ICustomRenderer {
       ids: placements.map((p) => p.id),
       haveReference: this.reference !== null,
     });
+    // A change that keeps the same ids and image URLs (every nudge, opacity
+    // step and keystroke in the editor) only moves planes; tearing down and
+    // re-fetching every texture would blank them until each one resolved.
+    const inPlace = this.sameImageSet(placements);
     this.placements = placements;
-    this.rebuild();
+    if (inPlace) this.updateInPlace();
+    else this.rebuild();
+  }
+
+  /** True when `next` has exactly the placements already built, by id and image URL. */
+  private sameImageSet(next: InWorldPlacement[]): boolean {
+    if (!this.reference || next.length !== this.placements.length || next.length !== this.meshes.size) {
+      return false;
+    }
+    const urls = new Map(this.placements.map((p) => [p.id, p.imageUrl]));
+    return next.every((p) => urls.get(p.id) === p.imageUrl && this.meshes.has(p.id));
+  }
+
+  private updateInPlace(): void {
+    for (const placement of this.placements) {
+      const mesh = this.meshes.get(placement.id);
+      if (mesh) this.transformMesh(mesh, placement);
+    }
+  }
+
+  private transformMesh(mesh: Mesh, placement: InWorldPlacement): void {
+    const reference = this.reference;
+    if (!reference) return;
+    const enu = geodeticToEnu(
+      placement.lng,
+      placement.lat,
+      geodeticAltitude(placement.altitudeM, reference.alt),
+      reference.lng, reference.lat, reference.alt,
+    ) as [number, number, number];
+    const transform = planeTransform(placement, enu);
+    const params = (mesh.geometry as PlaneGeometry).parameters;
+    if (params.width !== transform.width || params.height !== transform.height) {
+      mesh.geometry.dispose();
+      mesh.geometry = new PlaneGeometry(transform.width, transform.height);
+    }
+    mesh.position.set(transform.position[0], transform.position[1], transform.position[2]);
+    mesh.rotation.set(
+      transform.rotation[0], transform.rotation[1], transform.rotation[2], transform.rotationOrder,
+    );
   }
 
   setOpacity(opacities: Record<string, number>): void {
@@ -182,14 +228,6 @@ export class InWorldRenderer implements ICustomRenderer {
     if (!reference) return;
 
     for (const placement of this.placements) {
-      const enu = geodeticToEnu(
-        placement.lng,
-        placement.lat,
-        geodeticAltitude(placement.altitudeM, reference.alt),
-        reference.lng, reference.lat, reference.alt,
-      ) as [number, number, number];
-
-      const transform = planeTransform(placement, enu);
       const material = new MeshBasicMaterial(inWorldMaterialOptions(this.opacityOf(placement.id)));
 
       // A texture that fails to load leaves an untextured plane rather than
@@ -211,14 +249,8 @@ export class InWorldRenderer implements ICustomRenderer {
         },
       );
 
-      const mesh = new Mesh(new PlaneGeometry(transform.width, transform.height), material);
-      mesh.position.set(transform.position[0], transform.position[1], transform.position[2]);
-      mesh.rotation.set(
-        transform.rotation[0],
-        transform.rotation[1],
-        transform.rotation[2],
-        transform.rotationOrder,
-      );
+      const mesh = new Mesh(new PlaneGeometry(1, 1), material);
+      this.transformMesh(mesh, placement);
       mesh.visible = this.opacityOf(placement.id) > 0.01;
 
       this.scene.add(mesh);
@@ -226,8 +258,8 @@ export class InWorldRenderer implements ICustomRenderer {
 
       this.diag.log('placed', {
         id: placement.id,
-        enu: enu.map((n) => Math.round(n * 100) / 100),
-        size: [transform.width, transform.height],
+        position: mesh.position.toArray().map((n) => Math.round(n * 100) / 100),
+        size: [placement.widthM, placement.heightM],
         headingDeg: placement.headingDeg,
         url: placement.imageUrl,
       });

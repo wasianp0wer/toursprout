@@ -21,7 +21,7 @@
     <label>Altitude (m above ground) <input type="number" step="any" data-field="altitudeM" name="altitudeM" [ngModel]="o.anchor.altitudeM" (ngModelChange)="setAnchor('altitudeM', $event)" /></label>
     @if (inWorld(); as w) {
       <label>Heading (deg)
-        <input type="number" step="any" data-field="headingDeg" name="headingDeg" [ngModel]="w.headingDeg" (ngModelChange)="setInWorld('headingDeg', $event)" />
+        <input type="number" step="any" data-field="headingDeg" name="headingDeg" [ngModel]="w.headingDeg" [disabled]="!fix()" (ngModelChange)="setHeading($event)" />
       </label>
       <div class="heading-row">
         <button type="button" data-derive-heading [disabled]="!fix()" (click)="derive()">Derive heading from panorama</button>

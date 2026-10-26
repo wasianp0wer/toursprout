@@ -7,7 +7,7 @@ import {
 import { ConfigStore } from '../core/config-store';
 import { EditorStore } from './editor-store';
 import {
-  panoramaFixForStop, setOverlayAnchor, setOverlayHeadingManual,
+  panoramaFixForStop, setOverlayAnchorKeepingHeading, setOverlayHeadingManual,
 } from './document-ops';
 import { footprintCorners, headingFromHandle, rotationHandleAt, viewWedge } from './footprint';
 import type { Overlay } from '../core/tour.models';
@@ -150,7 +150,8 @@ export class EditMapPane {
     marker.on('click', () => this.store.select(o.id));
     marker.on('dragend', (e: LeafletEvent) => {
       const { lat, lng } = (e.target as Marker).getLatLng();
-      this.store.apply((t) => setOverlayAnchor(t, o.id, { lng, lat }));
+      this.store.apply((t) => setOverlayAnchorKeepingHeading(
+        t, o.id, { lng, lat }, this.fixed(), this.store.manualHeadings()));
       this.store.select(o.id);
     });
   }

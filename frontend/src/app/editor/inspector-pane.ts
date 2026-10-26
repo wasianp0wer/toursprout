@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { EditorStore } from './editor-store';
 import {
   creditText, deriveOverlayHeading, legalKindsFor, legalModesFor, panoramaFixForStop, setCreditText, setInWorldField,
-  setOverlayAnchor, setOverlayKind, setOverlayMode, setStopTitle, updateOverlay,
+  setOverlayAnchorKeepingHeading, setOverlayHeadingManual, setOverlayKind, setOverlayMode, setStopTitle, updateOverlay,
   type DisplayMode,
 } from './document-ops';
 import type { InWorldDisplay, OverlayKind } from '../core/tour.models';
@@ -59,14 +59,23 @@ export class InspectorPane {
   protected setAnchor(field: 'lng' | 'lat' | 'altitudeM', v: Num): void {
     const o = this.overlay();
     if (!o || v === null) return;
-    this.store.apply((t) => setOverlayAnchor(t, o.id, { [field]: v as number }));
+    this.store.apply((t) => setOverlayAnchorKeepingHeading(
+      t, o.id, { [field]: v as number }, this.fix(), this.store.manualHeadings()));
   }
 
-  protected setInWorld(field: 'headingDeg' | 'widthM' | 'heightM' | 'opacity', v: Num): void {
+  protected setInWorld(field: 'widthM' | 'heightM' | 'opacity', v: Num): void {
     const o = this.overlay();
     if (!o || v === null) return;
     this.store.apply((t) => setInWorldField(t, o.id, { [field]: v }));
-    if (field === 'headingDeg') this.mark(o.id, true);
+  }
+
+  /** A typed heading is a manual override, so it passes the same gate as the map's handle. */
+  protected setHeading(v: Num): void {
+    const o = this.overlay();
+    if (!o || v === null) return;
+    const before = this.store.draft();
+    this.store.apply((t) => setOverlayHeadingManual(t, o.id, v, this.fix()));
+    if (this.store.draft() !== before) this.mark(o.id, true);
   }
 
   protected setText(field: 'title' | 'body', v: string): void {
@@ -92,8 +101,9 @@ export class InspectorPane {
   protected setMode(mode: string): void {
     const o = this.overlay();
     if (!o) return;
+    const before = this.store.draft();
     this.store.apply((t) => setOverlayMode(t, o.id, mode as DisplayMode, this.fix()));
-    this.mark(o.id, false);
+    if (this.store.draft() !== before) this.mark(o.id, false);
   }
 
   protected derive(): void {

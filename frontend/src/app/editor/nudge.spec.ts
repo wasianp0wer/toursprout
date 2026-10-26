@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nudgeAnchor, STEP_DEG, type InWorldPlacementLike } from './nudge';
+import { nudgeAnchor, type InWorldPlacementLike } from './nudge';
 
 const BASE: InWorldPlacementLike = {
   lng: -77.30732, lat: 38.84562, altitudeM: 6,
@@ -58,14 +58,9 @@ describe('nudgeAnchor', () => {
     expect(a.widthM).toBeGreaterThan(0);
   });
 
-  it('[ and ] rotate by the heading step', () => {
-    expect(nudgeAnchor(BASE, ']').headingDeg).toBeCloseTo(BASE.headingDeg + STEP_DEG, 6);
-    expect(nudgeAnchor(BASE, '[').headingDeg).toBeCloseTo(BASE.headingDeg - STEP_DEG, 6);
-  });
-
-  it('wraps heading into [0, 360)', () => {
-    expect(nudgeAnchor({ ...BASE, headingDeg: 359 }, ']').headingDeg).toBeLessThan(360);
-    expect(nudgeAnchor({ ...BASE, headingDeg: 1 }, '[').headingDeg).toBeGreaterThanOrEqual(0);
+  it('has no heading keys: [ and ] return the anchor untouched', () => {
+    expect(nudgeAnchor(BASE, ']')).toBe(BASE);
+    expect(nudgeAnchor(BASE, '[')).toBe(BASE);
   });
 
   it('ignores keys it does not handle', () => {

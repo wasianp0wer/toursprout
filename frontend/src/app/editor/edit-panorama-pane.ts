@@ -4,7 +4,7 @@ import {
 import { ConfigStore } from '../core/config-store';
 import { TourApi } from '../core/tour-api';
 import { EditorStore } from './editor-store';
-import { setInWorldField, setOverlayAnchor } from './document-ops';
+import { panoramaFixForStop, setInWorldField, setOverlayAnchorKeepingHeading } from './document-ops';
 import { nudgeAnchor, type InWorldPlacementLike } from './nudge';
 import { PANORAMA_VIEWER } from '../panorama/panorama-pane';
 import type { InWorldPlacement } from '../panorama/in-world-placement';
@@ -160,7 +160,11 @@ export class EditPanoramaPane {
     const to = nudgeAnchor(from, key);
     if (to === from) return false;
     this.store.apply((t) => setInWorldField(
-      setOverlayAnchor(t, o.id, { lng: to.lng, lat: to.lat, altitudeM: to.altitudeM }),
+      setOverlayAnchorKeepingHeading(
+        t, o.id, { lng: to.lng, lat: to.lat, altitudeM: to.altitudeM },
+        panoramaFixForStop(this.store.currentStop(), this.store.panoramaPosition()),
+        this.store.manualHeadings(),
+      ),
       o.id, { widthM: to.widthM, heightM: to.heightM },
     ));
     return true;

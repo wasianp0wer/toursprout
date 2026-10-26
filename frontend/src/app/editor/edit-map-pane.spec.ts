@@ -122,6 +122,21 @@ describe('EditMapPane', () => {
     expect(store.selectedId()).toBe('o2');
   });
 
+  it('dragging a derived overlay re-derives its heading from the new anchor', async () => {
+    await start([inWorld()], 'o1');
+    await drag(q('[data-overlay-marker="o1"]')!, 60, 0);
+    expect(headingOf('o1')).toBeCloseTo(bearingBetween(anchorOf('o1'), PANO), 6);
+    expect(store.manualHeadings().has('o1')).toBe(false);
+  });
+
+  it('dragging an overlay whose heading is manual leaves the heading alone', async () => {
+    await start([inWorld()], 'o1');
+    store.markHeadingManual('o1', true);
+    const before = headingOf('o1');
+    await drag(q('[data-overlay-marker="o1"]')!, 60, 0);
+    expect(headingOf('o1')).toBe(before);
+  });
+
   it('draws a footprint and a rotation handle for the selected in-world overlay only', async () => {
     await start([inWorld(), note()], 'o1');
     expect(qa('[data-footprint]')).toHaveLength(1);

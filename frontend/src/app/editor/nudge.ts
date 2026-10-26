@@ -1,6 +1,6 @@
 import { metresToLat, metresToLng } from '../core/geo';
 
-/** The subset of an inWorld display that alignment mode moves. */
+/** The subset of an inWorld display the editor's keyboard nudging works on. Heading rides along untouched: this reducer never changes it. */
 export interface InWorldPlacementLike {
   lng: number;
   lat: number;
@@ -12,11 +12,15 @@ export interface InWorldPlacementLike {
 
 /** One metre per keypress, converted to degrees at the working latitude. */
 export const STEP_M = 1;
-export const STEP_DEG = 2;
 const SCALE_FACTOR = 1.05;
 const MIN_SIZE_M = 0.5;
 
-/** Pure reducer: an anchor and a key in, a new anchor out. */
+/**
+ * Pure reducer: an anchor and a key in, a new anchor out. Deliberately has no
+ * heading keys: a heading must pass through the panorama-fix gate in
+ * document-ops (derive, or setOverlayHeadingManual), and this reducer has no
+ * fix to offer.
+ */
 export function nudgeAnchor(anchor: InWorldPlacementLike, key: string): InWorldPlacementLike {
   const next = { ...anchor };
   // Laptop keyboards often lack PageUp/PageDown, so z and c raise and lower
@@ -50,12 +54,6 @@ export function nudgeAnchor(anchor: InWorldPlacementLike, key: string): InWorldP
     case '-':
       next.widthM = Math.max(MIN_SIZE_M, anchor.widthM / SCALE_FACTOR);
       next.heightM = Math.max(MIN_SIZE_M, anchor.heightM / SCALE_FACTOR);
-      break;
-    case ']':
-      next.headingDeg = (anchor.headingDeg + STEP_DEG + 360) % 360;
-      break;
-    case '[':
-      next.headingDeg = (anchor.headingDeg - STEP_DEG + 360) % 360;
       break;
     default:
       return anchor;

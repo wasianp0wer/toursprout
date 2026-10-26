@@ -255,6 +255,24 @@ export function setOverlayAnchor(
 }
 
 /**
+ * Move an overlay's anchor and keep its derived heading true. A derived
+ * heading is a function of the anchor (the bearing to the camera), so after a
+ * move it is re-derived — unless the author set it by hand (`manual`) or no
+ * fix for THIS stop's panorama is available, in which case it is left alone.
+ * One document, so one undo step.
+ */
+export function setOverlayAnchorKeepingHeading(
+  tour: Tour, overlayId: string, patch: Partial<Omit<Overlay['anchor'], 'type'>>,
+  fix: PanoramaFix | null, manual: ReadonlySet<string>,
+): Tour {
+  const moved = setOverlayAnchor(tour, overlayId, patch);
+  if (moved === tour || manual.has(overlayId)) return moved;
+  const found = findOverlay(moved, overlayId);
+  if (!found || found.overlay.display.mode !== 'inWorld') return moved;
+  return deriveOverlayHeading(moved, overlayId, fix);
+}
+
+/**
  * Patch the numeric fields of an inWorld display. A no-op (same reference)
  * for any other mode, for non-finite values, and for non-positive sizes.
  * Opacity is clamped to [0, 1]; heading is normalised into [0, 360).
