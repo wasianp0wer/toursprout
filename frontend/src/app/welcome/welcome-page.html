@@ -97,9 +97,16 @@
     @if (busy() && !error()) {
       <p class="note" data-working role="status">Opening…</p>
     }
+    <!-- Worded generally on purpose. `belongsInATour` enforces two rules —
+         no dot-prefixed path component, and the media allow-list — and the
+         motivating case for the first is a macOS AppleDouble sidecar, whose
+         name ends `.jpg`. Giving the allow-list as the reason told an author
+         reading it about `media/._court-1863.jpg` something untrue about
+         their own file. An unaccompanied `.zip` lands here too, and fits
+         neither rule's wording. -->
     @if (skipped().length) {
       <p class="note" data-skipped role="status">
-        Left out, because a tour's media folder may hold only images and audio:
+        Left out, because these cannot be part of a tour:
         {{ skipped().join(', ') }}
       </p>
     }

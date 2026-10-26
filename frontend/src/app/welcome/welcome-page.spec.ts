@@ -61,9 +61,17 @@ function entryTransfer(entries: unknown[]): unknown {
 }
 
 /** A DataTransfer with files only — a browser without entry support, and
- * what an `<input type="file">` produces. */
+ * what an `<input type="file">` produces. `types` is what the window-level
+ * guard reads: a real file drag always advertises 'Files', and it is the
+ * only way to tell one from a drag of selected text. */
 function fileTransfer(files: File[]): unknown {
-  return { items: [], files };
+  return { items: [], files, types: ['Files'] };
+}
+
+/** A drag of selected text — from another tab, or from this page's own
+ * fields. No files, so nothing for this screen to import. */
+function textTransfer(): unknown {
+  return { items: [], files: [], types: ['text/plain'] };
 }
 
 describe('WelcomePage', () => {
@@ -460,6 +468,97 @@ describe('WelcomePage', () => {
     // Blocked, not silently imported from wherever it landed.
     http.expectNone('/api/session/import-files');
     http.expectNone('/api/session/import');
+  });
+
+  it('lets a drag be dropped into the new-tour title box', async () => {
+    // The guard above is on the window, so it saw every drag on this screen
+    // — including one released into a text field, where the browser's
+    // default IS the wanted behaviour and `preventDefault` silently takes
+    // away a thing every other text box on the machine does.
+    await mount([]);
+    const title = q('[data-new-title]')!;
+
+    for (const type of ['dragover', 'drop']) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', { value: textTransfer() });
+      title.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    }
+  });
+
+  it('does not offer the whole page as a drop target for a drag of text', async () => {
+    // Answering `dragover` is what tells the browser "you may drop here",
+    // and the browser shows the cursor to match. Answering it for a drag
+    // that carries no files made the entire page look droppable, which is
+    // precisely what the dashed border is there to deny.
+    await mount([]);
+
+    const over = new Event('dragover', { bubbles: true, cancelable: true });
+    Object.defineProperty(over, 'dataTransfer', { value: textTransfer() });
+    window.dispatchEvent(over);
+    expect(over.defaultPrevented).toBe(false);
+  });
+
+  it('tells the author to drop a bundle on its own when one arrives with company', async () => {
+    // A `.zip` goes to the bundle route only when the drop is exactly one
+    // file, so two bundles, or a bundle with a readme beside it, fell
+    // through to the loose-file path — where a `.zip` is not droppable, so
+    // it landed in `skipped`, `parts` came out empty, and the author read
+    // "Nothing in that drop can be part of a tour" about the single most
+    // supported way in.
+    await mount([]);
+
+    await drop(fileTransfer([
+      new File(['z'], 'tour.zip'), new File(['r'], 'readme.txt'),
+    ]));
+
+    http.expectNone('/api/session/import');
+    http.expectNone('/api/session/import-files');
+    expect(q('[data-error]')?.textContent).toMatch(/on its own/i);
+    expect(q('[data-error]')?.textContent).not.toMatch(/nothing in that drop/i);
+  });
+
+  it('says the same about a bundle dropped beside loose media', async () => {
+    await mount([]);
+
+    await drop(fileTransfer([filed('tour.zip'), filed('media/court.jpg')]));
+
+    http.expectNone('/api/session/import-files');
+    expect(q('[data-error]')?.textContent).toMatch(/on its own/i);
+  });
+
+  it('still imports a drop that works with a stray export sitting in it', async () => {
+    // The flip side, and the reason the bundle advice replaces a refusal
+    // rather than becoming one: keeping last week's export beside the
+    // working folder is an ordinary thing to do, and that drop imports.
+    await mount([]);
+
+    await drop(fileTransfer([
+      filed('tour.json'), filed('media/court.jpg'), filed('backup.zip'),
+    ]));
+
+    const req = http.expectOne('/api/session/import-files');
+    const names = (req.request.body as FormData).getAll('files').map((f) => (f as File).name);
+    expect(names).toEqual(['tour.json', 'media/court.jpg']);
+    expect(q('[data-skipped]')?.textContent).toContain('backup.zip');
+    expect(q('[data-error]')).toBeNull();
+  });
+
+  it('does not blame the media allow-list for a file the hidden rule left out', async () => {
+    // `belongsInATour` enforces two rules and the notice gave one reason for
+    // both. `._court.jpg` IS a .jpg, so an author reading "a tour's media
+    // folder may hold only images and audio" about that exact filename was
+    // being told something untrue about their own file.
+    await mount([]);
+
+    await drop(fileTransfer([
+      filed('tour.json'), filed('media/court.jpg'), filed('media/._court.jpg'),
+    ]));
+
+    http.expectOne('/api/session/import-files');
+    const notice = q('[data-skipped]')?.textContent ?? '';
+    expect(notice).toContain('media/._court.jpg');
+    expect(notice).not.toMatch(/only images and audio/i);
   });
 
   it('shows the backend message when opening an example conflicts', async () => {

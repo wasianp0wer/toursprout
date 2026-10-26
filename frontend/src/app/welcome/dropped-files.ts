@@ -47,9 +47,12 @@ export interface SortedDrop {
  * author loses the drop and reads a refusal; filtering it means they keep the
  * drop and read a notice naming the one file left out.
  *
- * Every check below is a thing `loose_import` refuses the WHOLE drop over, so
- * every one of them has to be answered here or the author pays a round trip
- * to be told something this screen already knew.
+ * Every check below is a thing `loose_import` refuses the WHOLE drop over,
+ * answered here so that the author does not pay a round trip to be told
+ * something this screen already knew. Not the converse: `loose_import` also
+ * refuses a control character and a backslash in a path, and nothing here
+ * answers those. A browser cannot produce either in a filename, so they are
+ * the backend's defence in depth against a caller that is not this screen.
  */
 export function sortDrop(dropped: DroppedFile[]): SortedDrop {
   const parts: LoosePart[] = [];
@@ -105,8 +108,23 @@ function belongsInATour(path: string): boolean {
 function problemWith(
   parts: LoosePart[], skipped: string[], duplicate: string | null,
 ): string | null {
+  // A `.zip` goes to the bundle route only when the drop is exactly one
+  // file, so two bundles — or a bundle with a `readme.txt` beside it — fall
+  // through to here, where a `.zip` is not droppable and so contributes
+  // nothing but a line in `skipped`. The refusals below would then tell the
+  // author that the single most supported way in is not part of a tour,
+  // which is simply untrue, so name the rule they actually broke.
+  //
+  // It replaces a refusal rather than becoming one: keeping last week's
+  // export beside the working folder is an ordinary thing to do, and that
+  // drop still imports with the `.zip` named in the skipped notice.
+  const bundle = skipped.some((rel) => extensionOf(rel) === '.zip')
+    ? 'A packaged bundle has to be dropped on its own. Drop just the .zip.'
+    : null;
+
   if (parts.length === 0) {
-    return 'Nothing in that drop can be part of a tour. A tour needs a tour.json, and its media folder may hold only images and audio.';
+    return bundle
+      ?? 'Nothing in that drop can be part of a tour. A tour needs a tour.json, and its media folder may hold only images and audio.';
   }
   if (duplicate) {
     return duplicate === 'tour.json'
@@ -125,9 +143,11 @@ function problemWith(
     // document sits beside `media/`, not in it.
     const document = skipped.find((rel) => extensionOf(rel) === '.json'
       && !rel.split('/').includes('media'));
-    return document
-      ? `That drop has no tour.json in it. A tour's document has to be named exactly tour.json — rename ${document} and drop it again.`
-      : 'That drop has no tour.json in it. A tour needs its document, named tour.json, beside its media folder.';
+    if (document) {
+      return `That drop has no tour.json in it. A tour's document has to be named exactly tour.json — rename ${document} and drop it again.`;
+    }
+    return bundle
+      ?? 'That drop has no tour.json in it. A tour needs its document, named tour.json, beside its media folder.';
   }
   return null;
 }

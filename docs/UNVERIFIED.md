@@ -359,17 +359,17 @@ components at all.*
   beside the photographs, the old `cp content/media/*` step swept it in, and
   the import refuses a bundle that contains it (verified live: `not an allowed
   image or audio type: media/manifest.json`). The welcome screen filters it
-  out before posting and shows "Left out, because a tour's media folder may
-  hold only images and audio: …". The notice is not an error — the rest of the
-  drop went.
-- **One known wrinkle in the wording, found reading the code rather than by
-  running it.** The notice gives one reason for two different filters.
-  `belongsInATour` skips a file either because its extension is not media *or*
-  because some component of its path begins with a dot, and an AppleDouble
-  `._court-1863.jpg` (entry 15) is then explained away as something that is
-  not an image — which it is. Decide when you see it whether that is worth a
-  second sentence; it is the kind of nearly-true message this branch exists to
-  stop shipping.
+  out before posting and shows "Left out, because these cannot be part of a
+  tour: …". The notice is not an error — the rest of the drop went.
+- **The wording wrinkle this entry used to describe has been fixed.** The
+  notice said "because a tour's media folder may hold only images and audio",
+  which is one reason for two different filters: `belongsInATour` skips a file
+  either because its extension is not media *or* because some component of its
+  path begins with a dot, and an AppleDouble `._court-1863.jpg` (entry 15) was
+  then explained away as something that is not an image — which it is. It now
+  gives the general reason instead, which covers both filters and the
+  unaccompanied `.zip` that also lands in this list. What remains unverified
+  is only whether the notice is legible and noticed.
 - **Why not here:** no browser; `welcome-page.spec.ts` asserts the notice's
   text, not that it is legible or noticed.
 - **Close it:** in the folder drag of entry 14, the notice must appear and must
@@ -414,12 +414,18 @@ components at all.*
   `WelcomePage` binds `window:dragover` and `window:drop` and calls only
   `preventDefault`, deliberately: a near miss does nothing and the author
   tries again, rather than the whole page quietly becoming a drop target.
+  Narrowed since: it skips a drag over an `input` or `textarea`, so text can
+  still be dropped into the *New empty tour* title box, and it answers
+  `dragover` only for a drag carrying files, so a drag of selected text does
+  not give the whole page a "you may drop here" cursor.
 - **Why not here:** jsdom has no default drop behaviour to prevent, so the
-  spec can only assert that `preventDefault` was called.
+  spec can only assert that `preventDefault` was or was not called.
 - **Close it:** back to the welcome screen once more (entry 17's flat
   selection will have opened a tour), then drop a `.zip` on the guides column,
   and again on the page margin. Pass: nothing happens and the welcome screen
-  is still there. Fail: the browser navigates to the file.
+  is still there. Fail: the browser navigates to the file. Then select some
+  text on the page and drag it: the cursor must not say the margin accepts it,
+  and dropping it into the title box must type it there.
 
 ## 19. A published site opens in a browser
 

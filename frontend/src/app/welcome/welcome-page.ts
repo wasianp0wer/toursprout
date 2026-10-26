@@ -113,8 +113,25 @@ export class WelcomePage {
    * again on the dashed area, which is the largest element on the screen.
    * Importing from wherever the file happened to land would mean the whole
    * page were a drop target, which is not what the dashed border promises.
+   *
+   * Two exemptions, because the window hears everything and a guard this
+   * broad otherwise charges for drags it was never meant to catch:
+   *
+   * - A text field is answering the drag itself, and correctly. Dropping
+   *   selected text into a box is a thing every other text box on the
+   *   machine does, and `[data-new-title]` is a box an author may well drop
+   *   a tour's name into.
+   * - A `dragover` answered is the browser's signal that a drop is welcome
+   *   here, and it draws the cursor to match. Answering it for a drag that
+   *   carries no files made the whole page claim to be droppable — the
+   *   opposite of what the dashed border says — so only a file drag gets
+   *   that answer. The `drop` stays unconditional: it is the navigation
+   *   that has to be stopped, and by then there is nothing to promise.
    */
   protected blockStrayDrag(event: DragEvent): void {
+    const target = event.target as HTMLElement | null;
+    if (/^(input|textarea)$/i.test(target?.tagName ?? '')) return;
+    if (event.type === 'dragover' && !event.dataTransfer?.types?.includes('Files')) return;
     event.preventDefault();
   }
 
