@@ -1,0 +1,7 @@
+/* The viewer sizes itself to the viewport, so the wrapper must not get
+   between it and the screen: it is a pass-through, there only to carry the
+   `hidden` that keeps the probing state off-screen. */
+:host { display: block; height: 100vh; }
+.viewer-slot { height: 100%; }
+.viewer-slot[hidden] { display: none; }
+.pending { padding: 2rem; color: #c9ccd3; }

@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom, type Observable } from 'rxjs';
+import { firstValueFrom, timeout, type Observable } from 'rxjs';
 import type { Tour } from './tour.models';
 
 export interface SessionSummary {
@@ -43,8 +43,19 @@ export interface LoosePart {
 export class SessionApi {
   private readonly http = inject(HttpClient);
 
-  get(): Promise<SessionSummary> {
-    return firstValueFrom(this.http.get<SessionSummary>('/api/session'));
+  /**
+   * What is open, if anything. The one request a caller may need to make
+   * against a host that is not a backend at all, so it takes an optional
+   * deadline in milliseconds: the entry page probes '/api/session' to find
+   * out whether there is a backend, and a static host may simply never
+   * answer. The deadline rejects *and* aborts, so a late answer cannot
+   * arrive after the caller has given up. The editor passes none — it only
+   * runs against a backend, and would rather wait than guess.
+   */
+  get(timeoutMs?: number): Promise<SessionSummary> {
+    const request = this.http.get<SessionSummary>('/api/session');
+    return firstValueFrom(
+      timeoutMs === undefined ? request : request.pipe(timeout(timeoutMs)));
   }
 
   putTour(doc: Tour): Promise<SessionSummary> {

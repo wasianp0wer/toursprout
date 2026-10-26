@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -24,12 +24,31 @@ describe('SessionApi', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('gets the session summary', async () => {
     const promise = api.get();
     const req = http.expectOne('/api/session');
     expect(req.request.method).toBe('GET');
     req.flush({ open: true, title: 'My Tour' });
     expect((await promise).title).toBe('My Tour');
+  });
+
+  it('abandons the summary request when the caller gives it a deadline', async () => {
+    vi.useFakeTimers();
+    const promise = api.get(50);
+    const req = http.expectOne('/api/session');
+    // The rejection handler has to be attached before the clock moves, or
+    // the deadline rejects an unwatched promise and vitest reports it as an
+    // unhandled error.
+    const rejects = expect(promise).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(50);
+    await rejects;
+    // Abandoning means aborting: a host that never answers must not leave
+    // the request open behind the caller's back.
+    expect(req.cancelled).toBe(true);
   });
 
   it('puts the tour document and returns the updated summary', async () => {

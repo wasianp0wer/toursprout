@@ -1,0 +1,17 @@
+@if (decision() === 'probing' || decision() === 'published') {
+  <!-- Mounted from the first paint, so the viewer's tour-data/ fetches run
+       alongside the probe; hidden until the probe says this really is a
+       published site, because an authoring checkout with nothing open makes
+       those fetches 404 and the viewer say so. -->
+  <div class="viewer-slot" data-viewer [hidden]="decision() === 'probing'">
+    <app-viewer-page />
+  </div>
+} @else {
+  <!-- TASK 6: replace this placeholder with the welcome screen as its own
+       lazy chunk — `@defer (on immediate) { <app-welcome-page /> }` with
+       WelcomePage added to this component's `imports`. Only an author
+       reaches this branch, so it must not be part of the eager bundle.
+       `data-welcome-pending` exists so the spec can see the branch was
+       taken; it goes away with the placeholder. -->
+  <p class="pending" data-welcome-pending>No tour is open.</p>
+}
