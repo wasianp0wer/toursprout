@@ -33,8 +33,16 @@ def _media_name(path: str) -> str | None:
     parts = path.split("/")
     if parts[0] != "media" or len(parts) < 2:
         raise BundleError(f"unexpected file in the drop (not tour.json or media/): {path}")
-    if "\\" in path or any(p in ("", ".", "..") for p in parts):
+    # Control characters (NUL especially) would reach `open()` as a
+    # ValueError, not an OSError, and surface as a 500.
+    if "\\" in path or any(ord(c) < 32 or ord(c) == 127 for c in path):
         raise BundleError(f"unsafe file path: {path}")
+    if any(p in ("", ".", "..") for p in parts):
+        raise BundleError(f"unsafe file path: {path}")
+    # `write_bundle` skips dot-prefixed components by policy; accepting one
+    # here would stage it, lose it, and blame the author for missing media.
+    if any(p.startswith(".") for p in parts):
+        raise BundleError(f"a hidden file cannot be part of a tour: {path}")
     name = "/".join(parts[1:])
     if Path(name).suffix.lower() not in MEDIA_EXTENSIONS:
         raise BundleError(f"not an allowed image or audio type: {path}")
@@ -49,6 +57,7 @@ def stage_loose_bundle(parts: list[tuple[str, BinaryIO]], dest_zip: Path) -> Non
     """
     tour: BinaryIO | None = None
     media: list[tuple[str, BinaryIO]] = []
+    seen: set[str] = set()
     for path, stream in parts:
         name = _media_name(path)
         if name is None:
@@ -56,6 +65,9 @@ def stage_loose_bundle(parts: list[tuple[str, BinaryIO]], dest_zip: Path) -> Non
                 raise BundleError("the drop contains more than one tour.json")
             tour = stream
         else:
+            if name in seen:
+                raise BundleError(f"the drop contains {path} more than once")
+            seen.add(name)
             media.append((name, stream))
     if tour is None:
         raise BundleError("the drop has no tour.json")

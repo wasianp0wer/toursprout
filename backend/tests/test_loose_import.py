@@ -6,7 +6,9 @@ import zipfile
 import pytest
 from fastapi.testclient import TestClient
 
+from app.bundle import BundleError
 from app.config import Settings
+from app.loose_import import _media_name
 from app.main import create_app
 
 from .test_bundle import JPEG, _minimal_doc
@@ -130,3 +132,61 @@ def test_a_non_bundle_zip_is_refused_and_leaves_the_open_tour(client, tmp_path):
                           files={"file": ("junk.zip", fh, "application/zip")})
     assert res.status_code == 400
     assert client.get("/api/session").json()["title"] == "Keep me"
+
+
+@pytest.mark.parametrize("bad,fragment", [
+    ("../escape.jpg", "unexpected file"),
+    ("/abs.jpg", "unexpected file"),
+    ("media/../../x.jpg", "media/../../x.jpg"),
+    ("media/./x.jpg", "media/./x.jpg"),
+    ("media/a\\b.jpg", "media/a\\b.jpg"),
+    ("media/a\x00b.jpg", "unsafe file path"),
+    ("media/a\nb.jpg", "unsafe file path"),
+    ("media/", "media/"),
+    ("media//x.jpg", "media//x.jpg"),
+    ("media/.hidden.jpg", "hidden file"),
+    ("media/.d/x.jpg", "hidden file"),
+    ("media/x.html", "media/x.html"),
+])
+def test_media_name_itself_refuses_and_names_the_original_path(bad, fragment):
+    with pytest.raises(BundleError) as exc:
+        _media_name(bad)
+    assert fragment in str(exc.value)
+
+
+def test_a_hidden_media_file_is_refused_honestly(client):
+    res = client.post("/api/session/import-files", files=[
+        ("files", ("tour.json", tour_json(".hidden.jpg"), "application/json")),
+        ("files", ("media/.hidden.jpg", JPEG, "image/jpeg")),
+    ])
+    assert res.status_code == 400
+    assert "hidden file" in res.json()["detail"]
+
+
+def test_a_repeated_media_path_is_refused(client):
+    res = client.post("/api/session/import-files", files=[
+        ("files", ("tour.json", tour_json(), "application/json")),
+        ("files", ("media/photo.jpg", JPEG, "image/jpeg")),
+        ("files", ("media/photo.jpg", JPEG, "image/jpeg")),
+    ])
+    assert res.status_code == 400
+    assert "more than once" in res.json()["detail"]
+
+
+def test_warnings_match_the_equivalent_zip(client, tmp_path):
+    loose = client.post("/api/session/import-files", files=[
+        ("files", ("tour.json", tour_json(), "application/json")),
+        ("files", ("media/photo.jpg", JPEG, "image/jpeg")),
+        ("files", ("media/unused.jpg", JPEG, "image/jpeg")),
+    ]).json()
+    zpath = tmp_path / "eq.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("tour.json", tour_json())
+        zf.writestr("bundle.json", json.dumps({"bundleVersion": 1, "tourId": "t"}))
+        zf.writestr("media/photo.jpg", JPEG)
+        zf.writestr("media/unused.jpg", JPEG)
+    with zpath.open("rb") as fh:
+        via_zip = client.post("/api/session/import",
+                              files={"file": ("eq.zip", fh, "application/zip")}).json()
+    assert loose["warnings"] and any("unused.jpg" in w for w in loose["warnings"])
+    assert loose["warnings"] == via_zip["warnings"]

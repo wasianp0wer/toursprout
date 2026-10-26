@@ -255,7 +255,8 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         # its path relative to the bundle root. Staged into the same kind of
         # temp zip as `import_bundle` and handed to the same `replace_from`,
         # so nothing is validated twice or differently; the temp-file
-        # discipline is that route's, for the same reasons.
+        # discipline is that route's, except that the staging helper opens
+        # the destination itself, so the mkstemp fd is closed straight away.
         session = app.state.session
         fd, tmp_name = tempfile.mkstemp(suffix=".zip")
         os.close(fd)
