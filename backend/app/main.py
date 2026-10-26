@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import media_store
+from . import media_store, tools
 from .bundle import BundleError, missing_media, write_bundle
 from .config import Settings
 from .config import settings as default_settings
@@ -249,6 +249,60 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         finally:
             staged.unlink(missing_ok=True)
         return {**session.summary(), "mediaId": media_id}
+
+    # --- acquisition tools -------------------------------------------------
+    # Plain `def`s: blocking httpx/subprocess calls belong in the threadpool.
+    # `app.state.http_transport` is None in production; tests install a
+    # MockTransport there so nothing in the suite touches the network.
+
+    def _tool_client(timeout: float):
+        return tools.make_client(getattr(app.state, "http_transport", None), timeout)
+
+    @app.post("/api/tools/panoramas", dependencies=[Depends(_reject_cross_site)])
+    def tool_panoramas(body: tools.PanoramaRequest) -> dict:
+        try:
+            with _tool_client(tools.MAPILLARY_TIMEOUT) as c:
+                found = tools.find_panoramas(
+                    c, app.state.cfg.mapillary_token, body.lng, body.lat,
+                    body.radiusM, body.panoOnly, body.limit)
+        except tools.ToolError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
+        return {"candidates": found}
+
+    @app.post("/api/tools/places", dependencies=[Depends(_reject_cross_site)])
+    def tool_places(body: tools.PlacesRequest) -> dict:
+        try:
+            with _tool_client(tools.OVERPASS_TIMEOUT) as c:
+                found = tools.find_places(c, body.lng, body.lat, body.radiusM, body.name)
+        except tools.ToolError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
+        return {"places": found}
+
+    @app.post("/api/tools/archive-search", dependencies=[Depends(_reject_cross_site)])
+    def tool_archive_search(body: tools.ArchiveRequest) -> dict:
+        try:
+            with _tool_client(tools.LOC_TIMEOUT) as c:
+                found = tools.search_archive(c, body.query, body.terms, body.excludePlaces)
+        except tools.ToolError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
+        return {"results": found}
+
+    @app.post("/api/tools/narrate", dependencies=[Depends(_reject_cross_site)])
+    def tool_narrate(body: tools.NarrateRequest) -> dict:
+        session = app.state.session
+        if not session.is_open:
+            raise HTTPException(
+                status_code=409,
+                detail="no tour is open; call POST /api/session/new first",
+            )
+        try:
+            audio = tools.synthesize(body.text)
+            media_id = store_media(session.path, audio, "narration")
+        except tools.ToolError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
+        except MediaError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {**session.summary(), "mediaId": media_id, "credit": tools.NARRATION_CREDIT}
 
     @app.get("/api/session/export")
     def export_bundle() -> Response:
