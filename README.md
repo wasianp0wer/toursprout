@@ -142,6 +142,7 @@ without touching code.
 - `docs/superpowers/plans/2026-09-20-walking-tour-prototype.md` — implementation plan
 - `docs/ENVIRONMENT.md` — verified environment constraints
 - `docs/HANDOFF.md` — current state, how to run it, landmines, open questions
+- `docs/UNVERIFIED.md` — everything no one has seen work, each with the check that closes it; start here at a browser
 - `docs/ARCHITECTURE.md` — how the parts fit and what each layer may not do
 - `docs/CHANGING-THINGS.md` — where a given change goes
 - `docs/decisions/` — decision records; start at `docs/decisions/README.md`

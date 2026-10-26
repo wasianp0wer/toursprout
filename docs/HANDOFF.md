@@ -34,6 +34,9 @@ viewer predates the editor and was worked on with a browser in earlier
 sessions (the hand alignment in `de48b0d` was tuned by eye); this environment
 cannot reproduce or re-check any of that.
 
+The checklist for the first browser session, in the order to do it, is
+[`UNVERIFIED.md`](UNVERIFIED.md).
+
 **What exists:**
 
 - **Viewer** (`/`). Six stops, all working: Historic Courthouse, Marr Monument,
@@ -283,8 +286,10 @@ Every item below is still true as of 2026-10-26. None has been closed.
    - A real loc.gov redirect through `archive-fetch`.
    - Overpass mirrors other than `overpass-api.de`, which answered in 34-42 s
      from this machine against a 15 s client timeout.
-   - The frontend `IMAGE_EXTS`/`AUDIO_EXTS` lists mirror the backend allowlist
-     by hand, with no test tying them together.
+
+   `UNVERIFIED.md` gives the check that closes each. (The frontend
+   `IMAGE_EXTS`/`AUDIO_EXTS` lists are mirrored by hand but are now tied to
+   the backend allowlist by a test in `backend/tests/test_media_store.py`.)
 
    The tools were run once against the live Mapillary, Overpass and loc.gov
    services, which found that the loc.gov parser read `creator` and `rights`
