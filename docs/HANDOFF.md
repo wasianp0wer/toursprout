@@ -380,6 +380,14 @@ go back without a new idea.
 
 Every item below is still true as of 2026-10-26. None has been closed.
 
+The welcome-screen sub-project's reviews also left a list of findings they
+judged and deliberately did not fix, in
+[`superpowers/reviews/2026-10-26-welcome-screen-followups.md`](superpowers/reviews/2026-10-26-welcome-screen-followups.md).
+Its first item — that `PUT /api/session/tour` guards on `is_open` alone, so a
+stale editor tab's autosave can overwrite whichever tour is open now — is the
+one remaining way to lose the author's work without saying so, and is a better
+candidate for the next session than anything numbered below.
+
 1. **Rephoto alignment is unfinished.** The anchors are estimates, improved by
    hand in commit `de48b0d` but not finished. The tool for finishing it is the
    editor at `/edit`: select the photograph, drag it on the map, then adjust
