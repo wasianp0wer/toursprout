@@ -30,9 +30,10 @@ the editor is a lazy chunk, 102.69 kB raw / 23.88 kB transferred.
 development sandbox, so the editor, its microphone recording and its
 acquisition tools have *never* been seen running. Their verification is the
 jsdom suite plus the backend tests, which prove the logic, not the pixels. The
-viewer predates the editor and was worked on with a browser in earlier
-sessions (the hand alignment in `de48b0d` was tuned by eye); this environment
-cannot reproduce or re-check any of that.
+viewer predates the editor and was probably worked on with a browser in
+earlier sessions (the hand alignment in `de48b0d` was probably tuned by eye),
+but that is an inference from a landmine note, not a recorded fact; this
+environment cannot reproduce or re-check any of it.
 
 The checklist for the first browser session, in the order to do it, is
 [`UNVERIFIED.md`](UNVERIFIED.md).
@@ -253,8 +254,8 @@ Every item below is still true as of 2026-10-26. None has been closed.
    take ownership of the document and retire `stops.json` entirely. The editor
    is now able to take ownership whenever the author says so; until they do,
    **the content pipeline stays**, and so does the drift. Nobody here can
-   judge either change by eye, because the alignment was tuned in a browser
-   and none can run in this environment.
+   judge either change by eye, because the alignment was probably tuned in a browser
+   (an inference, see above) and none can run in this environment.
 3. **Rephotography is demonstrated at one stop.** Targeted searching found
    essentially no Old Town Fairfax imagery for the other five, only the
    courthouse and, possibly, Earp's Ordinary (HABS). Local collections (Fairfax
@@ -281,8 +282,9 @@ Every item below is still true as of 2026-10-26. None has been closed.
    `docs/decisions/0001-three-axes-for-overlays.md`. Current behaviour is
    pinned by tests in `stop-panel.spec.ts` so the choice stays explicit.
 8. **Unverified, from sub-project 3b (media and acquisition):**
-   - Recorded audio against the sniffer in a real browser. Safari's MP4 brand
-     is the risk.
+   - Recorded audio against the sniffer in a real browser. The MP4 brand is
+     the risk, in Safari and also in Chromium, whose recorder prefers MP4 where
+     `isTypeSupported` allows (`UNVERIFIED.md` entries 7 and 8).
    - A real loc.gov redirect through `archive-fetch`.
    - Overpass mirrors other than `overpass-api.de`, which answered in 34-42 s
      from this machine against a 15 s client timeout.

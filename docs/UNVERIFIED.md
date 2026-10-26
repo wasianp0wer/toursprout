@@ -286,7 +286,7 @@ end to end against a live backend with `curl`; the browser half of it was not.
   second tour, **not Old Town Fairfax**, entirely in the editor, and publish it.
 - **Why not here:** no browser. The media-and-acquisition spec says "It is the
   author's to do, and it is the real test."
-- **Close it:** last, once 1 to 16 pass. Start from `POST /api/session/new`,
+- **Close it:** last, once 1 to 17 pass. Start from `POST /api/session/new`,
   or the equivalent in the editor, use the tools and a recording, publish, and
   open the result as in entry 9.
 

@@ -246,7 +246,7 @@ copies the extension test does not see. Both are spelled out in
 independent of the editor, shares only the schema (`build_tour.py` imports
 `SCHEMA_VERSION` and `Tour` from `app.models`), and its hand-edits are not read
 back. The acquisition tools in `tools.py` were lifted from these scripts rather
-than rewritten (ADR 0004).
+than rewritten (ADR 0004). Caution: `stops.json` has drifted from the hand-tuned committed tour, so `make content` would revert the hand alignment; whether to retire the pipeline is the author's open call (`HANDOFF.md`, Outstanding item 2).
 
 ## Decision records
 

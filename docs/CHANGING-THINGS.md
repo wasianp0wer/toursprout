@@ -117,7 +117,9 @@ the editor unmigrated cannot even be saved. Migration is the only door.
 5. The seed tour: `content/scripts/build_tour.py` (it emits
    `SCHEMA_VERSION`) then `make content` regenerates
    `content/tours/fairfax-old-town.json`. Hand-edits to that JSON are
-   overwritten.
+   overwritten. Beware: `stops.json` has drifted from the committed tour, so
+   `make content` would revert the hand alignment; whether to retire the
+   pipeline is the author's open call (`HANDOFF.md`, Outstanding item 2).
 6. Backend fixtures that build documents (`_minimal_doc` in
    `backend/tests/test_bundle.py`, helpers in `test_models.py`).
 
@@ -311,4 +313,4 @@ for the "four more" list.
 | import safety limits | `backend/app/bundle.py` (`MAX_TOTAL_BYTES`, `MAX_ENTRIES`) |
 | a route or its error status | `backend/app/main.py` |
 | where the working directory lives | `backend/app/config.py` (`Settings.work_dir`) |
-| the seed tour | `content/source/stops.json`, `content/scripts/build_tour.py` (`make content`) |
+| the seed tour | `content/source/stops.json`, `content/scripts/build_tour.py` (`make content`); `stops.json` has drifted and `make content` would revert the hand alignment, so see `HANDOFF.md` Outstanding item 2 first |

@@ -90,15 +90,16 @@ records narration from the microphone, and has four acquisition tools backed by
 `backend/app/tools.py`: nearby Mapillary panoramas, OSM historic places, Library
 of Congress photograph search (with download into the tour), and synthesized
 narration. The Mapillary tool needs the token in `backend/.env`. The client
-never names a stored file, and recordings keep the browser's own format
-(WebM/Opus in Chromium and Firefox, MP4 where supported); see
+never names a stored file, and the recorder prefers `audio/mp4` where
+`MediaRecorder.isTypeSupported` allows it, otherwise the browser's default
+(WebM/Opus in Chromium, Ogg/Opus in Firefox); see
 `docs/decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md`,
 including what was and was not checked against the live services.
 
 ## Tests
 
 ```sh
-make check      # lint + 320 backend tests + 528 frontend tests + production build
+make check      # lint + backend tests + frontend tests + production build (counts: docs/HANDOFF.md)
 ```
 
 Browser end-to-end tests exist in `frontend/tests/e2e/` but **cannot run inside
