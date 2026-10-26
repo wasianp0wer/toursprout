@@ -91,8 +91,8 @@ records narration from the microphone, and has four acquisition tools backed by
 of Congress photograph search (with download into the tour), and synthesized
 narration. The Mapillary tool needs the token in `backend/.env`. The client
 never names a stored file, and the recorder prefers `audio/mp4` where
-`MediaRecorder.isTypeSupported` allows it, otherwise the browser's default
-(WebM/Opus in Chromium, Ogg/Opus in Firefox); see
+`MediaRecorder.isTypeSupported` allows it, otherwise whatever the browser
+produces by default (the sniffer accepts WebM and Ogg as well as MP4); see
 `docs/decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md`,
 including what was and was not checked against the live services.
 
