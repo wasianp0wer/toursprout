@@ -388,6 +388,17 @@ const IMAGE_EXTS = ['.jpg', '.png', '.webp'];
 const AUDIO_EXTS = ['.wav', '.m4a', '.mp3', '.ogg', '.webm'];
 
 /**
+ * What may be in a dropped folder on the welcome screen: the *import*
+ * allowlist, not the upload one. The two differ, deliberately — import
+ * (`bundle.MEDIA_EXTENSIONS`) accepts `.jpeg`, while the upload table above
+ * has no `.jpeg` row because `store_media` names the file itself and picks
+ * one extension per sniffed type. Derived from the two lists rather than
+ * written out a third time so the drop filter cannot drift from the kinds
+ * the editor understands; a backend test ties it to the import allowlist.
+ */
+export const DROPPABLE_MEDIA_EXTS = [...IMAGE_EXTS, '.jpeg', ...AUDIO_EXTS];
+
+/**
  * What kind of media a stored id is. The backend picks the extension by
  * sniffing the bytes (see ALLOWED_TYPES in backend/app/media_store.py), so the
  * extension is the server's verdict, not the author's claim. Null when the

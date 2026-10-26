@@ -244,3 +244,41 @@ def test_the_frontend_extension_lists_match_the_allowed_types():
     want_audio = {ext for t, ext in ALLOWED_TYPES.items() if t.startswith("audio/")}
     assert _ts_list(src, "IMAGE_EXTS") == want_image
     assert _ts_list(src, "AUDIO_EXTS") == want_audio
+
+
+def test_the_frontend_droppable_list_matches_the_import_allowlist():
+    """The welcome screen filters a dropped folder before posting it, so that
+    `manifest.json` beside the photographs is left out with a notice instead
+    of refused along with the whole drop. It filters against
+    DROPPABLE_MEDIA_EXTS, which must therefore be the *import* allowlist
+    (bundle.MEDIA_EXTENSIONS, which accepts .jpeg) and not this module's
+    upload table. Drift either way is a bug the author would see as a refusal
+    naming a file they can do nothing about, so tie the two together here as
+    the lists above are tied.
+    """
+    from app.bundle import MEDIA_EXTENSIONS
+
+    src = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "app"
+           / "editor" / "document-ops.ts").read_text()
+    assert _ts_droppable(src) == MEDIA_EXTENSIONS
+
+
+def _ts_droppable(src: str) -> set[str]:
+    """Resolve `[...IMAGE_EXTS, '.jpeg', ...AUDIO_EXTS]` to the set it makes.
+
+    The list is derived rather than hand-written so it cannot drift from the
+    kinds the editor understands, which means reading it needs the spreads
+    followed. Asserting which names are spread is the point as much as the
+    result: a future hand-copied list would satisfy the set comparison on the
+    day it was written and silently rot afterwards.
+    """
+    line = next(
+        ln for ln in src.splitlines()
+        if ln.startswith("export const DROPPABLE_MEDIA_EXTS =")
+    )
+    spread = set(re.findall(r"\.\.\.([A-Z_]+)", line))
+    assert spread == {"IMAGE_EXTS", "AUDIO_EXTS"}
+    exts = set(re.findall(r"'(\.[a-z0-9]+)'", line))
+    for name in spread:
+        exts |= _ts_list(src, name)
+    return exts

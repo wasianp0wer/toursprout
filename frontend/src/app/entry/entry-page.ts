@@ -2,6 +2,7 @@ import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { SessionApi, type SessionSummary } from '../core/session-api';
 import { ViewerPage } from '../viewer/viewer-page';
+import { WelcomePage } from '../welcome/welcome-page';
 
 /**
  * How long the entry page waits for `/api/session` before deciding there is
@@ -44,7 +45,11 @@ export const SESSION_PROBE_TIMEOUT_MS = 2000;
  */
 @Component({
   selector: 'app-entry-page',
-  imports: [ViewerPage],
+  // WelcomePage is used only inside this template's `@defer` block, which
+  // is what lets the compiler turn this static import into a dynamic one
+  // and give the welcome screen its own chunk. Using it anywhere outside
+  // that block would silently pull it into the eager bundle.
+  imports: [ViewerPage, WelcomePage],
   templateUrl: './entry-page.html',
   styleUrl: './entry-page.css',
 })

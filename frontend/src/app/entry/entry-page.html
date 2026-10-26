@@ -7,11 +7,14 @@
     <app-viewer-page />
   </div>
 } @else {
-  <!-- TASK 6: replace this placeholder with the welcome screen as its own
-       lazy chunk — `@defer (on immediate) { <app-welcome-page /> }` with
-       WelcomePage added to this component's `imports`. Only an author
-       reaches this branch, so it must not be part of the eager bundle.
-       `data-welcome-pending` exists so the spec can see the branch was
-       taken; it goes away with the placeholder. -->
-  <p class="pending" data-welcome-pending>No tour is open.</p>
+  <!-- The front door, and the only branch an author with nothing open
+       reaches. Deferred, so it is its own chunk: a published site's visitor
+       never takes this branch and must not download it. `on immediate`
+       because the decision is already made — there is nothing to wait for,
+       and anything slower would show a blank page in its place. -->
+  @defer (on immediate) {
+    <app-welcome-page />
+  } @placeholder {
+    <p class="pending">Opening…</p>
+  }
 }

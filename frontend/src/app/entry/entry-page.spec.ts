@@ -1,4 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -155,6 +157,21 @@ describe('EntryPage', () => {
     expect(decisionOf(fixture)).toBe('probing');
   });
 
+  it('mounts the welcome screen through its deferred block', async () => {
+    const fixture = mount();
+    http.expectOne('/api/session').flush({ open: false });
+    await settle(fixture);
+    // The deferred dependency is fetched, so it lands a tick later than
+    // the decision that asked for it.
+    await settle(fixture);
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-welcome-page'))
+      .toBeTruthy();
+    // Proof it is the real screen and not an empty element: the welcome
+    // screen asks the backend what examples it has as soon as it mounts.
+    http.expectOne('/api/session/examples').flush({ examples: [] });
+  });
+
   it('shows the welcome screen when nothing is open', async () => {
     const fixture = mount();
     http.expectOne('/api/session').flush({ open: false });
@@ -165,5 +182,30 @@ describe('EntryPage', () => {
     // no tour for it to show and no reason to keep it in the DOM.
     expect(viewerWrapper(fixture)).toBeNull();
     expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Asserted on the stylesheet's text, not on behaviour, because no
+ * behavioural test can see this one: jsdom computes no layout, so a Leaflet
+ * map built against a zero-size container looks exactly like a working one.
+ *
+ * The bug it guards is real and shipped once. Hiding the probing viewer with
+ * `display: none` takes its box out of layout; the viewer's tour-data/
+ * fetches usually win the race against the probe, so MapPane builds its map
+ * while the wrapper is still hidden, and nothing in frontend/src ever calls
+ * `invalidateSize` or watches for a resize — so a published visitor got a
+ * permanently grey map. `display: block` is load-bearing in the fix: without
+ * it the UA stylesheet's `[hidden] { display: none }` wins.
+ */
+describe('entry-page.css', () => {
+  it('hides the probing viewer without taking away its layout box', () => {
+    const css = readFileSync(join(process.cwd(), 'src/app/entry/entry-page.css'), 'utf8');
+    const rule = css.slice(css.indexOf('.viewer-slot[hidden]'));
+    const declarations = rule.slice(0, rule.indexOf('}'));
+
+    expect(declarations).not.toMatch(/display:\s*none/);
+    expect(declarations).toMatch(/display:\s*block/);
+    expect(declarations).toMatch(/visibility:\s*hidden/);
   });
 });

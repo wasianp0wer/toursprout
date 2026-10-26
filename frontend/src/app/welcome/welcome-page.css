@@ -1,0 +1,104 @@
+/* Left two thirds, right third — the arrangement the author picked from two
+   mockups. The drop zone is the largest element in the left column and grows
+   into whatever height is left over, so it stays the obvious way in. */
+:host { display: block; height: 100vh; overflow: auto; background: #0f1114; color: #c9ccd3; }
+
+.welcome {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: 2rem 2.5rem;
+  display: grid;
+  gap: 2.5rem;
+  grid-template-columns: 2fr 1fr;
+}
+
+/* Narrow enough that two columns would leave neither usable: the guides go
+   below the choices rather than beside them. */
+@media (max-width: 52rem) {
+  .welcome { grid-template-columns: 1fr; }
+}
+
+.start { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+h1 { margin: 0; font-size: 1.5rem; color: #e8b04b; letter-spacing: 0.03em; }
+h2 { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: #9aa0ab; }
+.lead { margin: 0; color: #9aa0ab; }
+
+.drop {
+  flex: 1 1 auto;
+  min-height: 12rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 2rem;
+  text-align: center;
+  border: 2px dashed #343a44;
+  border-radius: 8px;
+  background: #15181d;
+}
+.drop.over { border-color: #e8b04b; background: #1c2026; }
+.drop-headline { margin: 0; font-size: 1.25rem; color: #c9ccd3; }
+.drop-detail { margin: 0; max-width: 28rem; font-size: 0.85rem; color: #9aa0ab; }
+code { color: #c9ccd3; }
+
+.browse {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #e8b04b;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+.browse:disabled { opacity: 0.5; cursor: default; }
+
+/* The two smaller controls, side by side under the drop zone. */
+.choices { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+.choice { flex: 1 1 14rem; min-width: 0; }
+.choice label { display: block; font-size: 0.8rem; color: #9aa0ab; margin-bottom: 0.5rem; }
+.choice input[type='text'] {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.5rem;
+  background: #15181d;
+  color: #c9ccd3;
+  border: 1px solid #343a44;
+  border-radius: 4px;
+  font: inherit;
+}
+.choice button {
+  background: #1c2026;
+  color: #c9ccd3;
+  border: 1px solid #343a44;
+  border-radius: 4px;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  font: inherit;
+}
+.choice button:disabled { opacity: 0.5; cursor: default; }
+
+.example { display: block; width: 100%; text-align: left; margin-bottom: 0.4rem; }
+.example-title { display: block; }
+.example-detail { display: block; font-size: 0.75rem; color: #9aa0ab; }
+
+.note { margin: 0; font-size: 0.8rem; color: #9aa0ab; }
+.error { margin: 0; color: #e8825b; }
+
+/* Visible but inert, by the author's decision: link-coloured and underlined
+   so the column reads as a table of contents, but no anchor and no handler,
+   because none of these pages exists yet and a link that does nothing is
+   worse than one that is plainly still to come. */
+.guides { border-left: 1px solid #22262c; padding-left: 1.5rem; }
+@media (max-width: 52rem) {
+  .guides { border-left: none; padding-left: 0; border-top: 1px solid #22262c; padding-top: 1.5rem; }
+}
+.guides ul { list-style: none; margin: 1rem 0 0; padding: 0; }
+.guides li {
+  margin-bottom: 0.6rem;
+  color: #8fa7c4;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}

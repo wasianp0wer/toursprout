@@ -1,0 +1,96 @@
+<main class="welcome">
+  <section class="start">
+    <!-- Named for what the screen is for, not for the application: the
+         published site's title belongs to the tour, not to the workbench. -->
+    <h1>Open a walking tour</h1>
+    <p class="lead">Bring in a tour you already have, start an empty one, or open an example.</p>
+
+    <!-- The largest element on the screen, by the author's choice of mockup:
+         the way in that needs no instructions. -->
+    <div
+      class="drop"
+      data-drop-zone
+      [class.over]="over()"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave()"
+      (drop)="onDrop($event)"
+    >
+      <p class="drop-headline">Drag a tour here</p>
+      <p class="drop-detail">
+        A packaged bundle (<code>.zip</code>), or a <code>tour.json</code>
+        together with its <code>media</code> folder.
+      </p>
+      <!-- For anyone who would rather pick than drag. One input, so one
+           link: a file input cannot offer both files and a folder, and the
+           files are what someone reaching for a browse link came for. A
+           folder has to be dragged. -->
+      <button type="button" class="browse" data-browse [disabled]="busy()" (click)="browse()">
+        or choose files
+      </button>
+      <input #picker type="file" multiple hidden data-picker (change)="onPicked($event)" />
+    </div>
+
+    <div class="choices">
+      <form class="choice" (submit)="$event.preventDefault(); newTour()">
+        <h2>New empty tour</h2>
+        <label>
+          Title
+          <input
+            type="text"
+            data-new-title
+            placeholder="Untitled tour"
+            [value]="newTitle()"
+            (input)="newTitle.set($any($event.target).value)"
+          />
+        </label>
+        <button type="submit" data-new-tour [disabled]="busy()">Start it</button>
+      </form>
+
+      <!-- No examples configured is the normal state, and the screen reads
+           correctly without this block: the drop zone and the new tour are
+           both still here. -->
+      @if (examples().length) {
+        <div class="choice">
+          <h2>Open an example</h2>
+          @for (example of examples(); track example.id) {
+            <button
+              type="button"
+              class="example"
+              [attr.data-example]="example.id"
+              [disabled]="busy()"
+              (click)="openExample(example.id)"
+            >
+              <span class="example-title">{{ example.title }}</span>
+              @if (example.description) {
+                <span class="example-detail">{{ example.description }}</span>
+              }
+            </button>
+          }
+        </div>
+      }
+    </div>
+
+    @if (busy()) {
+      <p class="note" data-working role="status">Opening…</p>
+    }
+    @if (skipped().length) {
+      <p class="note" data-skipped role="status">
+        Left out, because a tour's media folder may hold only images and audio:
+        {{ skipped().join(', ') }}
+      </p>
+    }
+    @if (error(); as message) {
+      <p class="error" data-error role="alert">{{ message }}</p>
+    }
+  </section>
+
+  <aside class="guides" data-guides>
+    <h2>Guides</h2>
+    <p class="note">These are not written yet.</p>
+    <ul>
+      @for (guide of guides; track guide) {
+        <li>{{ guide }}</li>
+      }
+    </ul>
+  </aside>
+</main>
