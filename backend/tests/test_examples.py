@@ -37,7 +37,6 @@ def _write_synthetic_example(content_dir: Path) -> dict:
     example_dir.mkdir(parents=True)
     (example_dir / "tour.json").write_text(json.dumps(doc))
     (example_dir / "example.json").write_text(json.dumps({
-        "id": SYNTHETIC_ID,
         "title": "Tiny Town",
         "description": "One stop, one photograph.",
         "document": "tour.json",
@@ -107,13 +106,27 @@ def test_lists_nothing_when_there_are_no_examples(tmp_path):
 
 def test_listing_is_sorted_and_skips_a_directory_with_no_manifest(cfg):
     (cfg.content_dir / "examples" / "aardvark").mkdir()
-    _write_second = cfg.content_dir / "examples" / "another-town"
-    _write_second.mkdir()
-    (_write_second / "example.json").write_text(json.dumps({
-        "id": "another-town", "title": "Another Town", "description": "d",
+    second = cfg.content_dir / "examples" / "another-town"
+    second.mkdir()
+    (second / "example.json").write_text(json.dumps({
+        "title": "Another Town", "description": "d",
         "document": "tour.json", "mediaDir": "../../media",
     }))
     assert [e.id for e in list_examples(cfg)] == ["another-town", SYNTHETIC_ID]
+
+
+def test_listing_skips_a_malformed_example_and_keeps_the_rest(cfg):
+    """The listing feeds the welcome screen, which has to read correctly with
+    no examples at all; one unreadable entry must not take the shelf down.
+    `open_example` is where a malformed example is refused out loud — see
+    `test_a_malformed_manifest_is_refused`."""
+    broken = cfg.content_dir / "examples" / "broken"
+    broken.mkdir()
+    (broken / "example.json").write_text("{ not json")
+    untitled = cfg.content_dir / "examples" / "untitled"
+    untitled.mkdir()
+    (untitled / "example.json").write_text(json.dumps({"description": "no title"}))
+    assert [e.id for e in list_examples(cfg)] == [SYNTHETIC_ID]
 
 
 # --- opening ---------------------------------------------------------------
@@ -254,11 +267,11 @@ def test_get_examples_route(client):
     assert all({"id", "title", "description"} <= e.keys() for e in body["examples"])
 
 
-def test_get_examples_route_reports_a_broken_example(client, tmp_path):
+def test_get_examples_route_still_answers_when_an_example_is_broken(client, tmp_path):
     (tmp_path / "examples" / SYNTHETIC_ID / "example.json").write_text("{ not json")
     res = client.get("/api/session/examples")
-    assert res.status_code == 500
-    assert SYNTHETIC_ID in res.json()["detail"]
+    assert res.status_code == 200
+    assert res.json() == {"examples": []}
 
 
 def test_post_example_opens_it(client):

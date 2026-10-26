@@ -166,14 +166,11 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     @app.get("/api/session/examples")
     def get_examples() -> dict:
-        try:
-            return {"examples": [asdict(e) for e in list_examples(app.state.cfg)]}
-        except ExampleError as exc:
-            # 5xx on purpose: the examples are shipped with the application, so
-            # a malformed one is this installation's fault, not the request's.
-            # Mapped rather than left to surface as an unhandled exception only
-            # so the message says WHICH example and what is wrong with it.
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        # Cannot fail: `list_examples` skips an example it cannot read, so the
+        # welcome screen renders its shelf (empty, if that is the truth) rather
+        # than an error. A malformed example is refused by the POST below,
+        # where the author asked for that one by name.
+        return {"examples": [asdict(e) for e in list_examples(app.state.cfg)]}
 
     @app.post("/api/session/examples/{example_id}",
               dependencies=[Depends(_reject_cross_site)])

@@ -59,9 +59,14 @@ def list_examples(cfg: Settings) -> list[Example]:
 
     A directory with no `example.json` is not an example and is skipped — the
     directory could be anything, including a half-made one. A manifest that IS
-    there but is broken raises: these files are repository content, authored
-    alongside the code, so a broken one is a packaging mistake that should be
-    loud rather than an entry that quietly vanishes from the shelf.
+    there but is malformed is skipped too, for a reason about the surface this
+    feeds rather than about the file: this list is the welcome screen, the
+    app's front door, which must read correctly when there are no examples at
+    all. Failing the whole list over one bad entry would put a misleading error
+    across a screen whose drop zone works perfectly well — and "another
+    misleading error message" is the thing this feature exists to remove.
+    `open_example` is where a malformed example is refused out loud, because
+    there the author has asked for that one by name.
     """
     root = Path(cfg.content_dir) / EXAMPLES_DIRNAME
     if not root.is_dir():
@@ -70,15 +75,18 @@ def list_examples(cfg: Settings) -> list[Example]:
     for path in sorted(root.iterdir()):
         if not (path / MANIFEST_NAME).is_file():
             continue
-        meta = _read_manifest(path)
-        # The directory name is the id, because it is what the route's path
-        # carries and what `open_example` resolves. `example.json` repeats it
-        # so the file reads sensibly on its own.
-        examples.append(Example(
-            id=path.name,
-            title=_required_str(meta, "title", path),
-            description=_required_str(meta, "description", path),
-        ))
+        try:
+            meta = _read_manifest(path)
+            # The directory name is the id: it is what the route's path carries
+            # and what `open_example` resolves, and an identifier that appears
+            # in a URL gets exactly one source of truth.
+            examples.append(Example(
+                id=path.name,
+                title=_required_str(meta, "title", path),
+                description=_required_str(meta, "description", path),
+            ))
+        except ExampleError:
+            continue
     return examples
 
 
