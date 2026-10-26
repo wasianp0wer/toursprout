@@ -88,6 +88,8 @@ class ToolError(Exception):
 
 
 def make_client(transport: httpx.BaseTransport | None, timeout: float) -> httpx.Client:
+    # Following redirects is right for the trusted-host tools, but _get_capped
+    # overrides it per request: archive fetches must re-check each hop.
     return httpx.Client(transport=transport, timeout=timeout,
                         headers={"User-Agent": UA}, follow_redirects=True)
 

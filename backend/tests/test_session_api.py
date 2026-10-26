@@ -280,7 +280,7 @@ def test_import_spool_failure_is_a_400_and_leaves_no_temp_file(client, monkeypat
 def test_cors_allows_the_mutating_methods():
     """A configuration assertion, not a real preflight: TestClient does not
     enforce browser CORS preflight checks, so this can only confirm the
-    middleware is configured with the mutating methods Task 2 added
+    middleware is configured with the mutating methods
     (POST/PUT, alongside GET and DELETE), not that an actual preflight request succeeds."""
     for middleware in main_module.app.user_middleware:
         if middleware.cls.__name__ == "CORSMiddleware":
@@ -391,9 +391,8 @@ def media_clip(media_dir):
 def test_tour_data_media_range_request_returns_a_slice(media_clip):
     """Range requests through the tour-data mount must work: this is the
     narration-audio guarantee, and it is also the permanent home of the
-    range-request coverage that `test_media.py`'s hand-rolled handling in
-    `/api/media/{id}` provided before Task 4 deleted it along with the
-    frontend's last use of that route."""
+    range-request coverage: StaticFiles provides it here, and the former
+    hand-rolled `/api/media/{id}` route, which this once covered, is gone."""
     client, payload = media_clip
     r = client.get("/tour-data/media/clip.bin", headers={"Range": "bytes=10-19"})
     assert r.status_code == 206

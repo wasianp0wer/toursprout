@@ -432,8 +432,8 @@ def test_a_bundle_version_newer_than_this_build_understands_is_refused(tmp_path)
 
 
 def test_a_bundle_with_no_bundle_json_at_all_still_imports(tmp_path):
-    """Older exports lack bundle.json entirely (it was added after this
-    sub-project started); refusing them would be a regression, not a safety
+    """Older exports lack bundle.json entirely (it was added when the
+    container format was first versioned); refusing them would be a regression, not a safety
     improvement."""
     zip_path = tmp_path / "old.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
