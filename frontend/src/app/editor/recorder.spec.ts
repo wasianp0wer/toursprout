@@ -39,6 +39,14 @@ describe('recorder', () => {
     for (const t of tracks) expect(t.stop).toHaveBeenCalled();
   });
 
+  it('releases the microphone even when recorder.stop() throws', async () => {
+    const { tracks } = installRecording();
+    const rec = await startRecording();
+    vi.spyOn(FakeMediaRecorder.prototype, 'stop').mockImplementation(() => { throw new Error('InvalidStateError'); });
+    await expect(rec.stop()).rejects.toBeInstanceOf(RecordingError);
+    for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+  });
+
   it('releases the microphone when the recorder fails to start', async () => {
     const { tracks } = installRecording();
     vi.spyOn(FakeMediaRecorder.prototype, 'start').mockImplementation(() => { throw new Error('boom'); });

@@ -243,8 +243,11 @@ anything. The ones that cost the most time:
    `build_tour.py` and the Makefile's `content:` target both warn about this,
    but the underlying choice is still open: either sync `stops.json` to the
    hand-tuned coordinates (which would also change the derived headings to
-   105.0/147.2), or let the editor in sub-project 3 take ownership of the
-   document and retire `stops.json` entirely. Nobody has made that call —
+   105.0/147.2), or let the editor take ownership of the document and retire
+   `stops.json` entirely. Sub-project 3 has landed — the editor can now name a
+   tour, write stop text, place media and publish — so retiring it is
+   technically possible, but the choice is still open and gated on the
+   author's explicit confirmation. Nobody has made that call —
    the alignment was tuned by eye in a browser, and no browser can run in this
    environment, so nobody here can see whether either change improves or
    breaks it.

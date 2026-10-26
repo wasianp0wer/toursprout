@@ -12,13 +12,35 @@ does not control: a file the client names, and a URL the client names.
 
 ## Considered
 
-**Store uploads under the client's filename.** Rejected: see below.
+**Store uploads under the client's filename.** The obvious design, and
+the one a reader recognises. Its cost is that the name is attacker-chosen
+input to a filesystem write: traversal, overwrite of an existing file by
+naming it, and an `.html` or `.svg` that is then served from the author's
+own origin. Each can be patched separately (reject `..`, reject known-bad
+extensions), but a deny-list loses to whoever picks the name, so it was
+rejected in favour of making the name irrelevant.
 
-**Transcode recordings to one format.** Rejected: see below.
+**Transcode recordings to one format.** It would remove the Safari/WebM
+split for good. Its cost is a transcoder in the request path (ffmpeg, which
+may not be installed) or in the client (a WASM build of a few megabytes), a
+new failure mode for every recording, and work out of proportion to a
+limitation that preferring MP4 where the browser offers it already removes
+for most authors. Rejected for now; it is the answer if the unverified
+Safari risk below turns out to be common.
 
-**Rewrite the scripts as new code.** Rejected: see below.
+**Rewrite the scripts as new code.** A cleaner API than lifted functions.
+Its cost is that the scripts hold query shapes learned the hard way (which
+Overpass tags return usable results, the LoC scoring and excluded places)
+and a rewrite re-learns them by failing in front of the author. It would
+also fork the logic, leaving `make content` and the editor to disagree.
+Lifting keeps one source of knowledge and costs some awkward signatures.
 
-**Fetch archive images from the browser.** Rejected: see below.
+**Fetch archive images from the browser.** It would avoid an endpoint that
+fetches a client-named URL and so avoid the SSRF surface entirely. Its cost
+is dependence on `tile.loc.gov` sending CORS headers (unchecked), losing
+retry-on-5xx and the magic-byte check, and a browser then uploading what it
+fetched, so the same bytes cross the wire twice. The endpoint plus an
+allowlist was judged the smaller risk.
 
 ## Decision
 
@@ -39,6 +61,15 @@ This matters more than it would for a private scratch directory because
 `publish.py` copies the working directory into the published site. Anything
 in `media/` is served from the author's own origin, so an `.html` or `.svg`
 that got in would run with that origin's authority.
+
+Bundle import is the second door, and it must use the same definition of
+"media". It first waved all of `media/` through, so `media/evil.html`
+imported and was served as `text/html` from the editor's origin, which also
+hosts the unauthenticated session API, and then from the public one via
+publish. `bundle._check_media_file` now sniffs every file under `media/`
+with the upload path's own `_sniff_type` and requires an extension from the
+set uploads are stored under, because a static server types by extension and
+JPEG bytes named `.html` are still served as HTML.
 
 ### Recording keeps the browser's native format
 
@@ -86,7 +117,10 @@ forgery hole unless constrained. So `check_archive_url` allows only
 (`https://a.loc.gov@evil/` and `https://loc.gov:8443/` are how such lists
 get walked around), and is re-applied on every redirect hop, which is
 followed by hand. The body must sniff as an image; the Content-Type header
-is not trusted.
+is not trusted. The body is streamed and abandoned past `MAX_FILE_BYTES`
+(a declared `Content-Length` over it is refused before a byte is read), and
+a 90 s deadline bounds all attempts and hops together, since the per-request
+timeout bounds only each read.
 
 ## What the live verification showed
 
@@ -125,11 +159,14 @@ two of those were wrong.
   `version`/`generator`/`osm3s` envelope). **But latency is the real
   problem:** from this network `overpass-api.de` took 34-42 seconds for
   every request, including a trivial `node(1)` query, and once answered 502
-  "at capacity". The tool's per-mirror timeout is 15 s with a 40 s total
-  budget, so against this mirror from here it would time out and fall
-  through to the others. Only `overpass-api.de` was authorised, so the
-  fallback mirrors are unexercised. The timeouts were not changed on one
-  network's evidence; this is an open item.
+  "at capacity". The tool's per-mirror timeout was 15 s with a 40 s total
+  budget, so against this mirror from here it could never succeed. Only
+  `overpass-api.de` was authorised, so the fallback mirrors are unexercised.
+  The timeouts are now 45 s each, on the reasoning that a generous timeout
+  costs a slower failure while a tight one costs the feature. That figure
+  is from one observation on one network; adjust it against your own. (The
+  query's own server-side `[timeout:12]` is unchanged and was not the
+  limiting factor in the observed run.)
 - **`archive-fetch`: the direct path is verified; redirects are not.**
   Real `tile.loc.gov` image URLs (150px, 1024px and an IIIF one) returned
   200 `image/jpeg` with a JPEG magic prefix and went through
@@ -147,10 +184,10 @@ it was not separately authorised.
 
 ## Costs and what is still open
 
-- **The extension lists are mirrored by hand.** `IMAGE_EXTS` and `AUDIO_EXTS`
-  in `frontend/src/app/editor/document-ops.ts` copy the backend's
-  `ALLOWED_TYPES` with no test tying them together. A format added on one
-  side only fails quietly at the other.
+- **The extension lists are mirrored, and now tied.** `IMAGE_EXTS` and
+  `AUDIO_EXTS` in `frontend/src/app/editor/document-ops.ts` copy the
+  backend's `ALLOWED_TYPES`; a backend test reads the TypeScript and fails
+  on drift, the same idiom as the display-mode table.
 - **The recording round trip is unverified in a real browser.** Chromium's
   EBML header and Firefox's `OggS` pass the sniffer. Safari's MP4 brand is
   a risk: `isom`, `iso5`, `mp42` and `M4A ` pass; `dash` and `cmfc` would be
@@ -161,3 +198,23 @@ it was not separately authorised.
   content` and `build_tour.py`'s document generation remain, with their
   warnings. Retiring them is the point of no return for the old workflow
   and waits for the author's explicit confirmation.
+
+## How the deferred features land on this
+
+- **Any new way bytes reach `media/`** (a drag-and-drop route, a URL import,
+  another tool) goes through `media_store.store_media`, or, if it arrives as
+  an archive, through `bundle._check_media_file`. Both rest on
+  `_sniff_type`; a new format is one entry in `ALLOWED_TYPES` plus the
+  matching line in `document-ops.ts`, and the tie-test says which you forgot.
+- **A new acquisition source** is a function in `tools.py` taking an
+  `httpx.Client` and raising `ToolError`, with a route beside the others and
+  a method in `tools-api.ts`. If it fetches a client-named URL it needs its
+  own host allowlist and the streamed, capped, deadlined download that
+  `fetch_archive_image` uses, not a copy of its `resp.content` ancestor.
+- **Transcoding recordings** would slot in before `store_media`, in the
+  upload route, so the stored type is still decided by the bytes. It is the
+  answer to the unverified Safari brand risk if that proves common.
+- **Retiring `content/source/stops.json`** (HANDOFF, outstanding item 2) is
+  now technically possible: an author can name a tour, write stop text,
+  place media and publish, all in the editor. This record does not decide
+  it; it is gated on the author's explicit confirmation.

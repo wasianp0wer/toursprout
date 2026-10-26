@@ -5,8 +5,10 @@ tours over real street-level imagery. This proof of concept is a six-stop tour
 of Old Town Fairfax, Virginia, with text, archival photography and narration
 anchored to points in the world and overlaid on 360° panoramas.
 
-It is a prototype: there is an authoring editor at `/edit`, but it has never been
-seen in a browser (nor have its microphone recording and acquisition tools used from one), and there is one hand-authored tour. The **schema** is the
+It is a prototype. There is an authoring editor at `/edit` and one
+hand-authored tour. The editor, including its microphone recording and
+acquisition tools, has never been seen running in a browser, because none can
+launch in the development environment. The **schema** is the
 part meant to survive.
 
 ## What it is made of

@@ -88,8 +88,15 @@ export async function startRecording(): Promise<ActiveRecording> {
     recorder.onerror = () => { release(); finish(null); };
     recorder.start();
     const halt = () => {
-      if (recorder.state !== 'inactive') recorder.stop();
-      else release();
+      if (recorder.state === 'inactive') { release(); return; }
+      try {
+        recorder.stop();
+      } catch {
+        // onstop will never fire, and without this the microphone stays live
+        // (and stop() would wait forever for a clip that cannot arrive).
+        release();
+        finish(null);
+      }
     };
     return {
       get mimeType() { return knownType(); },
