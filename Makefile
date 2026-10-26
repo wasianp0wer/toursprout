@@ -42,4 +42,4 @@ e2e: build
 	cd frontend && npx playwright test
 
 clean:
-	rm -rf frontend/dist backend/tours.db test-results playwright-report
+	rm -rf frontend/dist test-results playwright-report
