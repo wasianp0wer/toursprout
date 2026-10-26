@@ -13,6 +13,15 @@ import app.bundle as bundle_module
 from app.bundle import BUNDLE_VERSION, BundleError, missing_media, read_bundle, write_bundle
 from app.models import Tour
 
+# Import sniffs everything under media/, so fixtures need real signatures.
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 12
+M4A = b"\x00\x00\x00\x18ftypM4A " + b"\x00" * 8
+
+
+def _media_bytes(name: str) -> bytes:
+    return M4A if name.endswith(".m4a") else JPEG
+
+
 REPO = Path(__file__).resolve().parents[2]
 V1_FIXTURE = Path(__file__).parent / "fixtures" / "fairfax-old-town-v1.json"
 SHIPPED = REPO / "content" / "tours" / "fairfax-old-town.json"
@@ -50,7 +59,7 @@ def _minimal_doc(media_id="m.jpg"):
 
 
 def test_round_trip_preserves_the_document_and_media(tmp_path):
-    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": b"\xff\xd8bytes"})
+    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": JPEG})
     zip_path = tmp_path / "out.zip"
     write_bundle(work, zip_path)
 
@@ -58,7 +67,7 @@ def test_round_trip_preserves_the_document_and_media(tmp_path):
     read_bundle(zip_path, dest)
 
     assert json.loads((dest / "tour.json").read_text()) == _minimal_doc()
-    assert (dest / "media" / "m.jpg").read_bytes() == b"\xff\xd8bytes"
+    assert (dest / "media" / "m.jpg").read_bytes() == JPEG
 
 
 def test_the_shipped_tour_round_trips_byte_identically(tmp_path):
@@ -67,7 +76,7 @@ def test_the_shipped_tour_round_trips_byte_identically(tmp_path):
     for stop in doc["stops"]:
         for ov in stop["overlays"]:
             if ov.get("mediaId"):
-                media[ov["mediaId"]] = b"x" * 16
+                media[ov["mediaId"]] = _media_bytes(ov["mediaId"])
     work = _make_work(tmp_path, doc, media)
     zip_path = tmp_path / "shipped.zip"
     write_bundle(work, zip_path)
@@ -83,7 +92,7 @@ def test_a_v1_bundle_is_migrated_on_import(tmp_path):
     for stop in v1["stops"]:
         for ov in stop["overlays"]:
             if ov.get("mediaId"):
-                media[ov["mediaId"]] = b"x"
+                media[ov["mediaId"]] = _media_bytes(ov["mediaId"])
     work = _make_work(tmp_path, v1, media)
     zip_path = tmp_path / "v1.zip"
     write_bundle(work, zip_path)
@@ -178,7 +187,7 @@ def test_a_missing_referenced_media_file_is_an_error(tmp_path):
 
 def test_orphaned_media_is_warned_about_not_deleted(tmp_path):
     work = _make_work(tmp_path, _minimal_doc(),
-                      {"m.jpg": b"a", "unused.jpg": b"b"})
+                      {"m.jpg": JPEG, "unused.jpg": JPEG})
     zip_path = tmp_path / "orphan.zip"
     write_bundle(work, zip_path)
     dest = tmp_path / "dest"
@@ -190,7 +199,7 @@ def test_orphaned_media_is_warned_about_not_deleted(tmp_path):
 def test_an_invalid_document_is_refused(tmp_path):
     bad = _minimal_doc()
     bad["stops"][0]["overlays"][0]["display"] = {"mode": "ambient", "autoplay": True}
-    work = _make_work(tmp_path, bad, {"m.jpg": b"a"})
+    work = _make_work(tmp_path, bad, {"m.jpg": JPEG})
     zip_path = tmp_path / "bad.zip"
     write_bundle(work, zip_path)
     with pytest.raises(BundleError):
@@ -313,7 +322,7 @@ def test_a_crash_during_the_destination_swap_leaves_it_untouched(tmp_path, monke
     assert `dest` is still exactly what it was — not emptied, not partially
     overwritten."""
     dest = tmp_path / "dest"
-    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": b"original-bytes"})
+    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": JPEG})
     read_bundle(_zip_from_work(work, tmp_path / "good.zip"), dest)
 
     before = {
@@ -321,7 +330,7 @@ def test_a_crash_during_the_destination_swap_leaves_it_untouched(tmp_path, monke
     }
 
     other_work = _make_work(
-        tmp_path / "second", _minimal_doc(media_id="other.jpg"), {"other.jpg": b"new-bytes"}
+        tmp_path / "second", _minimal_doc(media_id="other.jpg"), {"other.jpg": JPEG + b"new"}
     )
     other_zip = _zip_from_work(other_work, tmp_path / "other.zip")
 
@@ -347,7 +356,7 @@ def _zip_from_work(work: Path, zip_path: Path) -> Path:
 
 
 def test_dotfiles_are_excluded_from_written_bundles(tmp_path):
-    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": b"a"})
+    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": JPEG})
     (work / "media" / ".DS_Store").write_bytes(b"junk")
     zip_path = tmp_path / "clean.zip"
     write_bundle(work, zip_path)
@@ -361,7 +370,7 @@ def test_a_dotfile_inside_a_hidden_directory_is_also_excluded(tmp_path):
     missed a dotfile sitting inside a hidden directory, e.g. `.git/config`,
     because `config`'s own leaf name does not start with a dot. The filter
     must be applied to every component of the relative path."""
-    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": b"a"})
+    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": JPEG})
     (work / ".git").mkdir()
     (work / ".git" / "config").write_text("[core]\n")
     zip_path = tmp_path / "clean.zip"
@@ -376,7 +385,7 @@ def test_config_json_is_excluded_from_exported_bundles(tmp_path):
     Mapillary token included — not part of the document. It is excluded
     from exports (publish.py still emits it for a published site, which is
     the one place it belongs)."""
-    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": b"a"})
+    work = _make_work(tmp_path, _minimal_doc(), {"m.jpg": JPEG})
     work.joinpath("config.json").write_text(
         json.dumps({"mapillaryToken": "secret", "tileUrl": "u", "attribution": []})
     )
@@ -395,7 +404,7 @@ def test_an_unexpected_root_file_is_refused(tmp_path):
     with zipfile.ZipFile(zip_path, "w") as zf:
         zf.writestr("bundle.json", json.dumps({"bundleVersion": 1, "tourId": "t"}))
         zf.writestr("tour.json", json.dumps(_minimal_doc(media_id="m.jpg")))
-        zf.writestr("media/m.jpg", "x")
+        zf.writestr("media/m.jpg", JPEG)
         zf.writestr("evil.html", "<script>pwned</script>")
     with pytest.raises(BundleError, match="evil.html"):
         read_bundle(zip_path, tmp_path / "dest")
@@ -406,7 +415,7 @@ def test_an_unexpected_file_outside_media_in_a_subdirectory_is_refused(tmp_path)
     with zipfile.ZipFile(zip_path, "w") as zf:
         zf.writestr("bundle.json", json.dumps({"bundleVersion": 1, "tourId": "t"}))
         zf.writestr("tour.json", json.dumps(_minimal_doc(media_id="m.jpg")))
-        zf.writestr("media/m.jpg", "x")
+        zf.writestr("media/m.jpg", JPEG)
         zf.writestr("assets/payload.js", "pwned();")
     with pytest.raises(BundleError, match="assets/payload.js"):
         read_bundle(zip_path, tmp_path / "dest")
@@ -417,7 +426,7 @@ def test_a_bundle_version_newer_than_this_build_understands_is_refused(tmp_path)
     with zipfile.ZipFile(zip_path, "w") as zf:
         zf.writestr("bundle.json", json.dumps({"bundleVersion": BUNDLE_VERSION + 1, "tourId": "t"}))
         zf.writestr("tour.json", json.dumps(_minimal_doc(media_id="m.jpg")))
-        zf.writestr("media/m.jpg", "x")
+        zf.writestr("media/m.jpg", JPEG)
     with pytest.raises(BundleError, match="bundleVersion"):
         read_bundle(zip_path, tmp_path / "dest")
 
@@ -429,7 +438,7 @@ def test_a_bundle_with_no_bundle_json_at_all_still_imports(tmp_path):
     zip_path = tmp_path / "old.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
         zf.writestr("tour.json", json.dumps(_minimal_doc(media_id="m.jpg")))
-        zf.writestr("media/m.jpg", "x")
+        zf.writestr("media/m.jpg", JPEG)
     dest = tmp_path / "dest"
     read_bundle(zip_path, dest)
     assert dest.is_dir()
@@ -461,7 +470,7 @@ def test_missing_media_reports_what_export_would_be_missing(tmp_path):
 
 
 def test_missing_media_is_empty_when_everything_referenced_is_present(tmp_path):
-    work = _make_work(tmp_path, _minimal_doc(media_id="m.jpg"), {"m.jpg": b"a"})
+    work = _make_work(tmp_path, _minimal_doc(media_id="m.jpg"), {"m.jpg": JPEG})
     assert missing_media(work) == []
 
 
@@ -472,5 +481,51 @@ def test_missing_media_sees_a_nested_media_layout(tmp_path):
     not a direct child of `media/`."""
     work = _make_work(tmp_path, _minimal_doc(media_id="pano/pano-x.jpg"), {})
     (work / "media" / "pano").mkdir()
-    (work / "media" / "pano" / "pano-x.jpg").write_bytes(b"x")
+    (work / "media" / "pano" / "pano-x.jpg").write_bytes(JPEG)
     assert missing_media(work) == []
+
+
+# --- media/ is held to the same definition of "media" as an upload ---------
+#
+# Import is the second door into a working directory, and publish.py copies
+# everything in it onto the author's public origin. Anything the upload path
+# refuses must be refused here too, or `media/evil.html` is served as
+# text/html from the same origin that hosts the unauthenticated session API.
+
+
+def _bundle_with(tmp_path: Path, name: str, data: bytes) -> Path:
+    zip_path = tmp_path / "b.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("bundle.json", json.dumps({"bundleVersion": 1, "tourId": "t"}))
+        zf.writestr("tour.json", json.dumps(_minimal_doc(media_id="m.jpg")))
+        zf.writestr("media/m.jpg", JPEG)
+        zf.writestr(name, data)
+    return zip_path
+
+
+@pytest.mark.parametrize("name,data", [
+    ("media/evil.html", b"<!doctype html><script>x()</script>"),
+    ("media/payload.js", b"alert(1);"),
+    ("media/x.svg", b'<svg xmlns="http://www.w3.org/2000/svg" onload="x()"/>'),
+])
+def test_executable_content_under_media_is_refused(tmp_path, name, data):
+    zip_path = _bundle_with(tmp_path, name, data)
+    dest = tmp_path / "dest"
+    with pytest.raises(BundleError, match=name):
+        read_bundle(zip_path, dest)
+    assert not dest.exists()
+
+
+def test_allowed_bytes_under_a_dangerous_extension_are_refused(tmp_path):
+    """The sniff alone is not enough: JPEG bytes named .html would be served
+    as text/html, and a JPEG can carry markup after its header."""
+    zip_path = _bundle_with(tmp_path, "media/evil.html", JPEG + b"<script>x()</script>")
+    with pytest.raises(BundleError, match="evil.html"):
+        read_bundle(zip_path, tmp_path / "dest")
+
+
+def test_legitimate_media_still_imports(tmp_path):
+    zip_path = _bundle_with(tmp_path, "media/pano/voice.m4a", M4A)
+    dest = tmp_path / "dest"
+    read_bundle(zip_path, dest)
+    assert (dest / "media" / "pano" / "voice.m4a").read_bytes() == M4A

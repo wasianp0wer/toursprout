@@ -25,6 +25,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from .media_store import ALLOWED_TYPES, _sniff_type
 from .migration import migrate_v1_to_v2
 from .models import Tour
 
@@ -261,12 +262,38 @@ def _swap_in(staging: Path, dest: Path) -> None:
 _ALLOWED_ROOT_FILES = {"bundle.json", "tour.json", "config.json"}
 
 
+# Extensions a file under media/ may carry: the ones uploads are stored under,
+# plus the common spelling of JPEG. The sniff alone is not enough, because a
+# static server types by extension, and valid JPEG bytes named `.html` are
+# served as text/html.
+_MEDIA_EXTENSIONS = set(ALLOWED_TYPES.values()) | {".jpeg"}
+
+
+def _check_media_file(path: Path, rel: Path) -> None:
+    """Hold an imported media file to the upload path's definition of media.
+
+    `media_store` is the one place that decides what media is; import used to
+    wave all of `media/` through, which left `media/evil.html` servable as
+    text/html from the editor's own origin and, via publish, the author's
+    public one. Sixteen bytes is enough for every signature `_sniff_type`
+    knows.
+    """
+    with open(path, "rb") as fh:
+        head = fh.read(16)
+    if _sniff_type(head) is None or path.suffix.lower() not in _MEDIA_EXTENSIONS:
+        raise BundleError(
+            f"bundle contains a file that is not an allowed image or audio "
+            f"type: {rel.as_posix()}"
+        )
+
+
 def _check_allowed_contents(root: Path) -> None:
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
         rel = path.relative_to(root)
         if rel.parts[0] == "media":
+            _check_media_file(path, rel)
             continue
         if len(rel.parts) == 1 and rel.parts[0] in _ALLOWED_ROOT_FILES:
             continue
