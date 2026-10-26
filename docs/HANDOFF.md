@@ -404,7 +404,15 @@ Two defects, both fixed in commit `53f57ca`:
   forwards `/tour-data` as well. This had been recorded as a known gap in
   `ARCHITECTURE.md` before it was ever hit.
 
-Figures after: 320 backend, 529 frontend.
+The editor carried the same defect and was fixed in the same way a moment
+later (commit follows): `/edit` reported an unreachable backend while
+`/api/session` was answering, because the session said a tour was open and
+`tour-data/tour.json` then 404'd. That 404 was the proxy gap again — the dev
+server reads `proxy.conf.json` once at startup, so a server started before
+the fix keeps the old config. Restarting `ng serve` is the fix, and the
+message now says so.
+
+Figures after: 320 backend, 530 frontend.
 
 **This is the first thing a real run found, and it was a message that sent
 the reader to the wrong place.** `UNVERIFIED.md` exists for exactly this; its

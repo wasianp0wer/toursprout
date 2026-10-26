@@ -117,6 +117,24 @@ describe('EditorPage', () => {
     expect(el.querySelector('[data-publish]')?.getAttribute('href')).toBe('/api/session/publish');
   });
 
+  it('distinguishes an unreadable document from an unreachable backend', async () => {
+    const fixture = TestBed.createComponent(EditorPage);
+    fixture.detectChanges();
+    // The session answers, so the backend is up. Its tour.json does not,
+    // which is what a stale `ng serve` proxy looks like from in here.
+    http.expectOne('/api/session').flush({ open: true, title: 'Old Town Fairfax' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    http.expectOne('tour-data/tour.json').flush(null, { status: 404, statusText: 'Not Found' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const text = el.querySelector('[data-error]')?.textContent ?? '';
+    expect(text).toContain('could not be read');
+    expect(text).not.toContain('Is the backend running');
+  });
+
   it('shows an actionable message when the backend is unreachable', async () => {
     const fixture = TestBed.createComponent(EditorPage);
     fixture.detectChanges();

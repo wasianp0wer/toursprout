@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { Autosave } from './autosave';
 import { EditMapPane } from './edit-map-pane';
@@ -54,8 +55,8 @@ export class EditorPage {
     try {
       const summary = await this.sessionApi.get();
       if (summary.open) await this.openDocument();
-    } catch {
-      this.error.set('Could not reach the editor service. Is the backend running on port 8000?');
+    } catch (err) {
+      this.error.set(initFailureMessage(err));
     } finally {
       this.loading.set(false);
     }
@@ -88,4 +89,19 @@ export class EditorPage {
   protected setDescription(v: string): void {
     this.store.apply((t) => setTourDescription(t, v));
   }
+}
+
+/**
+ * Two different failures reached the same message. A dead connection means
+ * the backend is not up. A 404 means it answered, and the session says a
+ * tour is open, but `tour-data/tour.json` did not arrive — under `ng serve`
+ * that is a dev server started before `proxy.conf.json` gained `/tour-data`,
+ * since the proxy config is read once at startup. Naming the port in that
+ * case sends the reader to a server that is already running.
+ */
+function initFailureMessage(err: unknown): string {
+  if (err instanceof HttpErrorResponse && err.status === 404) {
+    return 'A tour is open, but its data could not be read (404 on tour-data/tour.json). Under `ng serve`, restart the dev server so it picks up the /tour-data proxy; otherwise see docs/HANDOFF.md.';
+  }
+  return 'Could not reach the editor service. Is the backend running on port 8000?';
 }
