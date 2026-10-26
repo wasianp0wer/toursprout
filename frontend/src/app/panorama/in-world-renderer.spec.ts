@@ -43,16 +43,14 @@ describe('InWorldRenderer.setPlacements', () => {
     const { renderer, internals, load } = rig();
     renderer.setPlacements([place()]);
     const mesh = internals.meshes.get('a')!;
-    const geometry = mesh.geometry;
+    const material = mesh.material;
     const x = mesh.position.x;
-    const dispose = vi.spyOn(geometry, 'dispose');
 
     renderer.setPlacements([place({ lng: -77.3064, headingDeg: 90 })]);
 
     expect(load).toHaveBeenCalledTimes(1); // no texture refetch
     expect(internals.meshes.get('a')).toBe(mesh); // same mesh object
-    expect(mesh.geometry).toBe(geometry); // size unchanged, geometry kept
-    expect(dispose).not.toHaveBeenCalled();
+    expect(mesh.material).toBe(material); // the textured material is kept
     expect(mesh.position.x).not.toBe(x); // but it did move
   });
 

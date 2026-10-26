@@ -6,7 +6,6 @@ import {
   geodeticToEnu,
 } from 'mapillary-js';
 import {
-  Cache,
   Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
@@ -48,9 +47,6 @@ export class InWorldRenderer implements ICustomRenderer {
   private frames = 0;
 
   constructor(diagnosticsOn = false) {
-    // Let TextureLoader reuse a fetched image instead of re-requesting it when
-    // a mesh is genuinely rebuilt (reference change, new image set).
-    Cache.enabled = true;
     this.diag = createDiagnostics(diagnosticsOn);
     if (diagnosticsOn && typeof window !== 'undefined') {
       // Diagnostics only: lets the scene graph be interrogated from the
@@ -161,11 +157,8 @@ export class InWorldRenderer implements ICustomRenderer {
       reference.lng, reference.lat, reference.alt,
     ) as [number, number, number];
     const transform = planeTransform(placement, enu);
-    const params = (mesh.geometry as PlaneGeometry).parameters;
-    if (params.width !== transform.width || params.height !== transform.height) {
-      mesh.geometry.dispose();
-      mesh.geometry = new PlaneGeometry(transform.width, transform.height);
-    }
+    mesh.geometry.dispose();
+    mesh.geometry = new PlaneGeometry(transform.width, transform.height);
     mesh.position.set(transform.position[0], transform.position[1], transform.position[2]);
     mesh.rotation.set(
       transform.rotation[0], transform.rotation[1], transform.rotation[2], transform.rotationOrder,
@@ -249,7 +242,7 @@ export class InWorldRenderer implements ICustomRenderer {
         },
       );
 
-      const mesh = new Mesh(new PlaneGeometry(1, 1), material);
+      const mesh = new Mesh(new PlaneGeometry(), material);
       this.transformMesh(mesh, placement);
       mesh.visible = this.opacityOf(placement.id) > 0.01;
 
