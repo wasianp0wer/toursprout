@@ -5,14 +5,17 @@
     <label>Credit <input type="text" data-field="credit" name="credit" [ngModel]="credit()" (ngModelChange)="setCredit($event)" /></label>
     <label>Kind
       <select data-field="kind" name="kind" [ngModel]="o.kind" (ngModelChange)="setKind($event)">
-        @for (k of kinds; track k) { <option [value]="k">{{ k }}</option> }
+        @for (k of kinds(); track k) { <option [value]="k">{{ k }}</option> }
       </select>
     </label>
     <label>Display mode
       <select data-field="mode" name="mode" [ngModel]="o.display.mode" (ngModelChange)="setMode($event)">
-        @for (m of modes(); track m) { <option [value]="m">{{ m }}</option> }
+        @for (m of modes(); track m) { <option [value]="m" [disabled]="m === 'inWorld' && o.display.mode !== 'inWorld' && !fix()">{{ m }}</option> }
       </select>
     </label>
+    @if (modes().includes('inWorld') && o.display.mode !== 'inWorld' && !fix()) {
+      <span class="override" data-derive-unavailable>In-world needs this stop's panorama position, which is not known yet.</span>
+    }
     <label>Longitude <input type="number" step="any" data-field="lng" name="lng" [ngModel]="o.anchor.lng" (ngModelChange)="setAnchor('lng', $event)" /></label>
     <label>Latitude <input type="number" step="any" data-field="lat" name="lat" [ngModel]="o.anchor.lat" (ngModelChange)="setAnchor('lat', $event)" /></label>
     <label>Altitude (m above ground) <input type="number" step="any" data-field="altitudeM" name="altitudeM" [ngModel]="o.anchor.altitudeM" (ngModelChange)="setAnchor('altitudeM', $event)" /></label>
@@ -21,9 +24,9 @@
         <input type="number" step="any" data-field="headingDeg" name="headingDeg" [ngModel]="w.headingDeg" (ngModelChange)="setInWorld('headingDeg', $event)" />
       </label>
       <div class="heading-row">
-        <button type="button" data-derive-heading [disabled]="!store.panoramaPosition()" (click)="derive()">Derive heading from panorama</button>
-        @if (!store.panoramaPosition()) {
-          <span class="override" data-derive-unavailable>Unavailable until the panorama's position is known. Heading is a placeholder until then.</span>
+        <button type="button" data-derive-heading [disabled]="!fix()" (click)="derive()">Derive heading from panorama</button>
+        @if (!fix()) {
+          <span class="override" data-derive-unavailable>Unavailable until this stop's panorama position is known.</span>
         }
         @if (headingOverridden()) {
           <span class="override" data-heading-override>Manual override. Derive again to go back.</span>

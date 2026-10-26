@@ -208,58 +208,135 @@ function mapOverlay(tour: Tour, overlayId: string, fn: (o: Overlay) => Overlay):
   };
 }
 
-/** Patch an overlay's geo anchor (lng, lat, altitudeM). */
+function findOverlay(tour: Tour, overlayId: string): { stop: Stop; overlay: Overlay } | null {
+  for (const stop of tour.stops) {
+    const overlay = stop.overlays.find((o) => o.id === overlayId);
+    if (overlay) return { stop, overlay };
+  }
+  return null;
+}
+
+/**
+ * A reported panorama position, keyed to WHICH panorama it belongs to. The
+ * panorama pane can lag a selection change; an unkeyed position would then
+ * silently be the previous panorama's, and a heading derived from it points
+ * the photograph the wrong way.
+ */
+export interface PanoramaFix extends LngLatLike {
+  imageId: string;
+}
+
+/**
+ * The fix, but only if it belongs to this stop's panorama. Null otherwise.
+ * This is the single gate every derivation passes through.
+ */
+export function panoramaFixForStop(stop: Stop | null, fix: PanoramaFix | null): PanoramaFix | null {
+  if (!stop || !fix) return null;
+  return fix.imageId === stop.panorama.imageId ? fix : null;
+}
+
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * Patch an overlay's geo anchor (lng, lat, altitudeM). Returns the tour
+ * unchanged (same reference) if any supplied value is non-finite or out of
+ * range (|lng| <= 180, |lat| <= 90).
+ */
 export function setOverlayAnchor(
   tour: Tour, overlayId: string, patch: Partial<Omit<Overlay['anchor'], 'type'>>,
 ): Tour {
+  if (!findOverlay(tour, overlayId)) return tour;
+  for (const [k, v] of Object.entries(patch)) {
+    if (!isNum(v)) return tour;
+    if (k === 'lng' && Math.abs(v) > 180) return tour;
+    if (k === 'lat' && Math.abs(v) > 90) return tour;
+  }
   return mapOverlay(tour, overlayId, (o) => ({ ...o, anchor: { ...o.anchor, ...patch } }));
 }
 
 /**
- * Patch the numeric fields of an inWorld display. A no-op for any other mode,
- * so a stale inspector field cannot grow stray keys on a marker.
+ * Patch the numeric fields of an inWorld display. A no-op (same reference)
+ * for any other mode, for non-finite values, and for non-positive sizes.
+ * Opacity is clamped to [0, 1]; heading is normalised into [0, 360).
  */
 export function setInWorldField(
   tour: Tour, overlayId: string,
   patch: Partial<Pick<InWorldDisplay, 'headingDeg' | 'widthM' | 'heightM' | 'opacity'>>,
 ): Tour {
+  const found = findOverlay(tour, overlayId);
+  if (!found || found.overlay.display.mode !== 'inWorld') return tour;
+  const clean: typeof patch = {};
+  for (const [k, v] of Object.entries(patch) as [keyof typeof patch, number][]) {
+    if (!isNum(v)) return tour;
+    if ((k === 'widthM' || k === 'heightM') && v <= 0) return tour;
+    clean[k] = k === 'opacity' ? Math.min(1, Math.max(0, v))
+      : k === 'headingDeg' ? ((v % 360) + 360) % 360 : v;
+  }
   return mapOverlay(tour, overlayId, (o) =>
-    o.display.mode === 'inWorld' ? { ...o, display: { ...o.display, ...patch } } : o);
+    o.display.mode === 'inWorld' ? { ...o, display: { ...o.display, ...clean } } : o);
 }
 
 /**
- * Switch an overlay to another display mode. Refuses an illegal mode for the
- * overlay's kind (returns the tour unchanged). Entering inWorld seeds the
- * heading by derivation from the REAL panorama position. The stop's location
- * is never a substitute: the panorama stands where the camera car drove, tens
- * of metres from the building, and that swings a bearing by up to 178 degrees.
- * With no position known the heading is a placeholder 0 for the author to derive.
+ * Switch an overlay to another display mode. Returns the tour unchanged (same
+ * reference) for a mode illegal for the kind, or the mode it already has.
+ *
+ * Switching TO inWorld is also refused unless `fix` is a position for THIS
+ * stop's panorama: `headingDeg` is a required number with no neutral "unset",
+ * so the only honest alternative to a derived heading is no switch at all.
+ * The stop's own location is never a substitute: the panorama stands where
+ * the camera car drove, tens of metres from the building, and that swings a
+ * bearing by up to 178 degrees.
  */
 export function setOverlayMode(
-  tour: Tour, overlayId: string, mode: DisplayMode, panorama: LngLatLike | null,
+  tour: Tour, overlayId: string, mode: DisplayMode, fix: PanoramaFix | null,
 ): Tour {
-  return mapOverlay(tour, overlayId, (o) => {
-    if (!legalModesFor(o.kind).includes(mode) || o.display.mode === mode) return o;
-    if (mode === 'marker') {
-      return { ...o, display: { mode, icon: o.kind === 'image' ? 'photo' : o.kind === 'audio' ? 'audio' : 'note' } };
-    }
-    if (mode === 'ambient') return { ...o, display: { mode, autoplay: false } };
-    const headingDeg = panorama ? deriveHeading(o.anchor, panorama) : 0;
-    return { ...o, display: { mode, opacity: 0.8, headingDeg, widthM: 4, heightM: 3 } };
+  const found = findOverlay(tour, overlayId);
+  if (!found) return tour;
+  const { stop, overlay } = found;
+  if (!legalModesFor(overlay.kind).includes(mode) || overlay.display.mode === mode) return tour;
+  if (mode === 'marker') {
+    const icon = overlay.kind === 'image' ? 'photo' : overlay.kind === 'audio' ? 'audio' : 'note';
+    return mapOverlay(tour, overlayId, (o) => ({ ...o, display: { mode, icon } }));
+  }
+  if (mode === 'ambient') {
+    return mapOverlay(tour, overlayId, (o) => ({ ...o, display: { mode, autoplay: false } }));
+  }
+  const usable = panoramaFixForStop(stop, fix);
+  if (!usable) return tour;
+  const headingDeg = deriveHeading(overlay.anchor, usable);
+  return mapOverlay(tour, overlayId, (o) => ({
+    ...o, display: { mode, opacity: 0.8, headingDeg, widthM: 4, heightM: 3 },
+  }));
+}
+
+/**
+ * Re-derive an inWorld overlay's heading from the real position of ITS
+ * stop's panorama. Same reference back when the fix is missing or belongs to
+ * another panorama: never guess, never fall back to stop.location.
+ */
+export function deriveOverlayHeading(
+  tour: Tour, overlayId: string, fix: PanoramaFix | null,
+): Tour {
+  const found = findOverlay(tour, overlayId);
+  if (!found) return tour;
+  const usable = panoramaFixForStop(found.stop, fix);
+  if (!usable) return tour;
+  return setInWorldField(tour, overlayId, {
+    headingDeg: deriveHeading(found.overlay.anchor, usable),
   });
 }
 
 /**
- * Re-derive an inWorld overlay's heading from the real panorama position.
- * Returns the tour untouched when the position is unknown: never guess.
+ * Kinds an author may switch this overlay to. Image and audio need uploaded
+ * media (backend rejects them without a mediaId), and media upload is not
+ * built yet, so they are offered only when media is already attached. The
+ * overlay's current kind always stays listed so the selector can show it.
  */
-export function deriveOverlayHeading(
-  tour: Tour, overlayId: string, panorama: LngLatLike | null,
-): Tour {
-  if (!panorama) return tour;
-  const o = tour.stops.flatMap((s) => s.overlays).find((x) => x.id === overlayId);
-  if (!o) return tour;
-  return setInWorldField(tour, overlayId, { headingDeg: deriveHeading(o.anchor, panorama) });
+export function legalKindsFor(overlay: Overlay): OverlayKind[] {
+  const kinds: OverlayKind[] = ['text'];
+  if (overlay.mediaId) kinds.push('image', 'audio');
+  if (!kinds.includes(overlay.kind)) kinds.push(overlay.kind);
+  return kinds;
 }
 
 /** The credit's human-facing text: creator for original, source for sourced. */

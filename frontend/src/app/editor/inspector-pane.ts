@@ -2,7 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { EditorStore } from './editor-store';
 import {
-  creditText, deriveOverlayHeading, legalModesFor, setCreditText, setInWorldField,
+  creditText, deriveOverlayHeading, legalKindsFor, legalModesFor, panoramaFixForStop, setCreditText, setInWorldField,
   setOverlayAnchor, setOverlayKind, setOverlayMode, setStopTitle, updateOverlay,
   type DisplayMode,
 } from './document-ops';
@@ -25,10 +25,16 @@ type Num = number | null;
 })
 export class InspectorPane {
   protected readonly store = inject(EditorStore);
-  protected readonly kinds: readonly OverlayKind[] = ['text', 'image', 'audio'];
   private readonly manualHeading = signal<ReadonlySet<string>>(new Set());
 
   protected readonly overlay = this.store.selectedOverlay;
+  protected readonly kinds = computed<OverlayKind[]>(() => {
+    const o = this.overlay();
+    return o ? legalKindsFor(o) : [];
+  });
+  /** The reported position, only if it belongs to the selected overlay's stop's panorama. */
+  protected readonly fix = computed(() =>
+    panoramaFixForStop(this.store.currentStop(), this.store.panoramaPosition()));
   protected readonly stop = this.store.selectedStop;
   protected readonly modes = computed<readonly DisplayMode[]>(() => {
     const o = this.overlay();
@@ -55,13 +61,13 @@ export class InspectorPane {
 
   protected setAnchor(field: 'lng' | 'lat' | 'altitudeM', v: Num): void {
     const o = this.overlay();
-    if (!o || !Number.isFinite(v)) return;
+    if (!o || v === null) return;
     this.store.apply((t) => setOverlayAnchor(t, o.id, { [field]: v as number }));
   }
 
   protected setInWorld(field: 'headingDeg' | 'widthM' | 'heightM' | 'opacity', v: Num): void {
     const o = this.overlay();
-    if (!o || v === null || !Number.isFinite(v)) return;
+    if (!o || v === null) return;
     this.store.apply((t) => setInWorldField(t, o.id, { [field]: v }));
     if (field === 'headingDeg') this.mark(o.id, true);
   }
@@ -89,14 +95,14 @@ export class InspectorPane {
   protected setMode(mode: string): void {
     const o = this.overlay();
     if (!o) return;
-    this.store.apply((t) => setOverlayMode(t, o.id, mode as DisplayMode, this.store.panoramaPosition()));
+    this.store.apply((t) => setOverlayMode(t, o.id, mode as DisplayMode, this.fix()));
     this.mark(o.id, false);
   }
 
   protected derive(): void {
     const o = this.overlay();
-    if (!o || !this.store.panoramaPosition()) return;
-    this.store.apply((t) => deriveOverlayHeading(t, o.id, this.store.panoramaPosition()));
+    if (!o || !this.fix()) return;
+    this.store.apply((t) => deriveOverlayHeading(t, o.id, this.fix()));
     this.mark(o.id, false);
   }
 }

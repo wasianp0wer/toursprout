@@ -16,12 +16,15 @@ export function overlay(id: string, over: Partial<Overlay> = {}): Overlay {
   };
 }
 
-export function stop(id: string, order: number, overlays: Overlay[] = []): Stop {
+export function stop(
+  id: string, order: number, overlays: Overlay[] = [], over: Partial<Stop> = {},
+): Stop {
   return {
     id, order, title: `Stop ${order}`, summary: 'summary',
     location: { lng: -77.3, lat: 38.84 }, osmRef: null,
     panorama: { provider: 'mapillary', imageId: `img-${order}`, bearing: 90, cachedPath: null },
     overlays,
+    ...over,
   };
 }
 

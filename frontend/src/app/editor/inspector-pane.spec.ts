@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { InspectorPane } from './inspector-pane';
 import { EditorStore } from './editor-store';
 import { overlay, stop, tour } from './test-builders';
+import { deriveHeading } from './document-ops';
 import type { Overlay } from '../core/tour.models';
 
 describe('InspectorPane', () => {
@@ -17,15 +18,23 @@ describe('InspectorPane', () => {
     const i = input(sel); i.value = value; i.dispatchEvent(new Event('input')); await settle();
   };
   const ov = (): Overlay => store.selectedOverlay()!;
+  const ANCHOR = { type: 'geo' as const, lng: -77.3, lat: 38.841, altitudeM: 2 };
+  const heading = () => (ov().display as { headingDeg: number }).headingDeg;
   const inWorld = (): Overlay => overlay('o1', {
-    kind: 'image',
-    anchor: { type: 'geo', lng: -77.3, lat: 38.841, altitudeM: 2 },
+    kind: 'image', mediaId: 'p.jpg',
+    anchor: ANCHOR,
     display: { mode: 'inWorld', opacity: 0.8, headingDeg: 10, widthM: 4, heightM: 3 },
   });
 
-  const PANO = { lng: -77.3, lat: 38.84 };
-  const start = async (o: Overlay, pano: { lng: number; lat: number } | null = PANO) => {
-    store.load(tour([stop('s1', 1, [o])]));
+  // DECOY: stop.location is far from PANO on purpose (the building versus the
+  // camera). A derivation that reads stop.location gives a different heading.
+  const STOP_LOC = { lng: -77.5, lat: 38.7 };
+  const PANO = { imageId: 'img-1', lng: -77.31, lat: 38.85 };
+  const start = async (
+    o: Overlay, pano: { imageId: string; lng: number; lat: number } | null = PANO,
+    loc = STOP_LOC,
+  ) => {
+    store.load(tour([stop('s1', 1, [o], { location: loc })]));
     if (pano) store.setPanoramaPosition(pano);
     store.select(o.id);
     fixture = TestBed.createComponent(InspectorPane);
@@ -101,12 +110,12 @@ describe('InspectorPane', () => {
   });
 
   it('switching mode to inWorld reveals the in-world fields with a derived heading', async () => {
-    await start(overlay('o1', { kind: 'image', anchor: { type: 'geo', lng: -77.3, lat: 38.841, altitudeM: 2 }, display: { mode: 'marker', icon: 'photo' } }));
+    await start(overlay('o1', { kind: 'image', mediaId: 'p.jpg', anchor: ANCHOR, display: { mode: 'marker', icon: 'photo' } }));
     const mode = q('[data-field="mode"]') as HTMLSelectElement;
     mode.value = 'inWorld'; mode.dispatchEvent(new Event('change')); await settle();
     expect(ov().display.mode).toBe('inWorld');
     expect(input('[data-field="headingDeg"]')).toBeTruthy();
-    expect((ov().display as { headingDeg: number }).headingDeg).toBeCloseTo(180, 3);
+    expect(heading()).toBeCloseTo(deriveHeading(ANCHOR, PANO), 6);
     expect(q('[data-heading-override]')).toBeNull();
   });
 
@@ -121,10 +130,58 @@ describe('InspectorPane', () => {
     expect(q('[data-derive-unavailable]')).toBeNull();
   });
 
-  it('derive heading replaces the value, using the supplied panorama position', async () => {
+  it('derive heading replaces the value, using the supplied panorama position, not the stop', async () => {
     await start(inWorld());
     (q('[data-derive-heading]') as HTMLElement).click(); await settle();
-    expect((ov().display as { headingDeg: number }).headingDeg).toBeCloseTo(180, 3);
+    expect(heading()).not.toBeCloseTo(deriveHeading(ANCHOR, STOP_LOC), 0);
+    expect(heading()).toBeCloseTo(deriveHeading(ANCHOR, PANO), 6);
+  });
+
+  it('courthouse numbers: derive gives about 105 through the DOM', async () => {
+    const court = overlay('o1', {
+      kind: 'image', mediaId: 'c.jpg',
+      anchor: { type: 'geo', lng: -77.30732, lat: 38.84562, altitudeM: 2 },
+      display: { mode: 'inWorld', opacity: 0.8, headingDeg: 0, widthM: 4, heightM: 3 },
+    });
+    // DECOY: stop.location is the building, 38.7 m from the camera. Deriving
+    // from it gives about 283 (backwards); the panorama position gives about 105.
+    await start(court, { imageId: 'img-1', lng: -77.306888, lat: 38.845534 },
+      { lng: -77.30732, lat: 38.84562 });
+    (q('[data-derive-heading]') as HTMLElement).click(); await settle();
+    expect(heading()).toBeGreaterThan(100);
+    expect(heading()).toBeLessThan(110);
+  });
+
+  it('a position for a different panorama disables derive and the inWorld switch', async () => {
+    await start(inWorld(), { ...PANO, imageId: 'previous-pano' });
+    expect((q('[data-derive-heading]') as HTMLButtonElement).disabled).toBe(true);
+    (q('[data-derive-heading]') as HTMLElement).click(); await settle();
+    expect(heading()).toBe(10);
+    store.setPanoramaPosition(PANO); await settle();
+    expect((q('[data-derive-heading]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('refuses the inWorld switch while the position is unknown, with the option disabled and explained', async () => {
+    await start(overlay('o1', { kind: 'image', mediaId: 'p.jpg', display: { mode: 'marker', icon: 'photo' } }), null);
+    const opt = q('[data-field="mode"] option[value="inWorld"]') as HTMLOptionElement;
+    expect(opt.disabled).toBe(true);
+    expect(q('[data-derive-unavailable]')).toBeTruthy();
+    const mode = q('[data-field="mode"]') as HTMLSelectElement;
+    mode.value = 'inWorld'; mode.dispatchEvent(new Event('change')); await settle();
+    expect(ov().display.mode).toBe('marker');
+    store.setPanoramaPosition(PANO); await settle();
+    expect((q('[data-field="mode"] option[value="inWorld"]') as HTMLOptionElement).disabled).toBe(false);
+  });
+
+  it('offers image and audio kinds only when media is attached', async () => {
+    const kinds = () => Array.from(el.querySelectorAll('[data-field="kind"] option')).map((o) => (o as HTMLOptionElement).value);
+    await start(overlay('o1'));
+    expect(kinds()).toEqual(['text']);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [InspectorPane] });
+    store = TestBed.inject(EditorStore);
+    await start(overlay('o1', { mediaId: 'm.jpg' }));
+    expect(kinds()).toEqual(['text', 'image', 'audio']);
   });
 
   it('typing a heading is marked as an override, with a way back, and never enters the document', async () => {
@@ -135,7 +192,7 @@ describe('InspectorPane', () => {
     expect(JSON.stringify(store.draft())).not.toMatch(/override/i);
     (q('[data-derive-heading]') as HTMLElement).click(); await settle();
     expect(q('[data-heading-override]')).toBeNull();
-    expect((ov().display as { headingDeg: number }).headingDeg).toBeCloseTo(180, 3);
+    expect(heading()).toBeCloseTo(deriveHeading(ANCHOR, PANO), 6);
     expect(JSON.stringify(store.draft())).not.toMatch(/override/i);
   });
 
