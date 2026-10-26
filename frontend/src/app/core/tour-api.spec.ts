@@ -3,7 +3,7 @@ import { of } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 import { HttpClient, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { TourApi } from './tour-api';
+import { TourApi, audioType } from './tour-api';
 
 describe('TourApi', () => {
   let api: TourApi;
@@ -33,6 +33,11 @@ describe('TourApi', () => {
 
   it('builds media urls that hit the range-capable endpoint', () => {
     expect(api.mediaUrl('narration-x.m4a')).toBe('tour-data/media/narration-x.m4a');
+  });
+
+  it('names the MIME type for recorded WebM and Ogg audio', () => {
+    expect(audioType('rec-abc.webm')).toBe('audio/webm');
+    expect(audioType('rec-abc.ogg')).toBe('audio/ogg');
   });
 
   it('reads everything from tour-data/ and never touches /api', async () => {

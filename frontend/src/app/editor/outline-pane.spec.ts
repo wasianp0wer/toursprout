@@ -1,9 +1,10 @@
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { OutlinePane } from './outline-pane';
 import { EditorStore } from './editor-store';
 import { SessionApi } from '../core/session-api';
 import { overlay, stop, tour } from './test-builders';
+import { installRecording, uninstallRecording } from './recording-fakes';
 
 describe('OutlinePane', () => {
   let store: EditorStore;
@@ -270,6 +271,103 @@ describe('OutlinePane', () => {
         expect(q('[data-defaults-form]')).toBeNull();
         expect(open).toHaveBeenCalledTimes(2);
       });
+    });
+  });
+  describe('record audio', () => {
+    let upload: ReturnType<typeof vi.fn>;
+    const settle = async () => { await new Promise((r) => setTimeout(r, 5)); fixture.detectChanges(); };
+
+    beforeEach(() => {
+      upload = vi.fn();
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        imports: [OutlinePane], providers: [{ provide: SessionApi, useValue: { uploadMedia: upload } }],
+      });
+      store = TestBed.inject(EditorStore);
+      store.load(tour([stop('a', 1)]));
+      fixture = TestBed.createComponent(OutlinePane);
+      el = fixture.nativeElement;
+      store.select('a');
+      fixture.detectChanges();
+    });
+    afterEach(() => uninstallRecording());
+
+    it('says plainly that this browser cannot record, and stays usable', async () => {
+      uninstallRecording();
+      click('[data-record]'); await settle();
+      expect(q('[data-outline-error]')?.textContent).toMatch(/cannot record/i);
+      expect((q('[data-record]') as HTMLButtonElement).disabled).toBe(false);
+      expect(store.draft()!.stops[0].overlays.length).toBe(0);
+    });
+
+    it('says why when the microphone is refused', async () => {
+      installRecording({ getUserMedia: () => Promise.reject(Object.assign(new Error('x'), { name: 'NotAllowedError' })) });
+      click('[data-record]'); await settle();
+      expect(q('[data-outline-error]')?.textContent).toMatch(/refused/i);
+      expect(q('[data-record-stop]')).toBeNull();
+      expect((q('[data-record]') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('records, uploads through the shared path, creates the overlay and releases the microphone', async () => {
+      const { tracks } = installRecording();
+      upload.mockResolvedValue('recording-abc123.webm');
+      click('[data-record]'); await settle();
+      expect(q('[data-record-stop]')).toBeTruthy();
+      expect(upload).not.toHaveBeenCalled();
+      click('[data-record-stop]'); await settle();
+      expect(upload).toHaveBeenCalledTimes(1);
+      expect((upload.mock.calls[0][0] as File).name).toBe('recording.webm');
+      expect(store.draft()!.stops[0].overlays[0]).toMatchObject({ kind: 'audio', mediaId: 'recording-abc123.webm' });
+      for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+      expect(q('[data-record-stop]')).toBeNull();
+    });
+
+    it('puts the Safari limitation in front of the author while recording, and keeps it after', async () => {
+      installRecording();
+      upload.mockResolvedValue('recording-abc123.webm');
+      click('[data-record]'); await settle();
+      expect(q('[data-record-format]')?.textContent).toMatch(/Safari cannot play/);
+      click('[data-record-stop]'); await settle();
+      expect(q('[data-record-format]')?.textContent).toMatch(/Safari cannot play/);
+    });
+
+    it('shows no Safari warning when the browser records MP4', async () => {
+      installRecording({ mimeType: 'audio/mp4' });
+      upload.mockResolvedValue('recording-abc123.m4a');
+      click('[data-record]'); await settle();
+      expect(q('[data-record-format]')).toBeNull();
+    });
+
+    it('cancel releases the microphone and uploads nothing', async () => {
+      const { tracks } = installRecording();
+      click('[data-record]'); await settle();
+      click('[data-record-cancel]'); await settle();
+      for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+      expect(upload).not.toHaveBeenCalled();
+      expect(q('[data-record-stop]')).toBeNull();
+    });
+
+    it('a refused upload shows the message and leaves the document alone', async () => {
+      const { tracks } = installRecording();
+      upload.mockRejectedValue(new Error('too big'));
+      click('[data-record]'); await settle();
+      click('[data-record-stop]'); await settle();
+      expect(q('[data-outline-error]')?.textContent).toContain('too big');
+      expect(store.dirty()).toBe(false);
+      for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+    });
+
+    it('asks for creator and licence first when the tour has none', async () => {
+      installRecording();
+      store.load({ ...tour([stop('a', 1)]), defaults: null }); store.select('a'); fixture.detectChanges();
+      click('[data-record]'); await settle();
+      expect(q('[data-defaults-form]')).toBeTruthy();
+      expect(q('[data-record-stop]')).toBeNull();
+    });
+
+    it('is disabled with no current stop', () => {
+      store.select(null); fixture.detectChanges();
+      expect((q('[data-record]') as HTMLButtonElement).disabled).toBe(true);
     });
   });
 });

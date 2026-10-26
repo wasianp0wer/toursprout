@@ -1,12 +1,13 @@
-import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
 import { EditorStore } from './editor-store';
 import {
   addMediaOverlay, addStop, addTextOverlay, deleteOverlay, deleteStop, defaultsAnswerValid, hasDefaults, mediaKindOf, moveStop,
 } from './document-ops';
 import { SessionApi } from '../core/session-api';
+import { ActiveRecording, RecordingError, formatWarning, startRecording } from './recorder';
 
 type MediaKind = 'image' | 'audio';
-type PromptKind = MediaKind | 'text';
+type PromptKind = MediaKind | 'text' | 'record';
 
 /** The tour as a list: stops in order, each with its overlays. Thin over EditorStore. */
 @Component({
@@ -14,7 +15,7 @@ type PromptKind = MediaKind | 'text';
   templateUrl: './outline-pane.html',
   styleUrl: './outline-pane.css',
 })
-export class OutlinePane {
+export class OutlinePane implements OnDestroy {
   protected readonly store = inject(EditorStore);
   private readonly api = inject(SessionApi);
 
@@ -26,6 +27,12 @@ export class OutlinePane {
   /** Why the last add-media attempt did nothing. Never written to the document. */
   private readonly mediaError = signal<string | null>(null);
   protected readonly error = computed(() => this.mediaError() ?? this.store.lastError());
+
+  /** 'starting' covers the browser's permission prompt. */
+  protected readonly recState = signal<'idle' | 'starting' | 'recording'>('idle');
+  /** Safari warning for the format this browser records; stays up after the clip is added. */
+  protected readonly recFormatNote = signal<string | null>(null);
+  private active: ActiveRecording | null = null;
 
   /** Set while the one-time creator/licence prompt is showing. */
   protected readonly promptKind = signal<PromptKind | null>(null);
@@ -106,13 +113,66 @@ export class OutlinePane {
     }
     this.store.setPendingDefaults({ creator, license });
     this.promptKind.set(null);
-    if (kind === 'text') {
+    if (kind === 'record') {
+      void this.beginRecording();
+    } else if (kind === 'text') {
       const stopId = this.targetStopId ?? this.store.currentStop()?.id;
       this.targetStopId = null;
       if (stopId) this.addText(stopId);
     } else {
       this.chooseFile(kind);
     }
+  }
+
+  protected record(): void {
+    const stop = this.store.currentStop();
+    const doc = this.store.draft();
+    if (!stop || !doc || this.busy() || this.recState() !== 'idle') return;
+    this.mediaError.set(null);
+    this.targetStopId = stop.id;
+    if (!hasDefaults(doc) && !this.store.pendingDefaults()) {
+      this.promptError.set(null);
+      this.promptKind.set('record');
+      return;
+    }
+    void this.beginRecording();
+  }
+
+  private async beginRecording(): Promise<void> {
+    this.recState.set('starting');
+    try {
+      this.active = await startRecording();
+    } catch (err) {
+      this.mediaError.set(err instanceof RecordingError ? err.message : 'Recording could not be started.');
+      this.recState.set('idle');
+      this.targetStopId = null;
+      return;
+    }
+    this.recFormatNote.set(formatWarning(this.active.mimeType));
+    this.recState.set('recording');
+  }
+
+  protected async stopRecording(): Promise<void> {
+    const active = this.active;
+    if (!active) return;
+    this.active = null;
+    this.recState.set('idle');
+    let file: File;
+    try {
+      file = await active.stop();
+    } catch (err) {
+      this.mediaError.set(err instanceof Error ? err.message : 'The recording failed.');
+      this.targetStopId = null;
+      return;
+    }
+    await this.addUploaded('audio', file);
+  }
+
+  protected cancelRecording(): void {
+    this.active?.cancel();
+    this.active = null;
+    this.targetStopId = null;
+    this.recState.set('idle');
   }
 
   protected cancelDefaults(): void {
@@ -135,6 +195,14 @@ export class OutlinePane {
     const stopId = this.targetStopId ?? this.store.currentStop()?.id ?? null;
     this.targetStopId = null;
     if (!file || !stopId) return;
+    await this.addUploaded(kind, file, stopId);
+  }
+
+  /** The one upload-then-create path, shared by file choice and recording. */
+  private async addUploaded(kind: MediaKind, file: File, knownStop?: string): Promise<void> {
+    const stopId = knownStop ?? this.targetStopId ?? this.store.currentStop()?.id ?? null;
+    this.targetStopId = null;
+    if (!stopId) return;
     this.busy.set(true);
     this.mediaError.set(null);
     let mediaId: string;
@@ -160,6 +228,11 @@ export class OutlinePane {
     }
     const added = after!.stops.find((s) => s.id === stopId)?.overlays.at(-1);
     if (added) this.store.select(added.id);
+  }
+
+  ngOnDestroy(): void {
+    this.active?.cancel();
+    this.active = null;
   }
 
   protected remove(): void {

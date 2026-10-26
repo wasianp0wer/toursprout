@@ -29,6 +29,8 @@ const AUDIO_TYPE_BY_EXTENSION: Record<string, string> = {
   m4a: 'audio/mp4',
   mp3: 'audio/mpeg',
   wav: 'audio/wav',
+  webm: 'audio/webm',
+  ogg: 'audio/ogg',
 };
 
 export function audioType(mediaId: string): string {
