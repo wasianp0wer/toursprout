@@ -525,7 +525,10 @@ def test_upload_media_oversize_is_400_and_leaves_no_temp_file(client, monkeypatc
     import tempfile
 
     import app.media_store as ms
+    # Only the route's own check reads this; store_media is made to accept
+    # the file so the 400 can only come from the route.
     monkeypatch.setattr(ms, "MAX_FILE_BYTES", 10)
+    monkeypatch.setattr("app.main.store_media", lambda *a, **k: "x.jpg")
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "spool"))
     (tmp_path / "spool").mkdir()
     client.post("/api/session/new", json={"title": "T"})
@@ -546,3 +549,19 @@ def test_upload_media_spool_failure_is_400_and_leaves_no_temp_file(client, monke
     r = client.post("/api/session/media", files={"file": ("a.jpg", JPEG)})
     assert r.status_code == 400
     assert list((tmp_path / "spool").iterdir()) == []
+
+
+def test_upload_media_declared_oversize_is_413_before_parsing(client, monkeypatch):
+    import app.media_store as ms
+    monkeypatch.setattr(ms, "MAX_FILE_BYTES", 10)
+    client.post("/api/session/new", json={"title": "T"})
+    r = client.post("/api/session/media", content=b"x" * (2 * 1024 * 1024),
+                    headers={"Content-Type": "multipart/form-data; boundary=b"})
+    assert r.status_code == 413
+
+
+def test_tour_data_is_served_with_nosniff(client):
+    client.post("/api/session/new", json={"title": "T"})
+    r = client.get("/tour-data/tour.json")
+    assert r.status_code == 200
+    assert r.headers["x-content-type-options"] == "nosniff"

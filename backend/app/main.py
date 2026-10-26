@@ -12,10 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from . import media_store
 from .bundle import BundleError, missing_media, write_bundle
 from .config import Settings
 from .config import settings as default_settings
-from .media_store import MAX_FILE_BYTES, MediaError, store_media
+from .media_store import MediaError, store_media
 from .publish import PublishError, build_site
 from .session import Session, SessionConflict
 
@@ -118,6 +119,24 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     def health() -> dict:
         return {"status": "ok"}
 
+    @app.middleware("http")
+    async def _limit_media_upload(request: Request, call_next):
+        """Refuse an obviously oversized media upload from its declared
+        Content-Length before the multipart parser spools it. Slack covers
+        the multipart framing. A client that omits or lies about the length
+        still hits the exact check in the route."""
+        if request.url.path == "/api/session/media":
+            try:
+                declared = int(request.headers.get("content-length", "0"))
+            except ValueError:
+                declared = 0
+            if declared > media_store.MAX_FILE_BYTES + 1024 * 1024:
+                return Response(
+                    content='{"detail":"that upload is too large"}',
+                    status_code=413, media_type="application/json",
+                )
+        return await call_next(request)
+
     @app.get("/api/session")
     def get_session() -> dict:
         return app.state.session.summary()
@@ -184,7 +203,12 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         return {**session.summary(), "warnings": warnings}
 
     @app.post("/api/session/media", dependencies=[Depends(_reject_cross_site)])
-    async def upload_media(file: UploadFile) -> dict:
+    def upload_media(file: UploadFile) -> dict:
+        # Plain `def`, so FastAPI runs this in the threadpool: a 64 MB copy,
+        # a hash and directory scans must not stall the event loop (map
+        # tiles, audio range requests). That is also what makes the lock in
+        # `store_media` load-bearing: threadpool handlers genuinely overlap,
+        # whereas `async` handlers happened to serialise each other.
         session = app.state.session
         if not session.is_open:
             raise HTTPException(
@@ -192,8 +216,12 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
                 detail="no tour is open; call POST /api/session/new first",
             )
         # Same discipline as import: spool to disk, guard the temp file from
-        # the moment it exists. The copy stops one byte past the per-file
-        # cap, so an oversized upload is never held in memory whole.
+        # the moment it exists. NOTE the per-file cap is checked AFTER the
+        # copy: Starlette's multipart parser has already spooled the whole
+        # upload before this handler runs, so a mid-copy cap would not help.
+        # The early protection is the Content-Length check in
+        # `_limit_media_upload` below; this check is the exact, authoritative
+        # one (Content-Length can be absent or chunked).
         fd, tmp_name = tempfile.mkstemp(suffix=".upload")
         staged = Path(tmp_name)
         try:
@@ -204,10 +232,13 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
                 raise HTTPException(
                     status_code=400, detail=f"could not save the upload: {exc}"
                 ) from exc
-            if staged.stat().st_size > MAX_FILE_BYTES:
+            if staged.stat().st_size > media_store.MAX_FILE_BYTES:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"that file is over the {MAX_FILE_BYTES} byte limit",
+                    detail=(
+                        "that file is over the "
+                        f"{media_store.MAX_FILE_BYTES} byte limit"
+                    ),
                 )
             try:
                 media_id = store_media(
@@ -281,8 +312,17 @@ def _mount_tour_data(app: FastAPI, cfg: Settings) -> None:
     exist until a tour is opened; requests 404 until it does.
     """
     cfg.work_dir.mkdir(parents=True, exist_ok=True)
+    # nosniff is defence in depth for a polyglot file that slipped past the
+    # upload sniffing. It is a belt for the editor only: a published static
+    # host sets its own headers, so it guarantees nothing for the site.
+    class _NoSniffStaticFiles(StaticFiles):
+        async def get_response(self, path: str, scope):
+            response = await super().get_response(path, scope)
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            return response
+
     app.mount("/tour-data",
-              StaticFiles(directory=cfg.work_dir, check_dir=False),
+              _NoSniffStaticFiles(directory=cfg.work_dir, check_dir=False),
               name="tour-data")
 
 

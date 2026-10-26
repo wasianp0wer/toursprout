@@ -215,3 +215,12 @@ def test_orphan_ids_is_empty_when_everything_is_referenced(tmp_path):
 def test_orphan_ids_without_a_media_dir_is_empty(tmp_path):
     tour = Tour.model_validate(_minimal_doc("m.jpg"))
     assert orphan_ids(tmp_path / "nowhere", tour) == []
+
+
+@pytest.mark.parametrize("head", [b"\xff\xfb\x90\x00", b"\xff\xf3\x90\x00", b"\xff\xf1\x50\x80"])
+def test_mp3_without_an_id3_tag_is_recognised(head):
+    assert sniff(head + b"\x00" * 16)[0] == "audio/mpeg"
+
+
+def test_a_jpeg_is_not_mistaken_for_an_mp3_frame_sync():
+    assert sniff(JPEG_BYTES)[0] == "image/jpeg"

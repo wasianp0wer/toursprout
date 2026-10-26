@@ -56,6 +56,8 @@ _HASH_CHARS = (10, 20, 64)
 
 # Uploads run in worker threads; the total-size check and the write must not
 # interleave or two uploads could each pass the check and together exceed it.
+# The upload route is a plain `def` and so runs in the threadpool, where
+# requests really do overlap: do not remove this as dead weight.
 _LOCK = threading.Lock()
 
 
@@ -80,9 +82,13 @@ def _sniff_type(data: bytes) -> str | None:
         if brand[:3] in (b"M4A", b"M4B", b"mp4", b"iso"):
             return "audio/mp4"
         return None
+    # (After the table, so JPEG's FF D8 FF wins.) MP3 with no ID3 tag starts
+    # at a frame sync: 0xFF then 0b111xxxxx.
     for prefix, kind in _MAGIC:
         if data.startswith(prefix):
             return kind
+    if len(data) >= 2 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0:
+        return "audio/mpeg"
     return None
 
 
