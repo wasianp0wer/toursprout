@@ -78,4 +78,84 @@ describe('SessionApi', () => {
     http.expectOne('/api/session/media').error(new ProgressEvent('error'));
     await expect(b).rejects.toThrow(/could not reach/i);
   });
+
+  it('closes the open tour with a DELETE', async () => {
+    const promise = api.close();
+    const req = http.expectOne('/api/session');
+    expect(req.request.method).toBe('DELETE');
+    req.flush({ open: false });
+    expect((await promise).open).toBe(false);
+  });
+
+  it('lists the examples, unwrapping the envelope', async () => {
+    const promise = api.listExamples();
+    const req = http.expectOne('/api/session/examples');
+    expect(req.request.method).toBe('GET');
+    req.flush({ examples: [{ id: 'fairfax-old-town', title: 'Old Town', description: 'd' }] });
+    expect(await promise).toEqual([{ id: 'fairfax-old-town', title: 'Old Town', description: 'd' }]);
+  });
+
+  it('opens an example by id and returns its warnings', async () => {
+    const promise = api.openExample('fairfax-old-town');
+    const req = http.expectOne('/api/session/examples/fairfax-old-town');
+    expect(req.request.method).toBe('POST');
+    req.flush({ open: true, title: 'Old Town', orphanCount: 6, warnings: ['w'] });
+    const res = await promise;
+    expect(res.orphanCount).toBe(6);
+    expect(res.warnings).toEqual(['w']);
+  });
+
+  it('surfaces the backend detail when opening an example conflicts', async () => {
+    const p = api.openExample('fairfax-old-town');
+    http.expectOne('/api/session/examples/fairfax-old-town')
+        .flush({ detail: 'a tour is already open' }, { status: 409, statusText: 'Conflict' });
+    await expect(p).rejects.toThrow('a tour is already open');
+  });
+
+  it('imports a zip as multipart under the field `file`', async () => {
+    const zip = new File(['z'], 'tour.zip', { type: 'application/zip' });
+    const promise = api.importBundle(zip);
+    const req = http.expectOne('/api/session/import');
+    expect(req.request.method).toBe('POST');
+    expect((req.request.body as FormData).get('file')).toBeInstanceOf(File);
+    req.flush({ open: true, title: 'Imported' });
+    expect((await promise).title).toBe('Imported');
+  });
+
+  it('sends each loose part under its relative path', async () => {
+    const promise = api.importFiles([
+      { path: 'tour.json', file: new File(['{}'], 'tour.json') },
+      { path: 'media/pano/p.jpg', file: new File([''], 'p.jpg') },
+    ]);
+    const req = http.expectOne('/api/session/import-files');
+    expect(req.request.method).toBe('POST');
+    const names = (req.request.body as FormData).getAll('files').map(f => (f as File).name);
+    expect(names).toEqual(['tour.json', 'media/pano/p.jpg']);
+    req.flush({ open: true, title: 'Loose' });
+    expect((await promise).title).toBe('Loose');
+  });
+
+  it('exports the bundle as a blob', async () => {
+    const promise = api.exportBundle();
+    const req = http.expectOne('/api/session/export');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.responseType).toBe('blob');
+    req.flush(new Blob(['zipbytes']));
+    expect((await promise).size).toBe(8);
+  });
+
+  it('turns a refused export, close and import into the backend message', async () => {
+    const a = api.exportBundle();
+    http.expectOne('/api/session/export').flush(
+      new Blob([JSON.stringify({ detail: 'media is missing: media/x.jpg' })], { type: 'application/json' }),
+      { status: 409, statusText: 'Conflict' });
+    await expect(a).rejects.toThrow(/missing/);
+    const b = api.close();
+    http.expectOne('/api/session').flush(
+      { detail: 'no tour is open' }, { status: 409, statusText: 'Conflict' });
+    await expect(b).rejects.toThrow('no tour is open');
+    const c = api.importFiles([]);
+    http.expectOne('/api/session/import-files').error(new ProgressEvent('error'));
+    await expect(c).rejects.toThrow(/could not reach/i);
+  });
 });
