@@ -360,12 +360,21 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         # These are an early-out, not the enforcement — `read_bundle` still
         # counts real bytes as it extracts, and still has the last word. See
         # `_part_size` for why a part's declared size is not simply summed.
-        if len(files) > MAX_ENTRIES:
+        #
+        # `>=`, not `>`: `stage_bundle_root` adds a `bundle.json` beside the
+        # `tour.json`, so N parts become an archive of N + 1 entries. At
+        # exactly `MAX_ENTRIES` a `>` test passed the drop through and
+        # `read_bundle` then refused it at 5001 — which is the expensive
+        # refusal this check exists to avoid, at the one count where it was
+        # still reachable.
+        if len(files) >= MAX_ENTRIES:
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"too many files in the drop: {len(files)}, "
-                    f"limit {MAX_ENTRIES}"
+                    f"limit {MAX_ENTRIES - 1} (the bundle's own "
+                    "bundle.json takes the last of the "
+                    f"{MAX_ENTRIES} entries an archive may hold)"
                 ),
             )
         total = sum(_part_size(f) for f in files)

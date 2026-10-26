@@ -22,10 +22,10 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 412 backend (pytest), 605 frontend (Vitest); lint and production
-build clean via `make check`. Eager bundle 2.15 MB raw / 371.80 kB transferred;
-the editor is a lazy chunk, 102.13 kB raw / 23.78 kB transferred, and the
-welcome screen is another, 11.84 kB raw / 3.92 kB transferred.
+**Tests:** 413 backend (pytest), 606 frontend (Vitest); lint and production
+build clean via `make check`. Eager bundle 2.15 MB raw / 372.02 kB transferred;
+the editor is a lazy chunk, 102.13 kB raw / 23.74 kB transferred, and the
+welcome screen is another, 11.85 kB raw / 3.91 kB transferred.
 
 Two warnings in that run predate this branch and are not yours to chase: the
 backend suite reports two deprecations from inside starlette and fastapi
@@ -654,7 +654,9 @@ not keep in another.
 - **That route also wrote a big drop to disk twice before refusing it**, on
   the event loop: staging copied every part into a temp tree, `write_bundle`
   deflated the lot, and only `read_bundle` then applied the 5000-entry /
-  512 MB caps. Both are now checked off the parts list first, and the route
+  512 MB caps. (The loose route's own count check is `>= MAX_ENTRIES`, one
+  lower than it looks: staging adds a `bundle.json`, so N parts are N + 1
+  archive entries.) Both are now checked off the parts list first, and the route
   is a plain `def` so the copy runs in the threadpool rather than stalling
   every other request this process serves. A folder of two thousand JPEGs is
   not an exotic drop for someone who moves photographs on USB sticks.
@@ -668,7 +670,9 @@ not keep in another.
 Smaller: `entry-page.spec.ts` now asserts the "no further `/api` call" the
 design named and the tests had not; the window-level stray-drag guard no
 longer takes `preventDefault` from a text field or claims the whole page for
-a drag carrying no files; and `editor-page.ts` records why the close dialog
-shuts before the DELETE rather than after it.
+a drag carrying no files — while still answering a *file* dropped on a text
+field, since an unanswered file drag is the navigation the guard exists to
+stop; and `editor-page.ts` records why the close dialog shuts before the
+DELETE rather than after it.
 
-Figures after: 412 backend, 605 frontend.
+Figures after: 413 backend, 606 frontend.

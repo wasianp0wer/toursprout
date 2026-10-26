@@ -55,9 +55,16 @@ function dirEntry(name: string, children: unknown[]): unknown {
   };
 }
 
-/** A DataTransfer offering `items` with entries (a real folder drag). */
+/** A DataTransfer offering `items` with entries (a real folder drag). Carries
+ * `types` for the same reason `fileTransfer` does: a folder drag advertises
+ * 'Files' too, and a fixture that did not would be silently skipped by the
+ * window-level guard if anyone ever dispatched one at it. */
 function entryTransfer(entries: unknown[]): unknown {
-  return { items: entries.map((e) => ({ webkitGetAsEntry: () => e })), files: [] };
+  return {
+    items: entries.map((e) => ({ webkitGetAsEntry: () => e })),
+    files: [],
+    types: ['Files'],
+  };
 }
 
 /** A DataTransfer with files only — a browser without entry support, and
@@ -483,6 +490,26 @@ describe('WelcomePage', () => {
       Object.defineProperty(event, 'dataTransfer', { value: textTransfer() });
       title.dispatchEvent(event);
       expect(event.defaultPrevented).toBe(false);
+    }
+  });
+
+  it('still blocks a FILE dropped on the new-tour title box', async () => {
+    // The exemption above must not cost the guarantee the guard exists for.
+    // A `.zip` released on the title box is still a navigation if nothing
+    // answers it — the app replaced by a download, on the one screen whose
+    // job is a first impression — and the exact default for a file dropped
+    // on a text input is browser-dependent. This branch has never run in a
+    // browser, so it is defended by construction and not by a default.
+    await mount([]);
+    const title = q('[data-new-title]')!;
+
+    for (const type of ['dragover', 'drop']) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', {
+        value: fileTransfer([new File(['z'], 'tour.zip')]),
+      });
+      title.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
     }
   });
 

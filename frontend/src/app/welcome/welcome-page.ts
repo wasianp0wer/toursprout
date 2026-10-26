@@ -120,7 +120,12 @@ export class WelcomePage {
    * - A text field is answering the drag itself, and correctly. Dropping
    *   selected text into a box is a thing every other text box on the
    *   machine does, and `[data-new-title]` is a box an author may well drop
-   *   a tour's name into.
+   *   a tour's name into. Only for a drag carrying no files, though: a
+   *   `.zip` released on the title box is still the navigation this guard
+   *   exists to stop, the exemption would leave both of its events
+   *   unanswered, and the default for a file dropped on a text input is
+   *   browser-dependent. The box is small and the odds are low, but this
+   *   has never run in a browser, so it is defended by construction.
    * - A `dragover` answered is the browser's signal that a drop is welcome
    *   here, and it draws the cursor to match. Answering it for a drag that
    *   carries no files made the whole page claim to be droppable — the
@@ -130,8 +135,9 @@ export class WelcomePage {
    */
   protected blockStrayDrag(event: DragEvent): void {
     const target = event.target as HTMLElement | null;
-    if (/^(input|textarea)$/i.test(target?.tagName ?? '')) return;
-    if (event.type === 'dragover' && !event.dataTransfer?.types?.includes('Files')) return;
+    const files = event.dataTransfer?.types?.includes('Files') ?? false;
+    if (!files && /^(input|textarea)$/i.test(target?.tagName ?? '')) return;
+    if (event.type === 'dragover' && !files) return;
     event.preventDefault();
   }
 

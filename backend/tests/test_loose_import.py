@@ -157,6 +157,34 @@ def test_refuses_too_many_parts_before_staging_anything(client, monkeypatch):
     assert staged == []
 
 
+def test_the_count_cap_leaves_room_for_the_bundle_json_staging_adds(
+    client, monkeypatch,
+):
+    """The boundary, which is one lower than the part count suggests.
+
+    `stage_bundle_root` writes a `bundle.json` beside the `tour.json` it was
+    given, so a drop of exactly `MAX_ENTRIES` parts becomes an archive of
+    `MAX_ENTRIES + 1` entries — which cleared a `>` early-out here and was
+    then refused by `read_bundle`, after the whole drop had been copied and
+    deflated. `>=` is what keeps "refused before a byte is written" exact at
+    the only count where it was not.
+
+    The detail is what distinguishes pass from fail: an archive refused the
+    old way is a 400 too, just a later and more expensive one.
+    """
+    staged: list[object] = []
+    monkeypatch.setattr(main, "MAX_ENTRIES", 2)
+    monkeypatch.setattr(main, "stage_loose_bundle",
+                        lambda *a, **k: staged.append(a))
+    res = client.post("/api/session/import-files", files=[
+        ("files", ("tour.json", tour_json(), "application/json")),
+        ("files", ("media/photo.jpg", JPEG, "image/jpeg")),
+    ])
+    assert res.status_code == 400
+    assert "too many" in res.json()["detail"]
+    assert staged == []
+
+
 def test_refuses_an_oversized_drop_before_staging_anything(client, monkeypatch):
     """The byte cap. The frontend's own `MAX_FILES` caps the count but not
     the size, and a folder of two thousand JPEGs is an ordinary thing for
