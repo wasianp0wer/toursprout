@@ -16,7 +16,7 @@ from app.main import create_app
 @pytest.fixture
 def client(tmp_path):
     # frontend_dist is pinned at a path that does not exist so these tests
-    # never depend on whether `make build` has been run. Task 3's
+    # never depend on whether `make build` has been run. The
     # publish-without-a-build test relies on this.
     cfg = Settings(content_dir=tmp_path, frontend_dist=tmp_path / "nodist",
                    mapillary_token="test-token")
@@ -281,8 +281,7 @@ def test_cors_allows_the_mutating_methods():
     """A configuration assertion, not a real preflight: TestClient does not
     enforce browser CORS preflight checks, so this can only confirm the
     middleware is configured with the mutating methods Task 2 added
-    (POST/PUT, alongside the pre-existing GET and the DELETE Task 4 will
-    need), not that an actual preflight request succeeds."""
+    (POST/PUT, alongside GET and DELETE), not that an actual preflight request succeeds."""
     for middleware in main_module.app.user_middleware:
         if middleware.cls.__name__ == "CORSMiddleware":
             allow_methods = set(middleware.kwargs["allow_methods"])

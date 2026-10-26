@@ -110,10 +110,10 @@ def test_rephoto_heading_is_derived_not_authored():
 
 
 def test_split_shape_rephoto_heading_is_also_derived_not_authored():
-    """Alignment mode (frontend/src/app/align/align-mode.ts) emits a split
-    {anchor, display} rephoto shape, not the flat v1-ish shape above.
-    in_world_overlay must accept that shape -- so pasting align mode's output
-    into stops.json actually works -- while still deriving the heading: a
+    """The editor's overlay model is a split {anchor, display} shape, not
+    the flat v1-ish shape above. in_world_overlay must accept that shape --
+    so pasting an overlay copied from an exported tour into stops.json
+    actually works -- while still deriving the heading: a
     pasted display.headingDeg, however wrong, must be ignored exactly like
     the flat shape's authored anchor.headingDeg already is."""
     spec = {

@@ -307,7 +307,7 @@ def _check_bundle_version(root: Path) -> None:
     migration below.
 
     A bundle with no `bundle.json` at all still imports: it predates this
-    file existing in exports at all (every export before this sub-project),
+    file existing in exports at all (every export made before the container format was versioned),
     and refusing it would be a regression, not a safety improvement.
     """
     bundle_json = root / "bundle.json"

@@ -489,6 +489,12 @@ def _get_capped(client: httpx.Client, url: str, deadline: float) -> tuple[int, s
     sits whole in memory before the media store's own cap sees it; a declared
     Content-Length over the cap is refused before a byte is read. The
     per-request timeout only bounds each read, so `deadline` bounds the whole."""
+    # Passed per request to override make_client's `follow_redirects=True`
+    # default, which every other tool relies on. If httpx followed redirects
+    # here it would do so inside the transport, where check_archive_url never
+    # sees the next hop, and an allowlisted loc.gov URL could redirect to any
+    # host. fetch_archive_image follows by hand so the allowlist re-runs on
+    # every hop; the check there is not redundant with the one on entry.
     with client.stream("GET", url, follow_redirects=False) as resp:
         if resp.status_code != 200:
             return resp.status_code, resp.headers.get("location"), b""

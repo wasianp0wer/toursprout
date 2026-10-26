@@ -9,9 +9,10 @@ import { ViewerPage } from './viewer/viewer-page';
  * sequential chunk fetch before `ViewerPage` can even start fetching
  * tour-data/ for real.
  *
- * 'edit' is the authoring tool this sub-project is building. It stays
+ * 'edit' is the authoring tool. It stays
  * lazy — there is no reason to make every published-site visitor download
- * editor code they can never use.
+ * editor code they can never use. Making both routes eager, or both lazy,
+ * looks tidier and is a regression for one audience or the other.
  *
  * '**' is insurance for the viewer. With `<base href="./">` a published site
  * opened as `https://host/tour/index.html` leaves the router the remainder

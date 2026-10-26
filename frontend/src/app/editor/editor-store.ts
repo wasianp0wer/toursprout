@@ -29,7 +29,7 @@ export class EditorStore {
   /**
    * Where the panorama being viewed actually stands (keyed by its imageId so
    * a lagging pane cannot supply the previous panorama's position), or null until something
-   * supplies it (the panorama pane, task 5, from mapillary-js). Heading
+   * supplies it (the panorama pane, from mapillary-js). Heading
    * derivation uses this and nothing else: stop.location is the building,
    * not the camera, and deriving from it can point a photo backwards.
    */
@@ -124,6 +124,11 @@ export class EditorStore {
    * Record that `doc` is now on disk — for Autosave to call once a PUT has
    * landed. Ignored unless `doc` is still the draft: a newer edit made during
    * the flight is genuinely unsaved. Leaves selection and undo untouched.
+   *
+   * The reference guard is load-bearing. Without it a slow PUT for version A
+   * resolving after the author has typed version B would record A as saved
+   * and flip `dirty` false while B exists only in memory, so the autosave
+   * watcher would never fire for it and a reload would lose the edit.
    */
   markSaved(doc: Tour): void {
     if (this._draft() === doc) this._savedDoc.set(doc);
@@ -146,8 +151,14 @@ export class EditorStore {
       this._lastError.set(err instanceof Error ? err.message : String(err));
       return;
     }
-    // A refused transform returns the same reference by contract; it is not
-    // an edit, so it must not push undo, dirty the draft or trigger a save.
+    // A refused transform returns the SAME tour reference by contract, and
+    // this identity check is the only way anyone learns it was refused: there
+    // is no result flag. It is not an edit, so it must not push undo, dirty
+    // the draft or trigger a save. Every op in document-ops.ts therefore has
+    // to return `tour` itself on refusal, never an equal copy: a "tidied" op
+    // that always spreads a new object would push a phantom undo step and
+    // fire an autosave for a change that did not happen, and nothing would
+    // fail loudly. `dirty` is the same identity test (draft !== savedDoc).
     if (next === current) return;
     const stack = [...this._undoStack(), current];
     this._undoStack.set(stack.length > UNDO_DEPTH ? stack.slice(stack.length - UNDO_DEPTH) : stack);

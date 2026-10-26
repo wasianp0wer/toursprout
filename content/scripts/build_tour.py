@@ -1,7 +1,7 @@
 """Assemble the tour document from editorial source, coverage and media manifest.
 
 Validates the result against app.models.Tour before writing, so a broken tour
-never reaches the database.
+never reaches the shipped tour document.
 
 This script REGENERATES content/tours/fairfax-old-town.json from
 content/source/stops.json (plus the media manifest). Hand-edits made
@@ -63,9 +63,10 @@ def in_world_overlay(spec: dict, media_id: str, credit: dict,
     """Build one draped-photograph overlay.
 
     Accepts a `rephotos[]` entry in either of two shapes, so that pasting
-    alignment mode's output straight into content/source/stops.json works:
+    a split-shape entry (as the editor's overlay model has it) into
+    content/source/stops.json works:
 
-    - the split v2-flavoured shape alignment mode emits -- a `display` key
+    - the split v2-flavoured shape -- a `display` key
       with `widthM`/`heightM` alongside a plain `{type, lng, lat, altitudeM}`
       `anchor` -- preferred whenever `display` is present;
     - the original flat shape, where `anchor` alone carries `altitude`,

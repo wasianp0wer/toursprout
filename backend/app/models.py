@@ -42,7 +42,10 @@ class GeoAnchor(Strict):
 
 
 # One member today, so this is a plain alias: pydantic's `discriminator`
-# requires an actual union and errors on a single type. It becomes
+# requires an actual union and errors on a single type. Do not "simplify" the
+# `Anchor` name away in favour of `GeoAnchor` at the use site: the field that
+# holds an anchor says `Anchor` so that adding the image-anchored variant is a
+# one-line change here, not an edit to every model that holds one. It becomes
 # `Annotated[GeoAnchor | ImageAnchor, Field(discriminator="type")]` when the
 # image-anchored variant (pixel coordinates within one panorama) lands. `type`
 # is already present and literal, so that change is additive.

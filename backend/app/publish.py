@@ -32,6 +32,9 @@ def build_site(session_path: Path, dist: Path, out_zip: Path) -> None:
 
     out_zip.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Dotfiles are skipped in both trees: in the session directory they
+        # are the half-written `.<name>.*.tmp` files of session.py's atomic
+        # replace, which must never ship; in dist they are build-tool litter.
         for path in sorted(dist.rglob("*")):
             if path.is_file() and not path.name.startswith("."):
                 zf.write(path, path.relative_to(dist).as_posix())
