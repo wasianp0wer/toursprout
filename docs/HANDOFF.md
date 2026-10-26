@@ -298,6 +298,24 @@ Every item below is still true as of 2026-10-26. None has been closed.
    fields that do not exist at the top level of a result; fixed. See
    `docs/decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md`.
 
+9. **Two document rules are enforced by their callers, not by the pure
+   layer.** `setInWorldField` normalises and writes `headingDeg` without
+   consulting `panoramaFixForStop`, and `updateOverlay` spreads a
+   `Partial<Overlay>` verbatim, so either would accept a heading ungated. The
+   gate lives in `setOverlayMode`, `deriveOverlayHeading` and
+   `setOverlayHeadingManual`, which do call it first. **No component reaches
+   the ungated path today** — every pane was checked, and they pass only
+   `widthM`, `heightM`, `opacity`, `title` and `body` — so this is a latent
+   hazard, not a live bug. `setOverlayKind` has the same shape: no
+   precondition check in the pure layer.
+
+   It matters because a derived heading was once wrong by 178.4°, and
+   refusing rather than guessing is the project's one inviolable rule. The
+   cheap fix is to narrow `setInWorldField`'s patch type so it cannot carry
+   `headingDeg`, and give the gated ops a private writer. Found while writing
+   `ARCHITECTURE.md`, which is also where the other six enforcement gaps that
+   pass found are listed.
+
 ## Conventions used
 
 - **TDD throughout**: failing test first, watch it fail, then implement. Every
@@ -355,3 +373,39 @@ The "Opening the existing six-stop tour" procedure under Running it was first
 written before the media allowlist existed. The allowlist (commit `54c39cd`)
 broke it; it was re-run against a live backend and corrected (commit
 `0978c57`). Its figures are observed, not estimated.
+
+### Sub-project 4: documentation
+
+`ARCHITECTURE.md`, `CHANGING-THINGS.md`, `UNVERIFIED.md`, and this file
+consolidated so the current state comes first and history after. Writing the
+architecture map turned up seven places where the code did not hold to what
+the architecture claimed; all seven are recorded in those documents rather
+than smoothed over, and the one that matters most is in Outstanding item 9.
+A comment pass added six why-comments and corrected ten stale ones, most of
+them sprint-relative phrases ("Task 3", "this sub-project") that meant
+nothing to a reader arriving later. Figures then: 320 backend, 528 frontend.
+
+### 2026-10-26: the viewer was run for the first time
+
+The author started the backend and the viewer reported *"Could not reach the
+tour service. Is the backend running on port 8000?"* while the backend was
+up and answering. The viewer never calls `/api`: it fetches
+`tour-data/config.json` and `tour-data/tour.json`, and both 404'd because the
+working directory was empty — no session had been created. The message named
+the one fix that could not work.
+
+Two defects, both fixed in commit `53f57ca`:
+
+- The bootstrap catch reported every failure as an unreachable backend. A 404
+  now says no tour is open and points here; a dead connection still names the
+  port.
+- `frontend/proxy.conf.json` forwarded only `/api`, so under `ng serve` the
+  viewer's two `tour-data/` fetches 404 whatever the backend is doing. It now
+  forwards `/tour-data` as well. This had been recorded as a known gap in
+  `ARCHITECTURE.md` before it was ever hit.
+
+Figures after: 320 backend, 529 frontend.
+
+**This is the first thing a real run found, and it was a message that sent
+the reader to the wrong place.** `UNVERIFIED.md` exists for exactly this; its
+entry 1 is still the right place to start.
