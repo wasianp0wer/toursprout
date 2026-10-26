@@ -26,12 +26,13 @@ non-obvious calls were made, see the records in `docs/decisions/`
 build clean via `make check`. Eager bundle 2.13 MB raw / 371.39 kB transferred;
 the editor is a lazy chunk, 102.69 kB raw / 23.88 kB transferred.
 
-**Nothing here has been seen in a browser.** No browser can launch in the
-development sandbox. The editor, its microphone recording and its acquisition
-tools have *never* been seen running. The only by-eye work in the project's
-history is the author's hand alignment of the courthouse photographs in
-`de48b0d`, which this environment cannot reproduce or check. Verification is
-the jsdom suite plus the backend tests, which prove the logic, not the pixels.
+**The editor has never been seen in a browser.** No browser can launch in the
+development sandbox, so the editor, its microphone recording and its
+acquisition tools have *never* been seen running. Their verification is the
+jsdom suite plus the backend tests, which prove the logic, not the pixels. The
+viewer predates the editor and was worked on with a browser in earlier
+sessions (the hand alignment in `de48b0d` was tuned by eye); this environment
+cannot reproduce or re-check any of that.
 
 **What exists:**
 
