@@ -97,7 +97,11 @@ def stage_bundle_root(
 
     Names are checked, not trusted. A loose-file caller's names come from the
     browser, and this writes them to the filesystem before `read_bundle`'s own
-    entry-name checks ever see them.
+    entry-name checks ever see them. That is the whole of the division of
+    labour: an unsafe name is refused HERE, while deciding what counts as
+    media in the first place — and telling the author which of their files
+    were skipped and why — belongs to the caller, which is the only one that
+    knows where the files came from and who is waiting to hear about them.
     """
     root = Path(root)
     (root / "media").mkdir(parents=True, exist_ok=True)

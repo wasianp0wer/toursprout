@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -218,6 +219,32 @@ def test_a_missing_media_dir_is_refused(session, cfg):
         open_example(session, cfg, SYNTHETIC_ID)
 
 
+@pytest.mark.parametrize("document", ["[]", '"a string"', "42", "null"])
+def test_a_document_that_is_not_an_object_is_refused(session, cfg, document):
+    """Valid JSON is not necessarily a document. An array or a scalar parses,
+    and then `stage_bundle_root`'s `document.get("id")` would raise
+    AttributeError — an exception this module does not promise and the route
+    does not map."""
+    (cfg.content_dir / "examples" / SYNTHETIC_ID / "tour.json").write_text(document)
+    with pytest.raises(ExampleError):
+        open_example(session, cfg, SYNTHETIC_ID)
+    assert not session.is_open
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read an unreadable file")
+def test_media_that_cannot_be_opened_is_refused(session, cfg):
+    """The open happens inside the generator `stage_bundle_root` pulls from, so
+    a bare OSError there would reach the route unmapped."""
+    photo = cfg.content_dir / "media" / "photo.jpg"
+    photo.chmod(0o000)
+    try:
+        with pytest.raises(ExampleError, match="photo.jpg"):
+            open_example(session, cfg, SYNTHETIC_ID)
+    finally:
+        photo.chmod(0o644)
+    assert not session.is_open
+
+
 def test_a_malformed_manifest_is_refused(session, cfg):
     manifest = cfg.content_dir / "examples" / SYNTHETIC_ID / "example.json"
     manifest.write_text("{ not json")
@@ -293,6 +320,14 @@ def test_post_example_409s_when_a_tour_is_already_open(client):
     res = client.post(f"/api/session/examples/{SYNTHETIC_ID}")
     assert res.status_code == 409
     assert client.get("/api/session").json()["title"] == "A tour"
+
+
+def test_post_a_malformed_example_400s(client, tmp_path):
+    (tmp_path / "examples" / SYNTHETIC_ID / "tour.json").write_text("[]")
+    res = client.post(f"/api/session/examples/{SYNTHETIC_ID}")
+    assert res.status_code == 400
+    assert SYNTHETIC_ID in res.json()["detail"]
+    assert client.get("/api/session").json() == {"open": False}
 
 
 def test_post_unknown_example_404s(client):

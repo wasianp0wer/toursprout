@@ -121,6 +121,13 @@ def open_example(session: Session, cfg: Settings, example_id: str) -> list[str]:
         raise ExampleError(
             f"{example_id}: its document is not valid JSON: {exc}"
         ) from exc
+    # Valid JSON is not necessarily a document. An array or a scalar parses
+    # fine and then reaches `stage_bundle_root`, where `document.get("id")`
+    # raises AttributeError — neither of the two exceptions this function
+    # promises, so the route would map nothing and answer 500 instead of
+    # saying which example is malformed.
+    if not isinstance(document, dict):
+        raise ExampleError(f"{example_id}: its document is not a JSON object")
 
     with tempfile.TemporaryDirectory() as tmp_name:
         tmp = Path(tmp_name)
@@ -199,9 +206,21 @@ def _media_streams(media_dir: Path) -> Iterator[tuple[str, IO[bytes]]]:
     Each file is opened for exactly as long as `stage_bundle_root` spends
     copying it — the `with` closes as the generator is resumed — so an example
     with a hundred media files does not need a hundred open descriptors.
+
+    A file that cannot be opened (unreadable, or deleted between the walk and
+    the open) is an `ExampleError` like every other way an example can be
+    malformed. The raise happens while `stage_bundle_root` is pulling from this
+    generator, so it propagates through it to `open_example`'s caller — which
+    is the point: a bare `OSError` out of here is one the route does not map,
+    and the author would get a 500 rather than the name of the file.
     """
     for path in sorted(media_dir.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in MEDIA_EXTENSIONS:
             continue
-        with path.open("rb") as fh:
-            yield path.relative_to(media_dir).as_posix(), fh
+        rel = path.relative_to(media_dir).as_posix()
+        try:
+            fh = path.open("rb")
+        except OSError as exc:
+            raise ExampleError(f"could not read media/{rel}: {exc}") from exc
+        with fh:
+            yield rel, fh
