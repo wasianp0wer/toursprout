@@ -50,6 +50,14 @@ describe('ViewerPage', () => {
     const text = el.querySelector('[data-error]')?.textContent ?? '';
     expect(text).toContain('No tour is open');
     expect(text).not.toContain('backend');
+    // And it must name a fix that still exists. The editor used to be able
+    // to create a tour; the welcome screen at '/' took that over and the
+    // editor's empty state was removed, so "open or import one in the
+    // editor" now sends the reader to a route that would bounce them back
+    // here. A message naming the one fix that cannot work is the defect
+    // this whole branch grew out of.
+    expect(text).not.toContain('in the editor');
+    expect(text).toContain('start screen');
   });
 
   it('shows the loading state before the tour arrives', () => {

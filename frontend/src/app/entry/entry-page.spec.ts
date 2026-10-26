@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
@@ -207,5 +207,37 @@ describe('entry-page.css', () => {
     expect(declarations).not.toMatch(/display:\s*none/);
     expect(declarations).toMatch(/display:\s*block/);
     expect(declarations).toMatch(/visibility:\s*hidden/);
+  });
+
+  /**
+   * The premise the rule above rests on, pinned rather than asserted in
+   * prose. "Nothing recovers a map measured at the wrong size" is what makes
+   * the CSS load-bearing instead of merely tidy, and it is currently claimed
+   * by three documents (`ARCHITECTURE.md`, `CHANGING-THINGS.md` and
+   * `UNVERIFIED.md` entry 20) and two source comments (`entry-page.css` and
+   * the one above).
+   *
+   * **This test is inverted on purpose, and a failure is not a bug.** Adding
+   * `invalidateSize` or a `ResizeObserver` would be an improvement — it would
+   * make the hidden-wrapper hazard survivable. What must not happen is that
+   * improvement landing while all five of those still tell the next reader
+   * there is no recovery, and `UNVERIFIED.md` entry 20 still sends them to
+   * check for a grey map. So: if this fails, update them and delete this
+   * test. Do not weaken it to keep it green.
+   *
+   * Only non-spec `.ts` is scanned: a call can live nowhere else, test code
+   * does not ship, and `entry-page.css` names `invalidateSize` in the comment
+   * that explains all of this.
+   */
+  it('still has nothing that recovers a map measured at the wrong size', () => {
+    const src = join(process.cwd(), 'src');
+    const files = readdirSync(src, { recursive: true, encoding: 'utf8' })
+      .filter((rel) => rel.endsWith('.ts') && !rel.endsWith('.spec.ts'));
+    expect(files.length).toBeGreaterThan(20);
+
+    const offenders = files.filter(
+      (rel) => /invalidateSize|ResizeObserver/.test(readFileSync(join(src, rel), 'utf8')),
+    );
+    expect(offenders).toEqual([]);
   });
 });

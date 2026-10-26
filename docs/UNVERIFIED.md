@@ -60,9 +60,13 @@ and what was entry 9 (a published site) is now entry 19.
   Town Fairfax* under "Open an example", and the five guide titles down the
   right, which do nothing by design. Click the example. Pass: you arrive at
   `/edit` with six stops in the outline, and the close dialog (entry 11)
-  reports 6 stops and 15 media files. Fail: if `/` shows the viewer's "no tour
-  is open" message, the probe decided there is no backend — the Network tab's
-  `/api/session` says why.
+  reports 6 stops and 15 media files. Fail: if `/` shows the viewer's *"No
+  tour is open. Go to the start screen at / to create one, import a bundle, or
+  open the example."*, the probe decided there is no backend and revealed the
+  viewer — the Network tab's `/api/session` says why. Note the circularity
+  while you are there: that message sends you to `/`, which is where you
+  already are. In that state the real fault is `/api/session` not answering,
+  which the viewer has no way to know.
 
 ## 2. The editor loads at all
 
@@ -249,8 +253,13 @@ and what was entry 9 (a published site) is now entry 19.
   later — a sequence with several browser-dependent steps and no test that can
   see a download happen.
 - **Why not here:** jsdom has no download. The spec stubs `createObjectURL`
-  and asserts the anchor was appended before the click and the URL revoked
-  after; whether the browser saves a 4.5 MB archive from it is the open part.
+  and pins three things: the anchor was in the document when it was clicked,
+  it is gone again afterwards, and the URL was **not** revoked in the same
+  tick (`expect(revoke).not.toHaveBeenCalled()`) — a big archive takes longer
+  than a tick, and revoking early cancels the save. Note what that leaves
+  open: **no test anywhere asserts the URL is ever revoked**, so the
+  `setTimeout` in `offerToSave` is unproven in both directions. Whether the
+  browser saves a 4.5 MB archive from any of it is the rest of the gap.
 - **Close it:** in the close dialog for the Fairfax tour, click *Download
   tour.zip*. Pass: a `tour.zip` of about 4.5 MB in your downloads (4,536,271
   bytes for that tour, exported live), the dialog reporting that size, and
@@ -288,8 +297,9 @@ and what was entry 9 (a published site) is now entry 19.
 - **Why not here:** no browser. `dropped-files.spec.ts` builds the entry
   objects by hand, so every shape it walks is one this project invented and
   assumes a browser produces.
-- **Close it:** with nothing open, build the folder a loose drop expects and
-  drag it onto the zone:
+- **Close it:** with nothing open (entry 13 left a tour open; close it with
+  entry 11 or `curl -X DELETE localhost:8000/api/session`), build the folder a
+  loose drop expects and drag it onto the zone:
 
   ```sh
   mkdir -p /tmp/fairfax
@@ -299,10 +309,19 @@ and what was entry 9 (a published site) is now entry 19.
 
   Pass: 6 stops and 15 media files in the editor, and
   `content/work/media/pano/` holding the six panoramas under their original
-  names. Do **not** drag `content/` itself: it holds a second `tour.json` (the
-  shipped example's) and a `content/work/media/`, so the same bundle paths
-  arrive twice and the screen refuses the drop — correctly, and it says which
-  file it saw twice.
+  names.
+
+  **Drag that folder, not `content/` itself — and the reason is a trap, not a
+  refusal.** Dragging `content/` is *accepted*: the frozen example's
+  `content/examples/fairfax-old-town/tour.json` is the only `tour.json` in
+  there once nothing is open (`content/work/` does not exist — closing removes
+  the whole directory, and "open" *is* `content/work/tour.json` existing), and
+  `content/media/` supplies the media, so the screen reports 6 stops and 15
+  media files. That is character for character the pass criteria above, from a
+  drop that tells you nothing about the folder you meant to test. The
+  duplicate-path refusal only arises with a `content/work/` present, which
+  cannot happen while the welcome screen is reachable at all. So check *which*
+  folder you dropped, not only what the editor says afterwards.
 
 ## 15. macOS AppleDouble `._*` sidecars in a real folder drag
 
@@ -322,8 +341,11 @@ components at all.*
   `dropped-files.ts` skips any dot-prefixed component for this reason.
 - **Why not here:** no browser, and no drag. Whether the browser's directory
   walk even reports them is the unproven half.
-- **Close it:** `ls -a` the folder from entry 14 to see whether any exist; if
-  none do, make one with real bytes so the backend's refusal is actually
+- **Close it:** entry 14 left a tour open, so close it first (entry 11, or
+  `curl -X DELETE localhost:8000/api/session`) — every drop needs the welcome
+  screen, which is only reachable with nothing open. Then `ls -a` the folder
+  from entry 14 to see whether any sidecars exist; if none do, make one with
+  real bytes so the backend's refusal is actually
   reachable (`cp /tmp/fairfax/media/court-1863.jpg
   /tmp/fairfax/media/._court-1863.jpg`), or copy the folder to a FAT-formatted
   stick and back. Drag it. Pass: the import succeeds with 15 media files, and
@@ -368,9 +390,11 @@ components at all.*
   two buttons.
 - **Why not here:** no browser, so no file picker. The spec feeds `File`
   objects with `webkitRelativePath` set by hand.
-- **Close it:** with nothing open, click *choose a folder*, pick the folder
-  from entry 14, and confirm the same result: 6 stops, 15 media files,
-  `media/pano/` intact.
+- **Close it:** close whatever entry 15 left open (entry 11, or
+  `curl -X DELETE localhost:8000/api/session`), then click *choose a folder*,
+  pick the folder from entry 14, and confirm the same result: 6 stops, 15
+  media files, `media/pano/` intact. The flat *choose files* half below needs
+  nothing open again, so close once more between the two.
 - **The landmine here, and it does not announce itself.** A flat selection
   does **not** get refused. Panoramas are referenced by each stop's
   `cachedPath`, and `bundle.missing_media` only checks overlay `mediaId`s, so
@@ -392,9 +416,10 @@ components at all.*
   tries again, rather than the whole page quietly becoming a drop target.
 - **Why not here:** jsdom has no default drop behaviour to prevent, so the
   spec can only assert that `preventDefault` was called.
-- **Close it:** drop a `.zip` on the guides column, and again on the page
-  margin. Pass: nothing happens and the welcome screen is still there. Fail:
-  the browser navigates to the file.
+- **Close it:** back to the welcome screen once more (entry 17's flat
+  selection will have opened a tour), then drop a `.zip` on the guides column,
+  and again on the page margin. Pass: nothing happens and the welcome screen
+  is still there. Fail: the browser navigates to the file.
 
 ## 19. A published site opens in a browser
 
@@ -432,8 +457,9 @@ runs in the direction that is easy to get backwards.*
   wrapper is still hidden and `MapPane` builds its Leaflet map against
   whatever box the wrapper has. With `display: none` that box is 0×0, and
   **nothing in `frontend/src` ever calls `invalidateSize` or watches for a
-  resize** (verified by search), so the map would stay grey for good after the
-  reveal. Hence `.viewer-slot[hidden] { display: block; visibility: hidden;
+  resize** — pinned by `entry-page.spec.ts`'s *"still has nothing that
+  recovers a map measured at the wrong size"*, not merely searched for once —
+  so the map would stay grey for good after the reveal. Hence `.viewer-slot[hidden] { display: block; visibility: hidden;
   pointer-events: none }` — the `display: block` is load-bearing, overriding
   the UA stylesheet's `[hidden] { display: none }` by hand, and the
   `visibility: hidden` is what keeps the box and its size.
@@ -445,8 +471,11 @@ runs in the direction that is easy to get backwards.*
   refusing (entry 21 sets one up), wait out the deadline and then look at the
   map and the panorama. Pass: both are correctly sized and interactive. Fail:
   a grey or clipped minimap, or a panorama at the wrong aspect, means the
-  viewer measured a box it did not end up with — look for a missing
-  `invalidateSize`, and add one rather than weakening the CSS.
+  viewer measured a box it did not end up with — the fix is to add an
+  `invalidateSize` on reveal rather than to weaken the CSS. Adding one fails
+  the guard test named above **on purpose**: delete it and correct the three
+  documents that currently say there is no recovery (`ARCHITECTURE.md`,
+  `CHANGING-THINGS.md` and this entry).
 
 ## 21. The 2 s probe deadline against a host that black-holes `/api/session`
 

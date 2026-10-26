@@ -57,10 +57,18 @@ export class ViewerPage {
  * it is up, but the working directory holds no tour, so `tour-data/` has
  * nothing to serve. Pointing that reader at a server they have already
  * started costs them the whole search.
+ *
+ * The remedy it names has to be one that still exists, and that has changed
+ * once already: this message used to say "open or import one in the editor",
+ * which stopped being true when the welcome screen took over creating a tour
+ * and the editor's empty state was removed — `/edit` with nothing open now
+ * bounces to `/`. The start screen is the remedy, so the message says so.
+ * `viewer-page.spec.ts` pins that, because naming a fix that cannot work is
+ * the exact defect this message was written to correct.
  */
 function bootstrapFailureMessage(err: unknown): string {
   if (err instanceof HttpErrorResponse && err.status === 404) {
-    return 'No tour is open. Open or import one in the editor, or follow "Opening the existing six-stop tour" in docs/HANDOFF.md.';
+    return 'No tour is open. Go to the start screen at / to create one, import a bundle, or open the example.';
   }
   return 'Could not reach the tour service. Is the backend running on port 8000?';
 }

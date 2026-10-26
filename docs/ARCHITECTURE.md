@@ -110,7 +110,11 @@ Three things about that are deliberate and are easy to undo by accident.
   would stay grey after the reveal. `entry-page.spec.ts` reads the CSS as text
   and fails if `display: none` appears in that rule or if `display: block` and
   `visibility: hidden` do not, because jsdom computes no layout and cannot
-  catch this any other way.
+  catch this any other way. The *premise* is pinned there too — *"still has
+  nothing that recovers a map measured at the wrong size"* scans every
+  non-spec `.ts` under `frontend/src` — and that one is deliberately
+  inverted: adding a recovery would be an improvement, and the failing test
+  exists so it cannot land while three documents still say there is none.
 
 `view` exists because `/` now goes to the editor whenever a tour is open, so
 without it the viewer is unreachable with a backend up; the editor's *Preview*

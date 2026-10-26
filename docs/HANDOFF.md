@@ -22,10 +22,10 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 407 backend (pytest), 598 frontend (Vitest); lint and production
-build clean via `make check`. Eager bundle 2.15 MB raw / 372.02 kB transferred;
+**Tests:** 407 backend (pytest), 599 frontend (Vitest); lint and production
+build clean via `make check`. Eager bundle 2.15 MB raw / 372.09 kB transferred;
 the editor is a lazy chunk, 102.13 kB raw / 23.77 kB transferred, and the
-welcome screen is another, 11.62 kB raw / 3.81 kB transferred.
+welcome screen is another, 11.62 kB raw / 3.83 kB transferred.
 
 Two warnings in that run predate this branch and are not yours to chase: the
 backend suite reports two deprecations from inside starlette and fastapi
@@ -112,7 +112,8 @@ The checklist for the first browser session, in the order to do it, is
   ```
   GET    /api/session                      {"open": false} or a summary
   DELETE /api/session                      discard the working copy; 409 if nothing is open
-  POST   /api/session/new                  {"title": …}; 409 unless {"force": true}
+  POST   /api/session/new                  {"title": …}; 409 if a tour is already
+                                           open, unless {"force": true}
   GET    /api/session/examples             {"examples": [{id, title, description}]}
   POST   /api/session/examples/{id}        409 if open, 404 unknown, 400 malformed
   POST   /api/session/import               form field `file`, one .zip
@@ -580,7 +581,7 @@ is one front door and not two.
 Two things worth keeping in mind afterwards:
 
 - **The eager bundle barely moved** — 2.13 MB raw / 371.39 kB transferred
-  before, 2.15 MB / 372.02 kB after — because the welcome screen is its own
+  before, 2.15 MB / 372.09 kB after — because the welcome screen is its own
   11.62 kB chunk and a published visitor never fetches it. That was the
   constraint the whole routing design was built around.
 - **A published visitor now pays a probe.** It is issued concurrently with
@@ -590,10 +591,22 @@ Two things worth keeping in mind afterwards:
   written down in `UNVERIFIED.md` entries 20 to 22 rather than left to be
   rediscovered.
 
-Figures after: 407 backend, 598 frontend. The last two of those arrived with
-this documentation pass rather than the feature: writing down "`make content`
-leaves `content/examples/` alone" turned out to be a claim nothing enforced,
-so `test_content.py` now enforces it.
+One thing this branch broke and the documentation pass caught: **the viewer's
+own 404 message had gone stale in exactly the way the entry above describes.**
+It said *"Open or import one in the editor, or follow 'Opening the existing
+six-stop tour' in docs/HANDOFF.md"* — naming a capability this branch deleted,
+since `/edit` with nothing open now bounces to `/`. It now says *"No tour is
+open. Go to the start screen at / to create one, import a bundle, or open the
+example."*, and `viewer-page.spec.ts` asserts it does not say "in the editor".
+Shipping a stale pointer in the message a reader sees when nothing is open
+would have been this branch's own defect, committed at the end of it.
+
+Figures after: 407 backend, 599 frontend. Three of those tests arrived with
+this documentation pass rather than the feature: writing a guarantee down is
+what exposed that nothing enforced it, twice — "`make content` leaves
+`content/examples/` alone" (now two tests in `test_content.py`) and "nothing
+recovers a map measured at the wrong size" (now a guard in
+`entry-page.spec.ts`).
 
 The front door has never been seen in a browser either, so it arrives with
 thirteen new `UNVERIFIED.md` entries, and the welcome screen is now that

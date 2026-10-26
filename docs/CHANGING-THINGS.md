@@ -16,7 +16,13 @@ backend test reads the other side as **text** and fails when it drifts:
 - `test_the_content_pipeline_never_names_the_examples_directory` and
   `test_the_content_make_target_never_names_the_examples_directory` in
   `backend/tests/test_content.py` (the shipped examples are a frozen snapshot,
-  so `make content` must not be able to write to them).
+  so `make content` must not be able to write to them);
+- *"still has nothing that recovers a map measured at the wrong size"* in
+  `frontend/src/app/entry/entry-page.spec.ts` (the premise under the
+  hidden-wrapper CSS rule). This one is **inverted**: it fails when someone
+  makes the code better, because three documents say there is no recovery and
+  they have to change in the same breath. A guard like that needs a docstring
+  saying so, or the next reader weakens it to get a green build.
 
 That is the pattern to copy whenever you create a rule that lives in two
 places, or a guarantee a document makes on code's behalf: this repository's
@@ -249,9 +255,10 @@ A bundle is `bundle.json`, `tour.json` and `media/`, as a zip.
    `WelcomePage` anywhere outside it silently pulls the chunk into the eager
    bundle), and read "Routing: who is asking" in
    [`ARCHITECTURE.md`](ARCHITECTURE.md) before touching `entry/entry-page.css`
-   — the three declarations on `.viewer-slot[hidden]` are what keep the
-   viewer's layout box while it is hidden, and without the box Leaflet
-   initialises at 0×0 and never recovers.
+   — two of `.viewer-slot[hidden]`'s three declarations (`display: block` and
+   `visibility: hidden`) are what keep the viewer's layout box while it is
+   hidden, and without the box Leaflet initialises at 0×0 and never recovers.
+   The third, `pointer-events: none`, is inertness rather than layout.
 4. What `config.json` holds is `_viewer_config` in `main.py`; the viewer reads
    it through `core/config-store.ts`.
 5. Anything the viewer newly needs must come from `tour-data/`. It must never
@@ -268,8 +275,9 @@ everything from tour-data/ and never touches /api"* in
 viewer's loading; `entry/entry-page.spec.ts` for the published branch — it
 covers a failed probe, a 200 of HTML, a timeout, and (by reading the CSS as
 text) the hidden-but-laid-out wrapper. The Playwright suite in
-`frontend/tests/e2e/` (`make e2e`) can exercise the real thing but cannot run inside the Claude Code sandbox; nothing
-in this repository's `make check` renders a page.
+`frontend/tests/e2e/` (`make e2e`) can exercise the real thing but cannot run
+inside the Claude Code sandbox; nothing in this repository's `make check`
+renders a page.
 
 ## 8. Change which media types are accepted
 
@@ -410,9 +418,10 @@ the argument for each route's eagerness; read it before moving anything.
 3. `entry/entry-page.html` and `entry-page.css` together. The viewer is
    mounted from the first paint and hidden, so its `tour-data/` fetches run
    concurrently with the probe; hiding it with `display: none` gives Leaflet a
-   0×0 container and there is no `invalidateSize` anywhere to recover. If you
-   need the probing state to show something, add it to the `probing` branch —
-   do not reveal the viewer earlier.
+   0×0 container and there is no `invalidateSize` anywhere to recover — a
+   guard test in `entry-page.spec.ts` stops that stopping being true without
+   anyone noticing. If you need the probing state to show something, add it to
+   the `probing` branch — do not reveal the viewer earlier.
 4. `SESSION_PROBE_TIMEOUT_MS` if the deadline is what is wrong. It exists for
    a host that black-holes `/api/session` rather than refusing it; the cost of
    raising it is a longer blank page for that visitor, and the cost of

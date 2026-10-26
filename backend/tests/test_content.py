@@ -199,6 +199,14 @@ def test_the_content_make_target_never_names_the_examples_directory():
     Makefile would write to `content/examples/` without any script mentioning
     it -- so the recipe is read too. Only the `content:` target's own lines,
     since the rest of the Makefile has no business being constrained by this.
+
+    The non-blank check is the point of the second assertion, not politeness.
+    Blank lines do not end a recipe, so they are collected with it, and a
+    `content:` rewritten to delegate to a prerequisite would leave `recipe`
+    holding one empty string -- truthy, so a laxer check would pass this test
+    with no recipe read at all and the guarantee quietly unguarded. This test
+    does NOT follow prerequisites: if the target ever grows one, give that
+    target its own check.
     """
     lines = (REPO / "Makefile").read_text().splitlines()
     start = next(i for i, line in enumerate(lines) if line.startswith("content:"))
@@ -207,7 +215,10 @@ def test_the_content_make_target_never_names_the_examples_directory():
         if line and not line.startswith(("\t", " ")):
             break
         recipe.append(line)
-    assert recipe, "could not find the content: target's recipe"
+    assert any(line.strip() for line in recipe), (
+        "read no recipe lines for the content: target -- it has been "
+        "restructured, so this test is no longer checking anything"
+    )
 
     found = _names_the_examples_directory("\n".join(recipe))
     assert found == [], f"the content: target now names the examples directory: {found}"
