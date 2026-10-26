@@ -3,7 +3,7 @@ import { RecordingError, formatWarning, recordingUnavailable, startRecording } f
 import { FakeMediaRecorder, installRecording, uninstallRecording } from './recording-fakes';
 
 describe('recorder', () => {
-  afterEach(() => uninstallRecording());
+  afterEach(() => { vi.restoreAllMocks(); uninstallRecording(); });
 
   it('reports unavailable, with a way forward, when MediaRecorder is absent', async () => {
     uninstallRecording();
@@ -44,7 +44,25 @@ describe('recorder', () => {
     vi.spyOn(FakeMediaRecorder.prototype, 'start').mockImplementation(() => { throw new Error('boom'); });
     await expect(startRecording()).rejects.toBeInstanceOf(RecordingError);
     for (const t of tracks) expect(t.stop).toHaveBeenCalled();
-    vi.restoreAllMocks();
+  });
+
+  it('prefers MP4 when the browser can record it', async () => {
+    installRecording({ supportsMp4: true, mimeType: 'audio/webm', chunkType: 'audio/mp4' });
+    const spy = vi.spyOn(FakeMediaRecorder.prototype, 'start');
+    const rec = await startRecording();
+    expect(rec.mimeType).toBe('audio/mp4');
+    expect((await rec.stop()).name).toBe('recording.m4a');
+    spy.mockRestore();
+  });
+
+  it('trusts the first chunk when the recorder leaves its type empty, instead of assuming WebM', async () => {
+    installRecording({ reported: '', chunkType: 'audio/mp4' });
+    const rec = await startRecording();
+    expect(rec.mimeType).toBe('');
+    const file = await rec.stop();
+    expect(file.name).toBe('recording.m4a');
+    expect(file.type).toBe('audio/mp4');
+    expect(formatWarning(rec.mimeType)).toBeNull();
   });
 
   it('warns about Safari for WebM and Ogg but not for MP4', () => {

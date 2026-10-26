@@ -348,13 +348,61 @@ describe('OutlinePane', () => {
     });
 
     it('a refused upload shows the message and leaves the document alone', async () => {
-      const { tracks } = installRecording();
+      installRecording();
       upload.mockRejectedValue(new Error('too big'));
       click('[data-record]'); await settle();
       click('[data-record-stop]'); await settle();
       expect(q('[data-outline-error]')?.textContent).toContain('too big');
       expect(store.dirty()).toBe(false);
+      expect(store.draft()!.stops[0].overlays.length).toBe(0);
+    });
+
+    it('destroying the pane mid-recording releases the microphone', async () => {
+      const { tracks } = installRecording();
+      click('[data-record]'); await settle();
+      expect(q('[data-record-stop]')).toBeTruthy();
+      for (const t of tracks) expect(t.stop).not.toHaveBeenCalled();
+      fixture.destroy();
       for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+    });
+
+    it('releases a microphone granted after the pane was destroyed during the prompt', async () => {
+      let grant!: (s: unknown) => void;
+      const { tracks, stream } = installRecording({ getUserMedia: () => new Promise((r) => { grant = r; }) });
+      click('[data-record]'); await settle();
+      fixture.destroy();
+      grant(stream); await new Promise((r) => setTimeout(r, 5));
+      for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+    });
+
+    it('lets the author discard while the permission prompt is open, and releases a late grant', async () => {
+      let grant!: (s: unknown) => void;
+      const { tracks, stream } = installRecording({ getUserMedia: () => new Promise((r) => { grant = r; }) });
+      click('[data-record]'); await settle();
+      expect(q('[data-record-stop]')).toBeNull();
+      click('[data-record-cancel]');
+      expect(q('[data-record]')).toBeTruthy();
+      grant(stream); await settle();
+      for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+      expect(q('[data-record-stop]')).toBeNull();
+      expect(upload).not.toHaveBeenCalled();
+    });
+
+    it('clears the format note on discard', async () => {
+      installRecording();
+      click('[data-record]'); await settle();
+      expect(q('[data-record-format]')).toBeTruthy();
+      click('[data-record-cancel]'); await settle();
+      expect(q('[data-record-format]')).toBeNull();
+    });
+
+    it('takes the format from the clip when the recorder did not say, so MP4 gets no false warning', async () => {
+      installRecording({ reported: '', chunkType: 'audio/mp4' });
+      upload.mockResolvedValue('recording-abc123.m4a');
+      click('[data-record]'); await settle();
+      click('[data-record-stop]'); await settle();
+      expect((upload.mock.calls[0][0] as File).name).toBe('recording.m4a');
+      expect(q('[data-record-format]')).toBeNull();
     });
 
     it('asks for creator and licence first when the tour has none', async () => {

@@ -33,6 +33,8 @@ export class OutlinePane implements OnDestroy {
   /** Safari warning for the format this browser records; stays up after the clip is added. */
   protected readonly recFormatNote = signal<string | null>(null);
   private active: ActiveRecording | null = null;
+  /** Bumped by discard and destroy so a start that resolves late can release itself. */
+  private startToken = 0;
 
   /** Set while the one-time creator/licence prompt is showing. */
   protected readonly promptKind = signal<PromptKind | null>(null);
@@ -140,15 +142,25 @@ export class OutlinePane implements OnDestroy {
 
   private async beginRecording(): Promise<void> {
     this.recState.set('starting');
+    this.recFormatNote.set(null);
+    const token = ++this.startToken;
+    let started: ActiveRecording;
     try {
-      this.active = await startRecording();
+      started = await startRecording();
     } catch (err) {
+      if (token !== this.startToken) return;
       this.mediaError.set(err instanceof RecordingError ? err.message : 'Recording could not be started.');
       this.recState.set('idle');
       this.targetStopId = null;
       return;
     }
-    this.recFormatNote.set(formatWarning(this.active.mimeType));
+    if (token !== this.startToken) {
+      // Discarded or destroyed while the permission prompt was open: release the microphone now.
+      started.cancel();
+      return;
+    }
+    this.active = started;
+    this.recFormatNote.set(formatWarning(started.mimeType));
     this.recState.set('recording');
   }
 
@@ -165,13 +177,16 @@ export class OutlinePane implements OnDestroy {
       this.targetStopId = null;
       return;
     }
+    this.recFormatNote.set(formatWarning(file.type));
     await this.addUploaded('audio', file);
   }
 
   protected cancelRecording(): void {
+    this.startToken++;
     this.active?.cancel();
     this.active = null;
     this.targetStopId = null;
+    this.recFormatNote.set(null);
     this.recState.set('idle');
   }
 
@@ -231,6 +246,7 @@ export class OutlinePane implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.startToken++;
     this.active?.cancel();
     this.active = null;
   }

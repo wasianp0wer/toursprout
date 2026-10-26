@@ -8,7 +8,7 @@
 export class RecordingError extends Error {}
 
 export interface ActiveRecording {
-  /** The container the browser actually chose, e.g. "audio/webm". */
+  /** The container the browser chose, e.g. "audio/webm"; empty if it has not said yet. */
   readonly mimeType: string;
   /** Stop, release the microphone, and return the clip. */
   stop(): Promise<File>;
@@ -30,16 +30,17 @@ export function safariCanPlay(mimeType: string): boolean {
 }
 
 export function formatWarning(mimeType: string): string | null {
-  if (safariCanPlay(mimeType)) return null;
+  if (!mimeType || safariCanPlay(mimeType)) return null;
   const name = mimeType.startsWith('audio/ogg') ? 'Ogg' : 'WebM';
   return `This browser records ${name} audio, which Safari cannot play. Visitors using Safari will hear nothing from this clip. `
     + 'For a tour everyone can hear, upload an MP3 or M4A with "Add audio" instead, or record in Safari.';
 }
 
 function extensionFor(mimeType: string): string {
-  if (mimeType.startsWith('audio/mp4')) return 'm4a';
-  if (mimeType.startsWith('audio/ogg')) return 'ogg';
-  return 'webm';
+  if (mimeType.startsWith('audio/mp4')) return '.m4a';
+  if (mimeType.startsWith('audio/ogg')) return '.ogg';
+  if (mimeType.startsWith('audio/webm')) return '.webm';
+  return '';
 }
 
 function describeMicFailure(err: unknown): string {
@@ -67,30 +68,36 @@ export async function startRecording(): Promise<ActiveRecording> {
 
   let recorder: MediaRecorder;
   try {
-    recorder = new MediaRecorder(stream);
+    // MP4 plays everywhere, including Safari, so prefer it where the browser can; otherwise the default.
+    const wantsMp4 = typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/mp4');
+    recorder = wantsMp4 ? new MediaRecorder(stream, { mimeType: 'audio/mp4' }) : new MediaRecorder(stream);
     const chunks: Blob[] = [];
-    recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+    // Some browsers leave recorder.mimeType empty; the first chunk's own type is then the truth.
+    let chunkType = '';
+    const knownType = () => recorder.mimeType || chunkType;
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) { chunks.push(e.data); if (!chunkType) chunkType = e.data.type; }
+    };
     let finish: (blob: Blob | null) => void = () => undefined;
     const done = new Promise<Blob | null>((resolve) => { finish = resolve; });
     let discard = false;
     recorder.onstop = () => {
       release();
-      finish(discard ? null : new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
+      finish(discard ? null : new Blob(chunks, { type: knownType() }));
     };
     recorder.onerror = () => { release(); finish(null); };
     recorder.start();
-    const mimeType = recorder.mimeType || 'audio/webm';
     const halt = () => {
       if (recorder.state !== 'inactive') recorder.stop();
       else release();
     };
     return {
-      mimeType,
+      get mimeType() { return knownType(); },
       async stop() {
         halt();
         const blob = await done;
         if (!blob || blob.size === 0) throw new RecordingError('Nothing was recorded.');
-        return new File([blob], `recording.${extensionFor(mimeType)}`, { type: blob.type });
+        return new File([blob], `recording${extensionFor(blob.type)}`, { type: blob.type });
       },
       cancel() { discard = true; halt(); release(); },
     };

@@ -4,11 +4,13 @@
     <button type="button" data-add-overlay [disabled]="!store.currentStop()" (click)="addOverlay()">Add text overlay</button>
     <button type="button" data-add-image [disabled]="!store.currentStop() || busy()" (click)="addMedia('image')">Add image</button>
     <button type="button" data-add-audio [disabled]="!store.currentStop() || busy()" (click)="addMedia('audio')">Add audio</button>
-    @if (recState() === 'recording') {
-      <button type="button" data-record-stop (click)="stopRecording()">Stop and add recording</button>
+    @if (recState() !== 'idle') {
+      @if (recState() === 'recording') {
+        <button type="button" data-record-stop (click)="stopRecording()">Stop and add recording</button>
+      }
       <button type="button" data-record-cancel (click)="cancelRecording()">Discard</button>
     } @else {
-      <button type="button" data-record [disabled]="!store.currentStop() || busy() || recState() === 'starting'" (click)="record()">Record audio</button>
+      <button type="button" data-record [disabled]="!store.currentStop() || busy()" (click)="record()">Record audio</button>
     }
     <input #imageInput type="file" hidden data-file-image accept="image/jpeg,image/png,image/webp" (change)="onFile('image', $event)" />
     <input #audioInput type="file" hidden data-file-audio accept="audio/*,.webm,.m4a,.mp3,.ogg,.wav" (change)="onFile('audio', $event)" />
