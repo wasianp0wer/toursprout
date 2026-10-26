@@ -264,6 +264,58 @@ describe('WelcomePage', () => {
     expect(navigate).toHaveBeenCalledWith(['/edit']);
   });
 
+  it('keeps nested media paths when a folder is chosen rather than dragged', async () => {
+    // The author browses instead of dragging. A plain file input hands back
+    // a flat list with no paths, so the six panoramas in the repository's own
+    // media/pano/ would be filed directly under media/ and the import would
+    // refuse the drop for media the author believed they had supplied —
+    // which is why there is a directory picker as well as a file picker.
+    await mount([]);
+    const input = q('[data-picker-folder]') as HTMLInputElement;
+    const clicked = vi.spyOn(input, 'click');
+
+    q('[data-browse-folder]')!.click();
+    expect(clicked).toHaveBeenCalled();
+
+    // What a directory picker gives back: every file's webkitRelativePath
+    // starts with the chosen folder's own name.
+    Object.defineProperty(input, 'files', {
+      writable: true,
+      value: [filed('fairfax/tour.json'), filed('fairfax/media/pano/p.jpg')],
+    });
+    input.dispatchEvent(new Event('change'));
+    await settle();
+
+    const req = http.expectOne('/api/session/import-files');
+    const names = (req.request.body as FormData).getAll('files').map((f) => (f as File).name);
+    expect(names).toEqual(['tour.json', 'media/pano/p.jpg']);
+    req.flush({ open: true, title: 'Old Town Fairfax' });
+    await settle();
+    expect(navigate).toHaveBeenCalledWith(['/edit']);
+  });
+
+  it('says so when the tour opened but the editor could not be reached', async () => {
+    // The editor is a lazy chunk and the hop to it can fail on a dropped
+    // connection. A tour is open by then, so every control here would 409:
+    // the author needs to be told what happened, not shown the browser's
+    // own "Failed to fetch dynamically imported module".
+    navigate.mockRejectedValue(new Error('Failed to fetch dynamically imported module'));
+    await mount([]);
+
+    q('[data-new-tour]')!.click();
+    await settle();
+    http.expectOne('/api/session/new').flush({ open: true, title: 'Untitled tour' });
+    await settle();
+
+    expect(q('[data-error]')?.textContent).toMatch(/editor could not be loaded/i);
+    expect(q('[data-error]')?.textContent).toMatch(/reload/i);
+    // And nothing here can be used against the session that now has a tour
+    // in it, nor does a progress note contradict the explanation.
+    expect((q('[data-new-tour]') as HTMLButtonElement).disabled).toBe(true);
+    expect((q('[data-browse]') as HTMLButtonElement).disabled).toBe(true);
+    expect(q('[data-working]')).toBeNull();
+  });
+
   it('shows the backend message when opening an example conflicts', async () => {
     await mount([FAIRFAX]);
 

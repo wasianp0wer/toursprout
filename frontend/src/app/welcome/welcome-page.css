@@ -52,6 +52,7 @@ code { color: #c9ccd3; }
   font: inherit;
 }
 .browse:disabled { opacity: 0.5; cursor: default; }
+.browse-row { display: flex; gap: 1.25rem; }
 
 /* The two smaller controls, side by side under the drop zone. */
 .choices { display: flex; flex-wrap: wrap; gap: 1.5rem; }

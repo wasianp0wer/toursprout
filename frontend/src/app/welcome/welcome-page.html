@@ -20,14 +20,35 @@
         A packaged bundle (<code>.zip</code>), or a <code>tour.json</code>
         together with its <code>media</code> folder.
       </p>
-      <!-- For anyone who would rather pick than drag. One input, so one
-           link: a file input cannot offer both files and a folder, and the
-           files are what someone reaching for a browse link came for. A
-           folder has to be dragged. -->
-      <button type="button" class="browse" data-browse [disabled]="busy()" (click)="browse()">
-        or choose files
-      </button>
+      <!-- For anyone who would rather pick than drag. Two inputs, because
+           one cannot offer both: a plain file input cannot preserve the
+           directories under `media/`, and `webkitdirectory` cannot be
+           pointed at a `.zip`. Both are needed — the repository's own tour
+           has a `media/pano/` holding six panoramas, so a browse path that
+           flattened it would lose them and the import would then refuse the
+           drop for media the author believed they had supplied. -->
+      <span class="browse-row">
+        <button type="button" class="browse" data-browse [disabled]="busy()" (click)="browse()">
+          choose files
+        </button>
+        <button type="button" class="browse" data-browse-folder [disabled]="busy()" (click)="browseFolder()">
+          choose a folder
+        </button>
+      </span>
       <input #picker type="file" multiple hidden data-picker (change)="onPicked($event)" />
+      <!-- `webkitdirectory` is non-standard, but this screen already reads a
+           dropped folder with `webkitGetAsEntry`, so it assumes nothing new.
+           Every file it yields carries a webkitRelativePath beginning with
+           the chosen folder's own name, which is what keeps `pano/`. -->
+      <input
+        #folderPicker
+        type="file"
+        multiple
+        webkitdirectory
+        hidden
+        data-picker-folder
+        (change)="onPicked($event)"
+      />
     </div>
 
     <div class="choices">
@@ -70,7 +91,10 @@
       }
     </div>
 
-    @if (busy()) {
+    <!-- Not while there is a message: a failed hop to the editor leaves
+         `busy` set on purpose, so that it keeps every control here inert,
+         and "Opening…" under the explanation would contradict it. -->
+    @if (busy() && !error()) {
       <p class="note" data-working role="status">Opening…</p>
     }
     @if (skipped().length) {

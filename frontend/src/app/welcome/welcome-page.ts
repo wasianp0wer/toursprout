@@ -51,6 +51,7 @@ export class WelcomePage {
   private readonly router = inject(Router);
 
   private readonly picker = viewChild<ElementRef<HTMLInputElement>>('picker');
+  private readonly folderPicker = viewChild<ElementRef<HTMLInputElement>>('folderPicker');
 
   protected readonly guides = GUIDE_TITLES;
 
@@ -117,6 +118,19 @@ export class WelcomePage {
     this.picker()?.nativeElement.click();
   }
 
+  /**
+   * The folder half of browsing, and not a convenience. A plain file input
+   * gives back a flat list with no `webkitRelativePath`, so a tour whose
+   * media sits in `media/pano/` would arrive with its panoramas filed
+   * directly under `media/` — and the import would then refuse the drop for
+   * media the author thought they had supplied, naming files they cannot
+   * find. The directory picker is the only browse path that keeps the
+   * nesting the loose-file route exists to carry.
+   */
+  protected browseFolder(): void {
+    this.folderPicker()?.nativeElement.click();
+  }
+
   protected async onPicked(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const dropped = filesWithPaths(input.files);
@@ -171,17 +185,33 @@ export class WelcomePage {
    * The navigation happens only after the call resolves, so a refusal — a
    * 409 because another tab opened something, a bundle that failed
    * validation — leaves the author here, reading why, with the screen's
-   * state untouched.
+   * state untouched and the controls live again.
+   *
+   * A failed *navigation* is the opposite situation and is handled
+   * separately. The editor is a lazy chunk, so the hop can fail for a reason
+   * that has nothing to do with the author — a connection dropped mid-fetch
+   * — and by then the tour IS open. Everything on this screen would now 409,
+   * and the browser's own "Failed to fetch dynamically imported module" is
+   * exactly the misleading message this feature exists to stop shipping. So
+   * say what happened, and deliberately leave `busy` set: it is the one flag
+   * every control here consults, so nothing can be used against a session
+   * that already has a tour in it. A reload goes straight to the editor,
+   * because the entry page's probe will find the tour open.
    */
   private async open(call: () => Promise<SessionSummary>): Promise<void> {
     this.busy.set(true);
     try {
       await call();
-      await this.router.navigate(['/edit']);
     } catch (err) {
       this.error.set(messageOf(err));
-    } finally {
       this.busy.set(false);
+      return;
+    }
+    // `navigate` resolving false (a guard refused) strands the author just as
+    // thoroughly as it rejecting, and silently, so both land here.
+    const arrived = await this.router.navigate(['/edit']).catch(() => false);
+    if (!arrived) {
+      this.error.set('The tour is open, but the editor could not be loaded. Reload this page to go there — nothing has been lost.');
     }
   }
 
