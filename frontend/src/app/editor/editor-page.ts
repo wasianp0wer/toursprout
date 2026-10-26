@@ -54,10 +54,12 @@ export class EditorPage {
    * editable, and hiding it behind a fatal message would be a lie. */
   protected readonly closeFailed = signal<string | null>(null);
   /**
-   * How many media files the session reported when it was opened. The only
-   * number on the close dialog that cannot be read off the draft — media
-   * lives on disk, not in the document — so an upload since then is not
-   * counted. Everything else the dialog says comes from the live draft.
+   * How many media files the session holds: the one number on the close
+   * dialog that cannot be read off the draft, because media lives on disk
+   * rather than in the document. Seeded when the tour is opened and re-read
+   * when the dialog opens (see `askToClose`), since this is the figure the
+   * author is deciding against when they destroy data. Everything else the
+   * dialog says comes from the live draft.
    */
   protected readonly mediaCount = signal(0);
 
@@ -97,6 +99,31 @@ export class EditorPage {
   protected askToClose(): void {
     this.closeFailed.set(null);
     this.closing.set(true);
+    void this.refreshMediaCount();
+  }
+
+  /**
+   * Re-read the media count for the dialog. Media is uploaded without
+   * touching the document, so the figure from when the tour was opened can
+   * be out of date by the time the author decides to delete it — and "15
+   * media files" when it is really 17 is worst exactly here.
+   *
+   * Nothing waits for this: the dialog is already up, with the count it has,
+   * and the download and the close are unaffected. A failed probe is not
+   * news the author can act on, so it is kept rather than reported — saying
+   * "the media count could not be checked" on this screen would read as a
+   * failure to close. Strictly more accurate than before, and no less
+   * reliable.
+   */
+  private async refreshMediaCount(): Promise<void> {
+    try {
+      const summary = await this.sessionApi.get();
+      if (summary.open && summary.mediaCount !== undefined) {
+        this.mediaCount.set(summary.mediaCount);
+      }
+    } catch {
+      // Keep the figure the tour was opened with.
+    }
   }
 
   /**

@@ -158,6 +158,55 @@ describe('EditorPage', () => {
     expect(text).toContain('15 media files');
   });
 
+  // The media count is the one figure the dialog cannot read off the draft,
+  // and it is the number the author is deciding against: telling them 15
+  // files when it is 17, at the moment they destroy data, is the worst place
+  // in the app to be out of date.
+  it('re-reads the media count when the dialog opens', async () => {
+    await mountOpen();
+    q('[data-close-tour]')!.click();
+    fixture.detectChanges();
+    // Open and readable immediately: the probe gates nothing.
+    expect(q('[data-close-dialog]')!.textContent).toContain('15 media files');
+
+    http.expectOne('/api/session').flush({ ...OPEN, mediaCount: 17 });
+    await settle();
+    expect(q('[data-close-dialog]')!.textContent).toContain('17 media files');
+  });
+
+  it('keeps the count it already had when the re-read fails, and says nothing about it', async () => {
+    await mountOpen();
+    q('[data-close-tour]')!.click();
+    fixture.detectChanges();
+    http.expectOne('/api/session').error(new ProgressEvent('network'));
+    await settle();
+
+    expect(q('[data-close-dialog]')!.textContent).toContain('15 media files');
+    // A failed probe is not news: it must not look like a failure to close,
+    // and it must not stop the author closing.
+    expect(q('[data-close-failed]')).toBeNull();
+    expect(q('[data-error]')).toBeNull();
+    const box = q('[data-acknowledge]') as HTMLInputElement;
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect((q('[data-confirm-close]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('dismisses the close dialog on Escape', async () => {
+    await mountOpen();
+    q('[data-close-tour]')!.click();
+    fixture.detectChanges();
+    expect(q('[data-close-dialog]')).toBeTruthy();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(q('[data-close-dialog]')).toBeNull();
+    expect(store.draft()).not.toBeNull();
+    http.expectNone({ method: 'DELETE', url: '/api/session' });
+  });
+
   it('keeps working when the author changes their mind', async () => {
     await mountOpen();
     q('[data-close-tour]')!.click();

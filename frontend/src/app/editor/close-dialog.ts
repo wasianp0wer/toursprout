@@ -1,4 +1,7 @@
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import {
+  Component, ElementRef, computed, inject, input, output, signal, viewChild,
+  type AfterViewInit,
+} from '@angular/core';
 import { SessionApi } from '../core/session-api';
 
 /** What the author's browser calls the archive it saves. */
@@ -32,7 +35,16 @@ const BUNDLE_NAME = 'tour.zip';
 @Component({
   selector: 'app-close-dialog',
   template: `
-    <div class="scrim" data-close-dialog role="dialog" aria-modal="true" aria-labelledby="close-dialog-title">
+    <!-- tabindex so the dialog itself can hold focus: see ngAfterViewInit. -->
+    <div
+      #surface
+      class="scrim"
+      data-close-dialog
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="close-dialog-title"
+      tabindex="-1"
+    >
       <section class="panel">
         <h2 id="close-dialog-title">Close “{{ tourTitle() }}”?</h2>
         <p class="warning">
@@ -85,9 +97,21 @@ const BUNDLE_NAME = 'tour.zip';
     </div>
   `,
   styleUrl: './close-dialog.css',
+  // Escape is what everyone reaches for to back out, and on this screen of
+  // all screens — it is telling the author their only copy is about to be
+  // deleted — it must work. Same effect as *Keep working*: the parent takes
+  // the dialog down and nothing has happened. Bound on the document because
+  // focus can be inside the panel or on the dialog itself, and both must
+  // answer the key. (There is deliberately no focus trap; backing out and
+  // being heard by a screen reader are what this covers.)
+  host: {
+    '(document:keydown.escape)': 'cancelled.emit()',
+  },
 })
-export class CloseDialog {
+export class CloseDialog implements AfterViewInit {
   private readonly api = inject(SessionApi);
+
+  private readonly surface = viewChild.required<ElementRef<HTMLElement>>('surface');
 
   /** What is about to be deleted, as the editor knows it right now — the
    * live draft's title and stop count, not the session summary's, which went
@@ -121,6 +145,18 @@ export class CloseDialog {
   protected readonly canClose = computed(
     () => this.downloadedBytes() !== null || this.acknowledged(),
   );
+
+  /**
+   * Take focus when the dialog opens — the dialog element itself, not a
+   * button, so a screen reader announces what has appeared rather than
+   * reading one control out of context, and so Escape reaches it without the
+   * author having to click something first. Deliberately not the primary
+   * action: focus must not sit on a button at the moment a stray Return
+   * could press it.
+   */
+  ngAfterViewInit(): void {
+    this.surface().nativeElement.focus();
+  }
 
   protected async download(): Promise<void> {
     if (this.downloading()) return;

@@ -144,4 +144,22 @@ describe('CloseDialog', () => {
     q('[data-keep-working]')!.click();
     expect(cancelled).toHaveBeenCalledTimes(1);
   });
+
+  // Escape is the conventional form of "the quiet way out", and this is the
+  // one screen where an author may be alarmed: it is telling them their only
+  // copy is about to be deleted.
+  it('backs out on Escape, exactly as Keep working does', () => {
+    mount();
+    const cancelled = vi.fn();
+    fixture.componentInstance.cancelled.subscribe(cancelled);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(cancelled).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes focus when it opens', () => {
+    mount();
+    // The dialog itself, so a screen reader announces what it is, and so the
+    // keys that dismiss it reach it without a click first.
+    expect(document.activeElement).toBe(q('[data-close-dialog]'));
+  });
 });
