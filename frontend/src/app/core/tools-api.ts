@@ -63,6 +63,11 @@ export class ToolsApi {
     return (await this.post<{ results: ArchiveResult[] }>('archive-search', { query })).results;
   }
 
+  /** Have the server download an archive image (loc.gov only) and store it. */
+  async archiveFetch(imageUrl: string, title: string): Promise<string> {
+    return (await this.post<{ mediaId: string }>('archive-fetch', { imageUrl, title })).mediaId;
+  }
+
   async narrate(text: string): Promise<NarrationResult> {
     return this.post<NarrationResult>('narrate', { text });
   }

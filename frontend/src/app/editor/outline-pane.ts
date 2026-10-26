@@ -1,7 +1,7 @@
 import { Component, ElementRef, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
 import { EditorStore } from './editor-store';
 import {
-  addMediaOverlay, addStop, archiveCredit, narrationCredit, narrationSource, addTextOverlay, deleteOverlay, deleteStop, defaultsAnswerValid, hasDefaults, mediaKindOf, moveStop,
+  addMediaOverlay, addStop, archiveCredit, narrationSource, addTextOverlay, deleteOverlay, deleteStop, defaultsAnswerValid, hasDefaults, mediaKindOf, moveStop,
 } from './document-ops';
 import { SessionApi } from '../core/session-api';
 import { ToolsApi, type ArchiveResult } from '../core/tools-api';
@@ -9,7 +9,7 @@ import type { Credit } from '../core/tour.models';
 import { ActiveRecording, RecordingError, formatWarning, startRecording } from './recorder';
 
 type MediaKind = 'image' | 'audio';
-type PromptKind = MediaKind | 'text' | 'record';
+type PromptKind = MediaKind | 'text' | 'record' | 'narrate';
 
 /** The tour as a list: stops in order, each with its overlays. Thin over EditorStore. */
 @Component({
@@ -120,6 +120,8 @@ export class OutlinePane implements OnDestroy {
     this.promptKind.set(null);
     if (kind === 'record') {
       void this.beginRecording();
+    } else if (kind === 'narrate') {
+      void this.runNarrate();
     } else if (kind === 'text') {
       const stopId = this.targetStopId ?? this.store.currentStop()?.id;
       this.targetStopId = null;
@@ -270,9 +272,27 @@ export class OutlinePane implements OnDestroy {
     return doc ? narrationSource(doc, this.store.selectedId()) : null;
   });
 
-  protected async narrate(): Promise<void> {
+  /**
+   * The author wrote the words, a synthesised voice reads them, so the credit
+   * is the tour's creator and licence (asked for once, like any add) and the
+   * title says the voice is synthesised.
+   */
+  protected narrate(): void {
     const src = this.narration();
-    if (!src || this.busy()) return;
+    const doc = this.store.draft();
+    if (!src || !doc || this.busy()) return;
+    this.mediaError.set(null);
+    if (!hasDefaults(doc) && !this.store.pendingDefaults()) {
+      this.promptError.set(null);
+      this.promptKind.set('narrate');
+      return;
+    }
+    void this.runNarrate();
+  }
+
+  private async runNarrate(): Promise<void> {
+    const src = this.narration();
+    if (!src) return;
     this.busy.set(true);
     this.mediaError.set(null);
     let result: Awaited<ReturnType<ToolsApi['narrate']>>;
@@ -284,7 +304,7 @@ export class OutlinePane implements OnDestroy {
       return;
     }
     this.busy.set(false);
-    this.createFromMedia('audio', result.mediaId, src.title, src.stopId, narrationCredit(result.credit),
+    this.createFromMedia('audio', result.mediaId, src.title, src.stopId, undefined,
       'The narration was generated but not added.');
   }
 
@@ -341,20 +361,20 @@ export class OutlinePane implements OnDestroy {
       this.mediaError.set('This item has no image to download.');
       return;
     }
+    // The server downloads it (loc.gov only, retried, checked to be an image)
+    // and stores it; the browser never contacts the archive for the image.
     this.busy.set(true);
-    let file: File;
+    let mediaId: string;
     try {
-      const res = await fetch(result.imageUrl);
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      const blob = await res.blob();
-      file = new File([blob], archiveFileName(result.title, blob.type), { type: blob.type });
-    } catch {
-      this.mediaError.set('The image could not be downloaded from the archive, so nothing was added.');
+      mediaId = await this.tools.archiveFetch(result.imageUrl, result.title);
+    } catch (err) {
+      this.mediaError.set(err instanceof Error ? err.message : 'the image could not be downloaded');
       this.busy.set(false);
       return;
     }
     this.busy.set(false);
-    await this.addUploaded('image', file, stopId, { title: result.title, credit });
+    this.createFromMedia('image', mediaId, result.title, stopId, credit,
+      'The image was downloaded but not added.');
   }
 
   ngOnDestroy(): void {
@@ -374,10 +394,4 @@ export class OutlinePane implements OnDestroy {
     const stop = this.store.selectedStop();
     if (stop) this.store.apply((t) => moveStop(t, stop.id, delta));
   }
-}
-
-function archiveFileName(title: string, mime: string): string {
-  const ext = mime === 'image/png' ? '.png' : mime === 'image/webp' ? '.webp' : '.jpg';
-  const base = title.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'archive';
-  return base + ext;
 }

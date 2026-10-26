@@ -43,6 +43,14 @@ describe('ToolsApi', () => {
     expect((await na).mediaId).toBe('n.m4a');
   });
 
+  it('asks the server to fetch an archive image and returns the stored mediaId', async () => {
+    const p = api.archiveFetch('https://tile.loc.gov/1.jpg', 'Court House');
+    const req = http.expectOne('/api/tools/archive-fetch');
+    expect(req.request.body).toEqual({ imageUrl: 'https://tile.loc.gov/1.jpg', title: 'Court House' });
+    req.flush({ mediaId: 'court-house-ab12.jpg' });
+    expect(await p).toBe('court-house-ab12.jpg');
+  });
+
   it('rejects with the backend message verbatim (502 upstream, 400 missing token)', async () => {
     const p = api.panoramas(1, 2);
     http.expectOne('/api/tools/panoramas').flush(

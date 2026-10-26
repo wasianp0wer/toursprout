@@ -24,6 +24,8 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel, Field, field_validator
 
+from .media_store import MediaError, sniff
+
 UA = "clio-wired-prototype/0.1 (graduates@rrchnm.org)"
 
 MAPILLARY_IMAGES = "https://graph.mapillary.com/images"
@@ -391,6 +393,11 @@ class ArchiveRequest(BaseModel):
         return v.strip()
 
 
+class ArchiveFetchRequest(BaseModel):
+    imageUrl: str = Field(max_length=2000)
+    title: str = Field(default="", max_length=300)
+
+
 class NarrateRequest(BaseModel):
     text: str = Field(max_length=20000)
 
@@ -401,3 +408,75 @@ class NarrateRequest(BaseModel):
         if not v:
             raise ValueError("text must not be blank")
         return v
+
+
+# --- archive image download (relevance.py: get_bytes_with_retry) -------------
+
+FETCH_ATTEMPTS = 5
+FETCH_TIMEOUT = 30.0
+MAX_REDIRECTS = 5
+
+
+def check_archive_url(url: str) -> str:
+    """The URL if it is plain https on loc.gov or a subdomain; else ToolError(400).
+
+    This endpoint fetches a URL the client names, so the allowlist is the
+    whole defence against it being used to reach anything else. Checked on
+    every redirect hop too. Userinfo and ports are refused: `https://a.loc.gov@evil/`
+    and `https://loc.gov:8443/` are how an allowlist gets walked around.
+    """
+    try:
+        parts = httpx.URL(url.strip())
+        host = parts.host.lower()
+        port = parts.port
+    except (httpx.InvalidURL, ValueError):
+        raise ToolError(400, "that is not a valid image address") from None
+    ok = (
+        parts.scheme == "https" and not parts.userinfo
+        and port in (None, 443)
+        and (host == "loc.gov" or host.endswith(".loc.gov"))
+    )
+    if not ok:
+        raise ToolError(400, "only https images hosted on loc.gov can be fetched")
+    return url.strip()
+
+
+def fetch_archive_image(client: httpx.Client, url: str) -> bytes:
+    """Download an archive image. Lifted from relevance.get_bytes_with_retry:
+    transport failures and 5xx retry; 4xx means unavailable and does not.
+    Redirects are followed by hand so each hop is re-checked against the
+    allowlist. The body must be an image by its magic bytes, not by its
+    Content-Type."""
+    current = check_archive_url(url)
+    last = "no response"
+    for attempt in range(FETCH_ATTEMPTS):
+        try:
+            hops = 0
+            while True:
+                resp = client.get(current, follow_redirects=False)
+                if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("location"):
+                    hops += 1
+                    if hops > MAX_REDIRECTS:
+                        raise ToolError(502, "the archive redirected too many times")
+                    current = check_archive_url(str(httpx.URL(current).join(resp.headers["location"])))
+                    continue
+                break
+            if resp.status_code == 200:
+                try:
+                    kind, _ext = sniff(resp.content)
+                except MediaError:
+                    kind = ""
+                if not kind.startswith("image/"):
+                    raise ToolError(502, "the archive returned something that is not an image")
+                return resp.content
+            if resp.status_code < 500:
+                raise ToolError(
+                    502, f"the archive has no image at that address (HTTP {resp.status_code})")
+            last = f"HTTP {resp.status_code}"
+        except ToolError:
+            raise
+        except httpx.HTTPError as exc:
+            last = _describe(exc)
+        if attempt < FETCH_ATTEMPTS - 1:
+            time.sleep(RETRY_PAUSE)
+    raise ToolError(502, f"could not download the image after {FETCH_ATTEMPTS} attempts ({last})")

@@ -309,6 +309,21 @@ describe('InspectorPane: placing a stop', () => {
     expect(qa('[data-candidate]').map((n) => n.getAttribute('data-candidate'))).toEqual(['cam-A', 'cam-B']);
   });
 
+  it('clears the candidate list when the stop location is edited', async () => {
+    panoramas.mockResolvedValue([A]);
+    await click('[data-find-panoramas]');
+    expect(qa('[data-candidate]').length).toBe(1);
+    await type('[data-field="stop-lat"]', '38.9');
+    expect(qa('[data-candidate]').length).toBe(0);
+  });
+
+  it('selecting resets the bearing to the candidate camera heading', async () => {
+    panoramas.mockResolvedValue([{ ...A, compassAngle: 123 }]);
+    await click('[data-find-panoramas]');
+    await click('[data-use-panorama]');
+    expect(store.selectedStop()!.panorama.bearing).toBe(123);
+  });
+
   it('says so when there are no candidates', async () => {
     panoramas.mockResolvedValue([]);
     await click('[data-find-panoramas]');

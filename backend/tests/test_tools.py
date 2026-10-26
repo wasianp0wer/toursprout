@@ -92,6 +92,7 @@ TOOLS = {
     "places": {"lng": -77.3062, "lat": 38.846},
     "archive-search": {"query": "fairfax court house"},
     "narrate": {"text": "Hello."},
+    "archive-fetch": {"imageUrl": "https://tile.loc.gov/t/1.jpg"},
 }
 
 
@@ -333,3 +334,127 @@ def test_tools_module_does_not_use_urllib():
     from app import tools
     source = Path(tools.__file__).read_text()
     assert "import urllib" not in source and "from urllib" not in source
+
+
+# --- archive-fetch ----------------------------------------------------------
+
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64 + b"\xff\xd9"
+FETCH = "/api/tools/archive-fetch"
+
+
+@pytest.fixture(autouse=False)
+def fast_retry(monkeypatch):
+    monkeypatch.setattr("app.tools.RETRY_PAUSE", 0)
+
+
+def test_archive_fetch_stores_the_image(client):
+    open_tour(client)
+    seen = []
+
+    def handler(request):
+        seen.append(request.headers["user-agent"])
+        return httpx.Response(200, content=JPEG)
+    mock(client, handler)
+    r = client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg", "title": "Court House"})
+    assert r.status_code == 200, r.text
+    media_id = r.json()["mediaId"]
+    assert media_id.endswith(".jpg")
+    assert (client.app.state.session.path / "media" / media_id).read_bytes() == JPEG
+    assert "clio-wired" in seen[0]
+
+
+@pytest.mark.parametrize("url", [
+    "http://tile.loc.gov/t/1.jpg",             # not https
+    "https://evil.example/t/1.jpg",            # wrong host
+    "https://loc.gov.evil.example/1.jpg",      # suffix trick
+    "https://notloc.gov/1.jpg",                # not a subdomain
+    "https://tile.loc.gov@evil.example/1.jpg", # userinfo trick
+    "https://tile.loc.gov:8443/1.jpg",         # odd port
+    "https://127.0.0.1/1.jpg",
+    "file:///etc/passwd",
+])
+def test_archive_fetch_rejects_hosts_outside_the_allowlist(client, url):
+    open_tour(client)
+    called = []
+    mock(client, lambda request: called.append(request) or httpx.Response(200, content=JPEG))
+    r = client.post(FETCH, json={"imageUrl": url})
+    assert r.status_code == 400
+    assert called == []
+
+
+def test_archive_fetch_does_not_follow_a_redirect_off_the_allowlist(client):
+    open_tour(client)
+    hits = []
+
+    def handler(request):
+        hits.append(str(request.url))
+        return httpx.Response(302, headers={"Location": "https://evil.example/x.jpg"})
+    mock(client, handler)
+    r = client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"})
+    assert r.status_code == 400
+    assert hits == ["https://tile.loc.gov/t/1.jpg"]
+
+
+def test_archive_fetch_follows_a_redirect_within_loc_gov(client):
+    open_tour(client)
+
+    def handler(request):
+        if request.url.host == "tile.loc.gov":
+            return httpx.Response(301, headers={"Location": "https://www.loc.gov/img/1.jpg"})
+        return httpx.Response(200, content=JPEG)
+    mock(client, handler)
+    assert client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"}).status_code == 200
+
+
+def test_archive_fetch_4xx_is_unavailable_and_not_retried(client, fast_retry):
+    open_tour(client)
+    calls = []
+    mock(client, lambda request: calls.append(1) or httpx.Response(404))
+    r = client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"})
+    assert r.status_code == 502
+    assert "404" in r.json()["detail"]
+    assert len(calls) == 1
+
+
+def test_archive_fetch_retries_5xx_then_succeeds(client, fast_retry):
+    open_tour(client)
+    codes = iter([503, 500, 200])
+
+    def handler(request):
+        code = next(codes)
+        return httpx.Response(code, content=JPEG if code == 200 else b"")
+    mock(client, handler)
+    assert client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"}).status_code == 200
+
+
+def test_archive_fetch_retries_transport_failures_then_gives_up(client, fast_retry):
+    open_tour(client)
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        raise httpx.ConnectError("down", request=request)
+    mock(client, handler)
+    r = client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"})
+    assert r.status_code == 502
+    assert len(calls) > 1
+
+
+def test_archive_fetch_refuses_a_non_image_body(client):
+    open_tour(client)
+    mock(client, lambda request: httpx.Response(200, content=b"<html>sign in</html>"))
+    r = client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"})
+    assert r.status_code == 502
+    assert "image" in r.json()["detail"]
+    assert not list((client.app.state.session.path / "media").glob("*"))
+
+
+def test_archive_fetch_refuses_audio_bytes(client):
+    open_tour(client)
+    mock(client, lambda request: httpx.Response(200, content=b"RIFF\x00\x00\x00\x00WAVEfmt " + b"\x00" * 40))
+    assert client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"}).status_code == 502
+
+
+def test_archive_fetch_needs_an_open_tour(client):
+    r = client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"})
+    assert r.status_code == 409

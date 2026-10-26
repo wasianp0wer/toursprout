@@ -8,7 +8,6 @@ import {
 } from './document-ops';
 import type { InWorldDisplay, OverlayKind } from '../core/tour.models';
 import { ToolsApi, type PanoramaCandidate, type PlaceCandidate } from '../core/tools-api';
-import type { PanoramaFix } from './document-ops';
 
 type Num = number | null;
 
@@ -138,13 +137,14 @@ export class InspectorPane {
     const s = this.stop();
     if (!s || v === null) return;
     const next = { ...s.location, [field]: v };
+    this.found.set(null); // "near here" no longer is
     this.store.apply((t) => setStopLocation(t, s.id, next.lng, next.lat));
   }
 
   protected async findPanoramas(): Promise<void> {
     const s = this.stop();
     if (!s || this.searching()) return;
-    await this.search(s.id, async () => ({
+    await this.search(async () => ({
       stopId: s.id, panoramas: await this.tools.panoramas(s.location.lng, s.location.lat),
     }));
   }
@@ -152,14 +152,14 @@ export class InspectorPane {
   protected async findPlaces(): Promise<void> {
     const s = this.stop();
     if (!s || this.searching()) return;
-    await this.search(s.id, async () => ({
+    await this.search(async () => ({
       stopId: s.id, places: await this.tools.places(s.location.lng, s.location.lat),
     }));
   }
 
   /** The network call completes before anything else: a failure only sets the message. */
   private async search(
-    _stopId: string, run: () => Promise<NonNullable<ReturnType<typeof this.found>>>,
+    run: () => Promise<NonNullable<ReturnType<typeof this.found>>>,
   ): Promise<void> {
     this.searching.set(true);
     this.toolError.set(null);
@@ -181,23 +181,22 @@ export class InspectorPane {
   protected usePanorama(candidate: PanoramaCandidate): void {
     const s = this.stop();
     if (!s) return;
-    let fix: PanoramaFix | null = null;
-    this.store.apply((t) => {
-      const r = selectPanorama(t, s.id, candidate);
-      fix = r?.fix ?? null;
-      return r ? r.tour : t;
-    });
-    if (fix) {
-      this.store.setPanoramaPosition(fix);
-      this.toolError.set(null);
-    } else {
+    // One candidate in, one {tour, fix} out; nothing is assigned from inside apply.
+    const r = selectPanorama(this.store.draft()!, s.id, candidate);
+    if (!r) {
       this.toolError.set('That panorama has no usable position, so it was not selected.');
+      return;
     }
+    this.store.apply(() => r.tour);
+    this.store.setPanoramaPosition(r.fix);
+    this.toolError.set(null);
   }
 
   protected usePlace(place: PlaceCandidate): void {
     const s = this.stop();
-    if (s) this.store.apply((t) => setStopLocation(t, s.id, place.lng, place.lat, place.osmRef));
+    if (!s) return;
+    this.found.set(null);
+    this.store.apply((t) => setStopLocation(t, s.id, place.lng, place.lat, place.osmRef));
   }
 
   protected captured(at: number | string | null): string {

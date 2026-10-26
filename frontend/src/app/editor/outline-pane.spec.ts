@@ -424,7 +424,7 @@ describe('OutlinePane', () => {
     let upload: ReturnType<typeof vi.fn>;
     let archiveSearch: ReturnType<typeof vi.fn>;
     let narrate: ReturnType<typeof vi.fn>;
-    let fetchMock: ReturnType<typeof vi.fn>;
+    let archiveFetch: ReturnType<typeof vi.fn>;
     const settle = async () => { await new Promise((r) => setTimeout(r, 5)); fixture.detectChanges(); };
     const press = async (sel: string, i = 0) => {
       (el.querySelectorAll(sel)[i] as HTMLElement).click(); await settle();
@@ -450,16 +450,13 @@ describe('OutlinePane', () => {
       upload = vi.fn();
       archiveSearch = vi.fn();
       narrate = vi.fn();
-      fetchMock = vi.fn().mockResolvedValue({
-        ok: true, blob: async () => new Blob([new Uint8Array([1])], { type: 'image/jpeg' }),
-      });
-      vi.stubGlobal('fetch', fetchMock);
+      archiveFetch = vi.fn().mockResolvedValue('pic-1.jpg');
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         imports: [OutlinePane],
         providers: [
           { provide: SessionApi, useValue: { uploadMedia: upload } },
-          { provide: ToolsApi, useValue: { archiveSearch, narrate } },
+          { provide: ToolsApi, useValue: { archiveSearch, narrate, archiveFetch } },
         ],
       });
       store = TestBed.inject(EditorStore);
@@ -469,7 +466,14 @@ describe('OutlinePane', () => {
       store.select('a');
       fixture.detectChanges();
     });
-    afterEach(() => vi.unstubAllGlobals());
+    it('never fetches a third-party host from the browser', async () => {
+      const spy = vi.fn();
+      vi.stubGlobal('fetch', spy);
+      await search([result()]);
+      await press('[data-archive-insert]');
+      vi.unstubAllGlobals();
+      expect(spy).not.toHaveBeenCalled();
+    });
 
     it('lists results with their rights', async () => {
       await search([result()]);
@@ -478,12 +482,11 @@ describe('OutlinePane', () => {
       expect(archiveSearch).toHaveBeenCalledWith('fairfax courthouse');
     });
 
-    it('inserts a result: fetches, uploads, then adds a sourced image overlay', async () => {
-      upload.mockResolvedValue('pic-1.jpg');
+    it('inserts a result: the server downloads it, then a sourced image overlay is added', async () => {
       await search([result()]);
       await press('[data-archive-insert]');
-      expect(fetchMock).toHaveBeenCalledWith('https://tile.loc.gov/full.jpg');
-      expect(upload).toHaveBeenCalledTimes(1);
+      expect(archiveFetch).toHaveBeenCalledWith('https://tile.loc.gov/full.jpg', 'Courthouse, 1920');
+      expect(upload).not.toHaveBeenCalled();
       const added = overlaysOf().at(-1)!;
       expect(added.mediaId).toBe('pic-1.jpg');
       expect(added.title).toBe('Courthouse, 1920');
@@ -496,7 +499,6 @@ describe('OutlinePane', () => {
 
     it('works on a tour with no defaults: the archive credit needs none', async () => {
       store.load({ ...tour([stop('a', 1)]), defaults: null }); store.select('a');
-      upload.mockResolvedValue('pic-1.jpg');
       await search([result()]);
       await press('[data-archive-insert]');
       expect(q('[data-defaults-form]')).toBeNull();
@@ -504,47 +506,26 @@ describe('OutlinePane', () => {
     });
 
     it('null rights: refuses to insert until the author supplies a licence, then uses it', async () => {
-      upload.mockResolvedValue('pic-1.jpg');
       await search([result({ rights: null })]);
       expect(q('[data-archive-result="0"]')?.textContent).toMatch(/no rights/i);
       const before = store.draft();
       await press('[data-archive-insert]');
       expect(q('[data-outline-error]')?.textContent).toMatch(/licence/i);
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(upload).not.toHaveBeenCalled();
+      expect(archiveFetch).not.toHaveBeenCalled();
       expect(store.draft()).toBe(before);
       await typeInto('[data-archive-license]', 'Public domain (author-verified)');
       await press('[data-archive-insert]');
       expect(overlaysOf().at(-1)!.credit).toMatchObject({ type: 'sourced', license: 'Public domain (author-verified)' });
     });
 
-    it('a failed image download changes nothing and shows why', async () => {
-      fetchMock.mockResolvedValue({ ok: false, status: 404 });
+    it('a refused or failed server download changes nothing and shows its message', async () => {
+      archiveFetch.mockRejectedValue(new Error('the archive has no image at that address (HTTP 404)'));
       await search([result()]);
       const before = store.draft();
       await press('[data-archive-insert]');
-      expect(q('[data-outline-error]')?.textContent).toMatch(/download/i);
-      expect(upload).not.toHaveBeenCalled();
+      expect(q('[data-outline-error]')?.textContent).toContain('HTTP 404');
       expect(store.draft()).toBe(before);
       expect(store.dirty()).toBe(false);
-    });
-
-    it('a download that cannot reach the archive (CORS, offline) shows the failure', async () => {
-      fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
-      await search([result()]);
-      const before = store.draft();
-      await press('[data-archive-insert]');
-      expect(q('[data-outline-error]')?.textContent).toMatch(/download/i);
-      expect(store.draft()).toBe(before);
-    });
-
-    it('a refused upload changes nothing', async () => {
-      upload.mockRejectedValue(new Error('that file type is not allowed'));
-      await search([result()]);
-      const before = store.draft();
-      await press('[data-archive-insert]');
-      expect(q('[data-outline-error]')?.textContent).toContain('that file type is not allowed');
-      expect(store.draft()).toBe(before);
     });
 
     it('a failed search shows the message and keeps the document', async () => {
@@ -557,7 +538,7 @@ describe('OutlinePane', () => {
       expect(store.draft()).toBe(before);
     });
 
-    it('narrates a stop summary into an audio overlay with the synthesiser credit', async () => {
+    it('narrates a stop summary into an audio overlay credited to the tour author, not the voice', async () => {
       narrate.mockResolvedValue({
         mediaId: 'nar-1.m4a', credit: { source: 's', license: 'Generated for this tour', creator: 'macOS voice Samantha' },
       });
@@ -565,8 +546,22 @@ describe('OutlinePane', () => {
       expect(narrate).toHaveBeenCalledWith('Stop words');
       const added = overlaysOf().at(-1)!;
       expect(added).toMatchObject({ kind: 'audio', mediaId: 'nar-1.m4a', display: { mode: 'marker' } });
-      expect(added.credit).toEqual({ type: 'original', creator: 'macOS voice Samantha', license: 'Generated for this tour' });
+      expect(added.title).toMatch(/synthesised/);
+      expect(added.credit).toEqual({ type: 'original', creator: 'M. Harrington', license: 'CC-BY-4.0' });
       expect(store.selectedId()).toBe(added.id);
+    });
+
+    it('narrating on a tour with no defaults asks for them first, then narrates', async () => {
+      store.load({ ...tour([stop('a', 1)]), defaults: null }); store.select('a'); fixture.detectChanges();
+      narrate.mockResolvedValue({ mediaId: 'nar-3.m4a', credit: { source: 's', license: 'L', creator: 'voice' } });
+      await press('[data-narrate]');
+      expect(q('[data-defaults-form]')).toBeTruthy();
+      expect(narrate).not.toHaveBeenCalled();
+      await typeInto('[data-defaults-creator]', 'Ada');
+      await typeInto('[data-defaults-license]', 'CC0');
+      await press('[data-defaults-submit]');
+      expect(narrate).toHaveBeenCalledTimes(1);
+      expect(overlaysOf().at(-1)!.credit).toEqual({ type: 'original', creator: 'Ada', license: 'CC0' });
     });
 
     it('narrates a selected overlay body into the same stop', async () => {

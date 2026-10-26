@@ -4,7 +4,7 @@ import {
   deleteStop, deriveHeading, legalModesFor, moveStop, renumberStops,
   setOverlayKind, slugify, uniqueId, updateOverlay,
   creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
-  setStopLocation, selectPanorama, archiveCredit, narrationCredit, narrationSource,
+  setStopLocation, selectPanorama, archiveCredit, narrationSource,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
 import type { Tour } from '../core/tour.models';
@@ -534,6 +534,15 @@ describe('stop location and panorama selection', () => {
     expect(selectPanorama(t, 's1', CAND)!.tour.stops[0].panorama.cachedPath).toBeNull();
   });
 
+  it('selectPanorama resets the bearing to the new camera heading, or north if unknown', () => {
+    const t = tour();
+    expect(t.stops[0].panorama.bearing).toBe(90);
+    expect(selectPanorama(t, 's1', { ...CAND, compassAngle: 200.5 })!.tour.stops[0].panorama.bearing).toBe(200.5);
+    expect(selectPanorama(t, 's1', { ...CAND, compassAngle: -10 })!.tour.stops[0].panorama.bearing).toBe(350);
+    expect(selectPanorama(t, 's1', CAND)!.tour.stops[0].panorama.bearing).toBe(0);
+    expect(selectPanorama(t, 's1', { ...CAND, compassAngle: null })!.tour.stops[0].panorama.bearing).toBe(0);
+  });
+
   it('selectPanorama refuses an unknown stop, a blank id and a non-finite position', () => {
     const t = tour();
     expect(selectPanorama(t, 'nope', CAND)).toBeNull();
@@ -589,11 +598,6 @@ describe('sourced and narration credits', () => {
     expect(archiveCredit({ ...found, itemUrl: null, imageUrl: null, rights: 'R' })).toBeNull();
   });
 
-  it('narrationCredit is an original credit naming the synthesiser, not the author', () => {
-    expect(narrationCredit({ source: 's', license: 'Generated', creator: 'macOS voice' }))
-      .toEqual({ type: 'original', creator: 'macOS voice', license: 'Generated' });
-  });
-
   it('addMediaOverlay uses a given credit and needs no tour defaults for it', () => {
     const t: Tour = { ...tour(), defaults: null };
     const credit = archiveCredit({ ...found, rights: 'R' })!;
@@ -607,7 +611,7 @@ describe('sourced and narration credits', () => {
 describe('narrationSource', () => {
   it('uses a stop summary or an overlay body, with the owning stop', () => {
     const t = tour([stop('s1', 1, [overlay('o1', { body: 'Overlay words' })], { summary: 'Stop words' })]);
-    expect(narrationSource(t, 's1')).toMatchObject({ stopId: 's1', text: 'Stop words' });
+    expect(narrationSource(t, 's1')).toMatchObject({ stopId: 's1', text: 'Stop words', title: expect.stringContaining('synthesised') });
     expect(narrationSource(t, 'o1')).toMatchObject({ stopId: 's1', text: 'Overlay words' });
   });
 

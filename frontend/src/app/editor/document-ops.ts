@@ -233,6 +233,11 @@ export interface PanoramaFix extends LngLatLike {
   imageId: string;
 }
 
+/** A search candidate: a fix plus the direction the camera faced, if known. */
+export interface PanoramaChoice extends PanoramaFix {
+  compassAngle?: number | null;
+}
+
 /**
  * The fix, but only if it belongs to this stop's panorama. Null otherwise.
  * This is the single gate every derivation passes through.
@@ -504,18 +509,21 @@ export function setStopLocation(
  * the camera stood. Null (nothing to change or publish) for an unknown stop,
  * a blank id or an unusable position.
  *
- * The replaced panorama's cached file is dropped: it is a render of the old
- * image and would show the wrong place.
+ * The replaced panorama's cached file is dropped (it renders the old image)
+ * and its bearing is reset (it was set for the old image).
  */
 export function selectPanorama(
-  tour: Tour, stopId: string, candidate: PanoramaFix,
+  tour: Tour, stopId: string, candidate: PanoramaChoice,
 ): { tour: Tour; fix: PanoramaFix } | null {
   const { imageId, lng, lat } = candidate;
   if (!tour.stops.some((s) => s.id === stopId)) return null;
   if (typeof imageId !== 'string' || !imageId.trim()) return null;
   if (!isNum(lng) || !isNum(lat) || Math.abs(lng) > 180 || Math.abs(lat) > 90) return null;
+  const bearing = isNum(candidate.compassAngle) ? ((candidate.compassAngle % 360) + 360) % 360 : 0;
   const next = mapStop(tour, stopId, (s) => ({
-    ...s, panorama: { ...s.panorama, imageId, cachedPath: null },
+    // bearing and cachedPath belonged to the image being replaced. The new
+    // view starts where the camera faced, or north when that is unknown.
+    ...s, panorama: { ...s.panorama, imageId, cachedPath: null, bearing },
   }));
   return { tour: next, fix: { imageId, lng, lat } };
 }
@@ -541,11 +549,6 @@ export function archiveCredit(
   };
 }
 
-/** The synthesiser's credit as an original credit: there is no url to cite, and the author did not make it. */
-export function narrationCredit(c: { source?: string; creator: string; license: string }): Credit {
-  return { type: 'original', creator: c.creator, license: c.license };
-}
-
 /** The words to narrate for a selection, and the stop the audio belongs to. */
 export function narrationSource(
   tour: Tour, selectedId: string | null,
@@ -554,12 +557,12 @@ export function narrationSource(
   for (const s of tour.stops) {
     if (s.id === selectedId) {
       const text = s.summary.trim();
-      return text ? { stopId: s.id, text, title: `Narration: ${s.title}` } : null;
+      return text ? { stopId: s.id, text, title: `Narration of ${s.title} (synthesised voice)` } : null;
     }
     const o = s.overlays.find((x) => x.id === selectedId);
     if (o) {
       const text = (o.body ?? '').trim();
-      return text ? { stopId: s.id, text, title: `Narration: ${o.title}` } : null;
+      return text ? { stopId: s.id, text, title: `Narration of ${o.title} (synthesised voice)` } : null;
     }
   }
   return null;
