@@ -1,7 +1,22 @@
 /* The viewer sizes itself to the viewport, so the wrapper must not get
    between it and the screen: it is a pass-through, there only to carry the
-   `hidden` that keeps the probing state off-screen. */
+   `hidden` that keeps the probing state off-screen.
+
+   Off-screen, not out of layout. `display: none` would be the obvious
+   reading of `hidden` — and it would hand the published visitor a blank
+   map. The viewer's tour-data/ fetches usually resolve before the probe
+   does, so `ViewerPage.ready()` flips while this wrapper is still hidden;
+   MapPane then builds its Leaflet map against a zero-size container, and
+   nothing in the app ever calls `invalidateSize`, so the map stays grey
+   after the reveal. `visibility: hidden` keeps the box and its size, which
+   is what Leaflet and the panorama measure, and the UA stylesheet's
+   `[hidden] { display: none }` has to be overridden by hand to get it. */
 :host { display: block; height: 100vh; }
 .viewer-slot { height: 100%; }
-.viewer-slot[hidden] { display: none; }
+.viewer-slot[hidden] {
+  display: block;
+  visibility: hidden;
+  /* It is invisible, not inert: nothing of it should be clickable. */
+  pointer-events: none;
+}
 .pending { padding: 2rem; color: #c9ccd3; }

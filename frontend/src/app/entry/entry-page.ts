@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { SessionApi, type SessionSummary } from '../core/session-api';
 import { ViewerPage } from '../viewer/viewer-page';
@@ -56,31 +56,46 @@ export class EntryPage {
    * 'probing' until the probe settles; then 'published' (show the viewer) or
    * 'welcome' (show the front door). A tour being open has no state of its
    * own: the navigation to '/edit' destroys this component, so 'probing' is
-   * what it was last, and the viewer stays hidden on the way out.
+   * what it was last, and the viewer stays hidden on the way out — unless
+   * that navigation fails, which falls back to 'published'.
    */
   protected readonly decision = signal<'probing' | 'published' | 'welcome'>('probing');
 
+  /** Whether this component is still the page. See `probe()`. */
+  private gone = false;
+
   constructor() {
+    inject(DestroyRef).onDestroy(() => { this.gone = true; });
     void this.probe();
   }
 
   private async probe(): Promise<void> {
-    let summary: SessionSummary;
-    try {
-      summary = await this.session.get(SESSION_PROBE_TIMEOUT_MS);
-    } catch {
-      // A refusal, a dead connection, a body that would not parse, a
-      // deadline: every one of them means no backend answered, and every
-      // one of them belongs to the published-site visitor.
+    // A refusal, a dead connection, a body that would not parse, a
+    // deadline: every one of them means no backend answered, so they all
+    // collapse into one answer that fails the shape check below.
+    const answer = await this.session.get(SESSION_PROBE_TIMEOUT_MS).catch(() => null);
+
+    // The visitor may have left '' inside the probe window — straight to
+    // '/view', say. Deciding on behalf of a component that is no longer the
+    // page would at best set a signal nobody reads, and at worst navigate
+    // them to '/edit' out of wherever they actually went.
+    if (this.gone) return;
+
+    if (!isSessionSummary(answer)) {
       this.decision.set('published');
       return;
     }
-    if (!isSessionSummary(summary)) {
-      this.decision.set('published');
-      return;
-    }
-    if (summary.open) {
-      void this.router.navigate(['/edit']);
+    if (answer.open) {
+      void this.router.navigate(['/edit']).catch(() => {
+        // The editor is a lazy chunk, so this navigation can fail for a
+        // reason that has nothing to do with the author: a dropped
+        // connection mid-fetch. Without this the page would stay hidden and
+        // empty for good, which is the exact failure '' used to have. A
+        // backend did answer, so `tour-data/` is being served and the
+        // viewer is an honest fallback: the author sees their tour, just
+        // not the editor.
+        this.decision.set('published');
+      });
       return;
     }
     this.decision.set('welcome');

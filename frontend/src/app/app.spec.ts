@@ -36,9 +36,10 @@ describe('app routing', () => {
     http.expectOne('/api/session').flush({ open: false });
   });
 
-  // '/view' is the viewer on its own, with no probe and no redirect: the
-  // editor's Preview link needs somewhere to send an author whose tour is
-  // open, which '' would bounce straight back to '/edit'.
+  // '/view' is the viewer on its own, with no probe and no redirect. The
+  // editor's Preview link (Task 7 adds it; editor-page.html has only Export
+  // and Publish today) will need somewhere to send an author whose tour is
+  // open, and '' would bounce them straight back to '/edit'.
   it("routes 'view' to the viewer", async () => {
     const harness = await RouterTestingHarness.create('/view');
     expect(harness.routeDebugElement?.componentInstance).toBeInstanceOf(ViewerPage);

@@ -51,6 +51,14 @@ describe('EntryPage', () => {
     return fixture;
   }
 
+  /** The probe settles on a microtask, and a rejected navigation one more
+   * microtask after that, so whenStable alone can run too early. */
+  async function settle(fixture: ComponentFixture<EntryPage>): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
   it('starts the viewer bootstrap without waiting for the probe', () => {
     const fixture = mount();
 
@@ -74,8 +82,7 @@ describe('EntryPage', () => {
   it('reveals the viewer when there is no backend', async () => {
     const fixture = mount();
     http.expectOne('/api/session').error(new ProgressEvent('error'));
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await settle(fixture);
 
     expect(decisionOf(fixture)).toBe('published');
     expect(viewerWrapper(fixture)?.hidden).toBe(false);
@@ -88,8 +95,7 @@ describe('EntryPage', () => {
     http.expectOne('/api/session').flush('<!doctype html><html></html>', {
       headers: { 'Content-Type': 'text/html' },
     });
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await settle(fixture);
 
     expect(decisionOf(fixture)).toBe('published');
     expect(viewerWrapper(fixture)?.hidden).toBe(false);
@@ -115,8 +121,7 @@ describe('EntryPage', () => {
   it('navigates to /edit when a tour is open', async () => {
     const fixture = mount();
     http.expectOne('/api/session').flush({ open: true, title: 'Old Town Fairfax' });
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await settle(fixture);
 
     expect(navigate).toHaveBeenCalledWith(['/edit']);
     // Still hidden on the way out: the author is being sent to the editor,
@@ -124,11 +129,36 @@ describe('EntryPage', () => {
     expect(viewerWrapper(fixture)?.hidden).toBe(true);
   });
 
+  it('falls back to the viewer when the editor chunk will not load', async () => {
+    navigate.mockRejectedValue(new Error('Failed to fetch dynamically imported module'));
+    const fixture = mount();
+    http.expectOne('/api/session').flush({ open: true, title: 'Old Town Fairfax' });
+    await settle(fixture);
+
+    // A failed navigation must not leave the page hidden and empty for
+    // good: a backend answered, so tour-data/ is being served.
+    expect(decisionOf(fixture)).toBe('published');
+    expect(viewerWrapper(fixture)?.hidden).toBe(false);
+  });
+
+  it('does not decide for a visitor who has already left', async () => {
+    const fixture = mount();
+    const probe = http.expectOne('/api/session');
+    fixture.destroy();
+
+    probe.flush({ open: true, title: 'Old Town Fairfax' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Navigating now would yank the visitor out of wherever they went
+    // instead of out of this page, which is no longer on screen.
+    expect(navigate).not.toHaveBeenCalled();
+    expect(decisionOf(fixture)).toBe('probing');
+  });
+
   it('shows the welcome screen when nothing is open', async () => {
     const fixture = mount();
     http.expectOne('/api/session').flush({ open: false });
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await settle(fixture);
 
     expect(decisionOf(fixture)).toBe('welcome');
     // The viewer is dropped, not merely hidden: nothing is open, so there is
