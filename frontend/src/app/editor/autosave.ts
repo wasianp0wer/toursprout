@@ -77,10 +77,21 @@ export class Autosave {
   private queued: Promise<void> | null = null;
 
   /**
-   * Set by `stop()`, cleared by `start()`. While set, no save may start and
-   * no save's outcome may be reported: see `stop()`.
+   * Which run of this service a save belongs to. `start()` and `stop()` both
+   * bump it, and every save captures it when it is asked for; a save whose
+   * generation is no longer the current one may neither start nor report
+   * anything.
+   *
+   * A counter rather than a "stopped" flag, because a request on the wire
+   * cannot be recalled and `stop()` deliberately leaves `inFlight` set
+   * (nulling it would permit two concurrent PUTs for two versions of the
+   * document). With a flag, a PUT for the tour that was just closed could
+   * settle AFTER the author had opened another one and `start()` had cleared
+   * the flag — and the 409 for the deleted session would then be reported in
+   * the NEW tour's editor, which is the same misleading message displaced
+   * one tour to the right. A counter never comes back round.
    */
-  private stopped = false;
+  private generation = 0;
 
   private readonly _status = signal<AutosaveStatus>('idle');
   readonly status = this._status.asReadonly();
@@ -96,8 +107,8 @@ export class Autosave {
    * debounce timer on top of the first.
    */
   start(): void {
-    this.stopped = false;
     if (this.watcher) return;
+    this.generation++;
     this.watcher = effect(
       () => {
         const draft = this.store.draft();
@@ -120,14 +131,15 @@ export class Autosave {
    * exists to remove. That is also why the close sequence stops autosave
    * BEFORE it deletes the session, not after.
    *
-   * A request already on the wire cannot be recalled, so `stopped` silences
-   * its outcome as well: what the server says about a tour that is being
-   * closed is no longer news the author can act on, good or bad. Anything
-   * queued behind it is dropped for the same reason. `start()` clears the
-   * flag, so re-entering the editor with another tour saves normally.
+   * A request already on the wire cannot be recalled, so the generation
+   * counter silences its outcome as well: what the server says about a tour
+   * that is being closed is no longer news the author can act on, good or
+   * bad — and it must not be said about the tour they open next either,
+   * which is why that guard is a counter and not a flag. Anything queued
+   * behind the in-flight save is dropped for the same reason.
    */
   stop(): void {
-    this.stopped = true;
+    this.generation++;
     this.clearTimer();
     this.watcher?.destroy();
     this.watcher = null;
@@ -162,15 +174,18 @@ export class Autosave {
    * `queued` above) rather than firing a second, concurrent PUT.
    */
   private save(): Promise<void> {
+    // Captured here, where the save is asked for, so a follow-up chained
+    // onto an in-flight save still belongs to the run that wanted it.
+    const generation = this.generation;
     if (this.inFlight) {
       if (!this.queued) {
         // `runSave` catches its own errors (see below) and so never
         // rejects, which is what makes chaining with a plain `.then` safe.
-        this.queued = this.inFlight.then(() => this.runSave());
+        this.queued = this.inFlight.then(() => this.runSave(generation));
       }
       return this.queued;
     }
-    return this.runSave();
+    return this.runSave(generation);
   }
 
   /**
@@ -194,11 +209,11 @@ export class Autosave {
    * that already read the draft. Re-checks `inFlight` because a caller can
    * slip in between the previous save clearing it and this running.
    */
-  private async runSave(): Promise<void> {
+  private async runSave(generation: number): Promise<void> {
     this.queued = null;
     // A follow-up chained onto an in-flight save cannot be unchained, so a
-    // stop between the two is caught here instead.
-    if (this.stopped) return;
+    // stop (or a restart) between the two is caught here instead.
+    if (generation !== this.generation) return;
     if (this.inFlight) return this.save();
     const draft = this.store.draft();
     if (!draft) return;
@@ -206,9 +221,10 @@ export class Autosave {
     this.inFlight = (async () => {
       try {
         await this.callPut(draft);
-        // Stopped mid-flight: the tour is being closed, so neither this
-        // save's success nor the draft's state is anything to report.
-        if (this.stopped) return;
+        // Stopped or restarted mid-flight: this save belongs to a tour that
+        // is being closed, so neither its success nor the draft's state is
+        // anything to report — least of all against whatever is open now.
+        if (generation !== this.generation) return;
         this._message.set(null);
         // Only if nothing newer arrived during the flight; otherwise the
         // follow-up is still owed and the draft is genuinely unsaved.
@@ -225,7 +241,7 @@ export class Autosave {
           void this.save();
         }
       } catch (err) {
-        if (this.stopped) return;
+        if (generation !== this.generation) return;
         this._status.set('error');
         this._message.set(messageFrom(err));
       } finally {

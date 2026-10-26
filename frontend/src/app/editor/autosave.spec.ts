@@ -460,6 +460,42 @@ describe('Autosave', () => {
       expect(autosave.message()).toBeNull();
     });
 
+    // The displaced-message case. A PUT for tour A is on the wire when the
+    // author closes it; by the time it 409s they have opened tour B and
+    // autosave has been started again. Nothing about tour A may be reported
+    // in tour B's editor — which a "stopped" flag that `start()` clears
+    // cannot prevent, because by then it has been cleared.
+    it('does not report a stale save against the tour opened after it', async () => {
+      const { resolvers } = pendingRejections();
+      store.load(tour());
+      autosave.start();
+      editAndDebounce('Second');
+      expect(putTour).toHaveBeenCalledTimes(1);
+
+      // Closing tour A, exactly as EditorPage does it.
+      autosave.stop();
+      store.clear();
+      // Opening tour B.
+      store.load(tour());
+      autosave.start();
+      flush();
+
+      // Only now does tour A's save fail, on the session that was deleted.
+      resolvers[0]({ status: 409, error: { detail: 'no tour is open' } });
+      await ticks();
+
+      expect(autosave.status()).toBe('idle');
+      expect(autosave.message()).toBeNull();
+
+      // And tour B is still being saved: the guard dropped the stale save,
+      // not autosave itself.
+      putTour.mockImplementation(() => Promise.resolve({ open: true } as SessionSummary));
+      editAndDebounce('Second');
+      await ticks();
+      expect(putTour).toHaveBeenCalledTimes(2);
+      expect(autosave.status()).toBe('saved');
+    });
+
     it('saves again once restarted', () => {
       store.load(tour());
       autosave.start();

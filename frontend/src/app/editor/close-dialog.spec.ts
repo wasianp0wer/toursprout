@@ -1,13 +1,15 @@
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach, vi, type MockInstance } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { CloseDialog } from './close-dialog';
 
-/** What the dialog handed to the browser to save, per anchor click. */
+/** What the dialog handed to the browser to save, per anchor click, and
+ * where the anchor was at the moment it was clicked. */
 interface Handoff {
   href: string;
   download: string;
+  inDocument: boolean;
 }
 
 describe('CloseDialog', () => {
@@ -15,6 +17,7 @@ describe('CloseDialog', () => {
   let fixture: ComponentFixture<CloseDialog>;
   let el: HTMLElement;
   let handoffs: Handoff[];
+  let revoke: MockInstance<typeof URL.revokeObjectURL>;
 
   const q = (sel: string) => el.querySelector(sel) as HTMLElement | null;
 
@@ -31,11 +34,15 @@ describe('CloseDialog', () => {
     // author, which is the whole point of fetching it rather than linking.
     handoffs = [];
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:tour');
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
       this: HTMLAnchorElement,
     ) {
-      handoffs.push({ href: this.getAttribute('href') ?? '', download: this.download });
+      handoffs.push({
+        href: this.getAttribute('href') ?? '',
+        download: this.download,
+        inDocument: document.body.contains(this),
+      });
     });
   });
 
@@ -80,10 +87,37 @@ describe('CloseDialog', () => {
     req.flush(new Blob(['x'.repeat(2048)]));
     await settle();
 
-    expect(q('[data-size]')?.textContent).toContain('2.0 kB');
-    expect(handoffs).toEqual([{ href: 'blob:tour', download: 'tour.zip' }]);
+    const kept = q('[data-size]')?.textContent ?? '';
+    expect(kept).toContain('2.0 kB');
+    // The archive was built and handed over; whether it reached the disk is
+    // the browser's business and the author's. On this screen of all
+    // screens, say only what is known.
+    expect(kept).not.toContain('Saved');
+    expect(kept).toContain('check your downloads');
+    // In the document when it was clicked, and gone again afterwards:
+    // inserting the anchor is a real historical requirement for a download
+    // click, and leaving it behind would litter the page.
+    expect(handoffs).toEqual([{ href: 'blob:tour', download: 'tour.zip', inDocument: true }]);
+    expect(document.querySelectorAll('a[download]').length).toBe(0);
+    // Not revoked out from under a save still being written: a big archive
+    // takes longer than a tick.
+    expect(revoke).not.toHaveBeenCalled();
     expect(confirm().disabled).toBe(false);
     expect(q('[data-export-failed]')).toBeNull();
+  });
+
+  it('disarms the close again if the author un-ticks the acknowledgement', () => {
+    mount();
+    const box = q('[data-acknowledge]') as HTMLInputElement;
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(confirm().disabled).toBe(false);
+
+    box.checked = false;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(confirm().disabled).toBe(true);
   });
 
   it('keeps close disabled until the author acknowledges instead', () => {
@@ -158,8 +192,15 @@ describe('CloseDialog', () => {
 
   it('takes focus when it opens', () => {
     mount();
+    const dialog = q('[data-close-dialog]')!;
     // The dialog itself, so a screen reader announces what it is, and so the
     // keys that dismiss it reach it without a click first.
-    expect(document.activeElement).toBe(q('[data-close-dialog]'));
+    expect(document.activeElement).toBe(dialog);
+    // One dialog, and it is the panel that holds the decision — not the
+    // backdrop, which is scenery.
+    expect(el.querySelectorAll('[role="dialog"]').length).toBe(1);
+    expect(dialog.getAttribute('role')).toBe('dialog');
+    expect(dialog.querySelector('#close-dialog-title')).toBeTruthy();
+    expect(dialog.querySelector('[data-confirm-close]')).toBeTruthy();
   });
 });

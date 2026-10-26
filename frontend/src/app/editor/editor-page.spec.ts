@@ -125,7 +125,10 @@ describe('EditorPage', () => {
     desc.dispatchEvent(new Event('input'));
     expect(store.draft()?.title).toBe('Second Tour');
     expect(store.draft()?.description).toBe('A walk');
+    // Left exactly as it was: a plain download link, not the dialog's blob
+    // fetch. The `download` attribute is half of what makes it that.
     expect(q('[data-export]')?.getAttribute('href')).toBe('/api/session/export');
+    expect(q('[data-export]')?.hasAttribute('download')).toBe(true);
     expect(q('[data-publish]')?.getAttribute('href')).toBe('/api/session/publish');
   });
 
@@ -244,6 +247,9 @@ describe('EditorPage', () => {
     expect(autosave.status()).not.toBe('error');
     expect(q('[data-autosave-error]')).toBeNull();
     expect(q('[data-autosave-status]')?.textContent).not.toContain('Save failed');
+    // And the draft is still here: the store is cleared AFTER the session is
+    // deleted, not before, so a close that fails leaves the tour intact.
+    expect(store.draft()).not.toBeNull();
 
     del.flush({ open: false });
     await settle();

@@ -7,6 +7,11 @@ import { SessionApi } from '../core/session-api';
 /** What the author's browser calls the archive it saves. */
 const BUNDLE_NAME = 'tour.zip';
 
+/** How long an object URL is left alive after the download is handed over.
+ * Long enough for the browser to have read the whole archive; see
+ * `offerToSave`. */
+const REVOKE_DELAY_MS = 1000;
+
 /**
  * The guard in front of closing a tour.
  *
@@ -35,17 +40,18 @@ const BUNDLE_NAME = 'tour.zip';
 @Component({
   selector: 'app-close-dialog',
   template: `
-    <!-- tabindex so the dialog itself can hold focus: see ngAfterViewInit. -->
-    <div
-      #surface
-      class="scrim"
-      data-close-dialog
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="close-dialog-title"
-      tabindex="-1"
-    >
-      <section class="panel">
+    <div class="scrim">
+      <!-- The panel is the dialog; the scrim behind it is only the backdrop.
+           tabindex so the dialog itself can hold focus: see ngAfterViewInit. -->
+      <section
+        #surface
+        class="panel"
+        data-close-dialog
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="close-dialog-title"
+        tabindex="-1"
+      >
         <h2 id="close-dialog-title">Close “{{ tourTitle() }}”?</h2>
         <p class="warning">
           This tour — {{ stopCount() }} {{ stopCount() === 1 ? 'stop' : 'stops' }}
@@ -60,7 +66,13 @@ const BUNDLE_NAME = 'tour.zip';
         </button>
 
         @if (sizeLabel(); as size) {
-          <p class="kept" data-size role="status">Saved {{ BUNDLE_NAME }} — {{ size }}.</p>
+          <!-- The archive was built and handed to the browser; where it
+               went is between the browser and the author. Claiming it was
+               saved would overclaim on the one screen whose job is honesty
+               about losing data. -->
+          <p class="kept" data-size role="status">
+            {{ BUNDLE_NAME }} — {{ size }} — check your downloads before closing.
+          </p>
         }
         @if (exportFailed(); as message) {
           <p class="failed" data-export-failed role="alert">
@@ -180,19 +192,33 @@ export class CloseDialog implements AfterViewInit {
   }
 }
 
-/** Hands a blob to the browser as a download, which needs a URL for it. */
+/**
+ * Hands a blob to the browser as a download, which needs a URL for it.
+ *
+ * The anchor goes into the document before it is clicked and comes out
+ * again afterwards. Current browsers activate a detached `download` anchor,
+ * but being in the document was a real requirement not long ago and is still
+ * why every save-a-blob helper appends and removes — and this code sits
+ * directly in front of "delete the only copy", where it is not worth being
+ * clever about.
+ */
 function offerToSave(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.hidden = true;
+  document.body.append(link);
   try {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
     link.click();
   } finally {
-    // Revoked on a later task, never here: the browser is still reading the
-    // URL when `click()` returns, and pulling it out from under the save
-    // cancels it.
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    link.remove();
+    // Revoked later, never here: the browser is still reading the URL when
+    // `click()` returns, and pulling it out from under a save that is still
+    // being written cancels it. A tens-of-megabyte bundle is exactly the
+    // case where a tick would not be enough, so the delay is generous — an
+    // object URL costs nothing to leave lying around for a second.
+    setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
   }
 }
 

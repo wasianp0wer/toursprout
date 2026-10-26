@@ -149,7 +149,10 @@ describe('WelcomePage', () => {
     await mount([]);
 
     const title = q('[data-new-title]') as HTMLInputElement;
-    title.value = 'Clifton';
+    // Typed with stray whitespace: the title is slugged into the tour's id,
+    // so it is trimmed before it is sent. (This assertion used to live in
+    // the editor's empty-state spec, which went away with the empty state.)
+    title.value = '  Clifton  ';
     title.dispatchEvent(new Event('input'));
     await settle();
     q('[data-new-tour]')!.click();
