@@ -1,7 +1,7 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { detectArrival } from './arrival';
 import { bearingBetween, type LngLatLike } from './geo';
-import type { InWorldPlacementLike } from '../align/align-mode';
+import type { InWorldPlacementLike } from '../editor/nudge';
 import type { Overlay, Stop, Tour } from './tour.models';
 
 /**
