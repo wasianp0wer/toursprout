@@ -12,7 +12,7 @@
  */
 import { bearingBetween, type LngLatLike } from '../core/geo';
 import type {
-  Credit, Display, Overlay, OverlayKind, Stop, Tour,
+  Credit, Display, InWorldDisplay, Overlay, OverlayKind, Stop, Tour,
 } from '../core/tour.models';
 
 export type DisplayMode = Display['mode'];
@@ -197,4 +197,78 @@ function mapStop(tour: Tour, stopId: string, fn: (s: Stop) => Stop): Tour {
 export function deriveHeading(anchor: LngLatLike, panorama: LngLatLike): number {
   const bearing = bearingBetween(anchor, panorama);
   return ((bearing % 360) + 360) % 360;
+}
+
+function mapOverlay(tour: Tour, overlayId: string, fn: (o: Overlay) => Overlay): Tour {
+  return {
+    ...tour,
+    stops: tour.stops.map((s) => ({
+      ...s, overlays: s.overlays.map((o) => (o.id === overlayId ? fn(o) : o)),
+    })),
+  };
+}
+
+/** Patch an overlay's geo anchor (lng, lat, altitudeM). */
+export function setOverlayAnchor(
+  tour: Tour, overlayId: string, patch: Partial<Omit<Overlay['anchor'], 'type'>>,
+): Tour {
+  return mapOverlay(tour, overlayId, (o) => ({ ...o, anchor: { ...o.anchor, ...patch } }));
+}
+
+/**
+ * Patch the numeric fields of an inWorld display. A no-op for any other mode,
+ * so a stale inspector field cannot grow stray keys on a marker.
+ */
+export function setInWorldField(
+  tour: Tour, overlayId: string,
+  patch: Partial<Pick<InWorldDisplay, 'headingDeg' | 'widthM' | 'heightM' | 'opacity'>>,
+): Tour {
+  return mapOverlay(tour, overlayId, (o) =>
+    o.display.mode === 'inWorld' ? { ...o, display: { ...o.display, ...patch } } : o);
+}
+
+/**
+ * Switch an overlay to another display mode. Refuses an illegal mode for the
+ * overlay's kind (returns the tour unchanged). Entering inWorld seeds the
+ * heading by derivation from the owning stop's panorama, not a typed default.
+ */
+export function setOverlayMode(tour: Tour, overlayId: string, mode: DisplayMode): Tour {
+  const owner = tour.stops.find((s) => s.overlays.some((o) => o.id === overlayId));
+  return mapOverlay(tour, overlayId, (o) => {
+    if (!legalModesFor(o.kind).includes(mode) || o.display.mode === mode) return o;
+    if (mode === 'marker') {
+      return { ...o, display: { mode, icon: o.kind === 'image' ? 'photo' : o.kind === 'audio' ? 'audio' : 'note' } };
+    }
+    if (mode === 'ambient') return { ...o, display: { mode, autoplay: false } };
+    const headingDeg = owner ? deriveHeading(o.anchor, owner.location) : 0;
+    return { ...o, display: { mode, opacity: 0.8, headingDeg, widthM: 4, heightM: 3 } };
+  });
+}
+
+/** Re-derive an inWorld overlay's heading from its stop's panorama position. */
+export function deriveOverlayHeading(tour: Tour, overlayId: string): Tour {
+  const owner = tour.stops.find((s) => s.overlays.some((o) => o.id === overlayId));
+  if (!owner) return tour;
+  return setInWorldField(tour, overlayId, {
+    headingDeg: deriveHeading(
+      owner.overlays.find((o) => o.id === overlayId)!.anchor, owner.location),
+  });
+}
+
+/** The credit's human-facing text: creator for original, source for sourced. */
+export function creditText(credit: Credit): string {
+  return credit.type === 'original' ? credit.creator : credit.source;
+}
+
+export function setCreditText(tour: Tour, overlayId: string, text: string): Tour {
+  return mapOverlay(tour, overlayId, (o) => ({
+    ...o,
+    credit: o.credit.type === 'original'
+      ? { ...o.credit, creator: text }
+      : { ...o.credit, source: text },
+  }));
+}
+
+export function setStopTitle(tour: Tour, stopId: string, title: string): Tour {
+  return mapStop(tour, stopId, (s) => ({ ...s, title }));
 }

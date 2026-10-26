@@ -25,3 +25,4 @@ button[data-new-tour] {
   font-weight: 600;
 }
 button[data-new-tour]:disabled { opacity: 0.6; cursor: default; }
+.panes { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(16rem, 1fr); gap: 1.5rem; }

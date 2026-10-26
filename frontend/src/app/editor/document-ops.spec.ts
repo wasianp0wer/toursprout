@@ -3,6 +3,7 @@ import {
   LastStopError, addStop, addTextOverlay, defaultCreditFor, deleteOverlay,
   deleteStop, deriveHeading, legalModesFor, moveStop, renumberStops,
   setOverlayKind, slugify, uniqueId, updateOverlay,
+  creditText, deriveOverlayHeading, setCreditText, setInWorldField, setOverlayAnchor, setOverlayMode,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
 
@@ -161,5 +162,53 @@ describe('defaultCreditFor', () => {
     const credit = defaultCreditFor({ ...tour(), defaults: null });
     expect(credit.type).toBe('original');
     expect((credit as { creator: string }).creator.trim().length).toBeGreaterThan(0);
+  });
+});
+
+describe('inspector helpers', () => {
+  const t = () => tour([stop('s1', 1, [
+    overlay('o1', { kind: 'image', display: { mode: 'marker', icon: 'photo' } })])]);
+  const get = (x: ReturnType<typeof tour>) => x.stops[0].overlays[0];
+
+  it('patches the anchor without mutating the input', () => {
+    const before = t();
+    const after = setOverlayAnchor(before, 'o1', { lng: -77.1 });
+    expect(get(after).anchor.lng).toBe(-77.1);
+    expect(get(before).anchor.lng).toBe(-77.3);
+  });
+
+  it('entering inWorld derives the heading from the stop location', () => {
+    const base = t();
+    base.stops[0].overlays[0].anchor = { type: 'geo', lng: -77.3, lat: 38.841, altitudeM: 2 };
+    const d = get(setOverlayMode(base, 'o1', 'inWorld')).display;
+    expect(d.mode).toBe('inWorld');
+    // stop is due south of the anchor
+    expect((d as { headingDeg: number }).headingDeg).toBeCloseTo(180, 3);
+  });
+
+  it('refuses a mode that is illegal for the kind', () => {
+    const base = tour([stop('s1', 1, [overlay('o1')])]);
+    expect(setOverlayMode(base, 'o1', 'inWorld')).toEqual(base);
+  });
+
+  it('setInWorldField ignores non-inWorld overlays', () => {
+    const base = t();
+    expect(get(setInWorldField(base, 'o1', { widthM: 9 })).display).toEqual(get(base).display);
+  });
+
+  it('re-derives heading after the anchor moves', () => {
+    let x = setOverlayMode(t(), 'o1', 'inWorld');
+    x = setInWorldField(x, 'o1', { headingDeg: 1 });
+    x = setOverlayAnchor(x, 'o1', { lat: 38.841 });
+    x = deriveOverlayHeading(x, 'o1');
+    expect((get(x).display as { headingDeg: number }).headingDeg).toBeCloseTo(180, 3);
+  });
+
+  it('edits credit text for original and sourced credits', () => {
+    const x = setCreditText(t(), 'o1', 'New Name');
+    expect(creditText(get(x).credit)).toBe('New Name');
+    const s = tour([stop('s1', 1, [overlay('o1', {
+      credit: { type: 'sourced', source: 'LoC', url: 'http://x', license: 'PD', creator: null } })])]);
+    expect(creditText(get(setCreditText(s, 'o1', 'NARA')).credit)).toBe('NARA');
   });
 });

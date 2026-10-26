@@ -1,0 +1,11 @@
+:host { display: block; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+button { background: #1c2026; color: #c9ccd3; border: 1px solid #343a44; border-radius: 4px; padding: 0.25rem 0.6rem; cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+.note { font-size: 0.75rem; color: #9aa0ab; }
+.error { color: #e8825b; }
+ol, ul { list-style: none; padding-left: 0; margin: 0.5rem 0; }
+ul { padding-left: 1.25rem; margin: 0; }
+.row { width: 100%; text-align: left; border: none; background: transparent; }
+li.selected > .row { background: #2a2f38; color: #e8b04b; }
+.kind { font-size: 0.7rem; color: #9aa0ab; margin-left: 0.4rem; }

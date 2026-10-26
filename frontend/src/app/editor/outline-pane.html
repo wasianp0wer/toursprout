@@ -1,0 +1,33 @@
+<nav class="outline">
+  <div class="toolbar">
+    <button type="button" data-add-stop (click)="addStop()">Add stop</button>
+    <button type="button" data-add-overlay [disabled]="!store.currentStop()" (click)="addOverlay()">Add text overlay</button>
+    <button type="button" data-add-image disabled>Add image</button>
+    <button type="button" data-add-audio disabled>Add audio</button>
+    <button type="button" data-move-up [disabled]="!store.selectedStop()" (click)="move(-1)" aria-label="Move stop up">Up</button>
+    <button type="button" data-move-down [disabled]="!store.selectedStop()" (click)="move(1)" aria-label="Move stop down">Down</button>
+    <button type="button" data-delete [disabled]="!store.selectedId()" (click)="remove()">Delete</button>
+  </div>
+  <p class="note" data-media-note>Image and audio overlays arrive with media upload.</p>
+  @if (store.lastError(); as err) {
+    <p class="error" data-outline-error role="alert">{{ err }}</p>
+  }
+  <ol class="stops">
+    @for (stop of stops(); track stop.id) {
+      <li [attr.data-stop]="stop.id" [class.selected]="store.selectedId() === stop.id">
+        <button type="button" class="row" data-select (click)="store.select(stop.id)">
+          {{ stop.order }}. {{ stop.title }}
+        </button>
+        <ul>
+          @for (o of stop.overlays; track o.id) {
+            <li [attr.data-overlay]="o.id" [class.selected]="store.selectedId() === o.id">
+              <button type="button" class="row" data-select (click)="store.select(o.id)">
+                {{ o.title }} <span class="kind">{{ o.kind }}</span>
+              </button>
+            </li>
+          }
+        </ul>
+      </li>
+    }
+  </ol>
+</nav>

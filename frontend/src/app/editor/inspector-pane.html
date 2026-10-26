@@ -1,0 +1,40 @@
+@if (overlay(); as o) {
+  <form class="inspector" (submit)="$event.preventDefault()">
+    <label>Title <input type="text" data-field="title" name="title" [ngModel]="o.title" (ngModelChange)="setText('title', $event)" /></label>
+    <label>Body <textarea data-field="body" name="body" [ngModel]="o.body ?? ''" (ngModelChange)="setText('body', $event)"></textarea></label>
+    <label>Credit <input type="text" data-field="credit" name="credit" [ngModel]="credit()" (ngModelChange)="setCredit($event)" /></label>
+    <label>Kind
+      <select data-field="kind" name="kind" [ngModel]="o.kind" (ngModelChange)="setKind($event)">
+        @for (k of kinds; track k) { <option [value]="k">{{ k }}</option> }
+      </select>
+    </label>
+    <label>Display mode
+      <select data-field="mode" name="mode" [ngModel]="o.display.mode" (ngModelChange)="setMode($event)">
+        @for (m of modes(); track m) { <option [value]="m">{{ m }}</option> }
+      </select>
+    </label>
+    <label>Longitude <input type="number" step="any" data-field="lng" name="lng" [ngModel]="o.anchor.lng" (ngModelChange)="setAnchor('lng', $event)" /></label>
+    <label>Latitude <input type="number" step="any" data-field="lat" name="lat" [ngModel]="o.anchor.lat" (ngModelChange)="setAnchor('lat', $event)" /></label>
+    <label>Altitude (m above ground) <input type="number" step="any" data-field="altitudeM" name="altitudeM" [ngModel]="o.anchor.altitudeM" (ngModelChange)="setAnchor('altitudeM', $event)" /></label>
+    @if (inWorld(); as w) {
+      <label>Heading (deg)
+        <input type="number" step="any" data-field="headingDeg" name="headingDeg" [ngModel]="w.headingDeg" (ngModelChange)="setInWorld('headingDeg', $event)" />
+      </label>
+      <div class="heading-row">
+        <button type="button" data-derive-heading (click)="derive()">Derive heading from panorama</button>
+        @if (headingOverridden()) {
+          <span class="override" data-heading-override>Manual override. Derive again to go back.</span>
+        }
+      </div>
+      <label>Width (m) <input type="number" step="any" data-field="widthM" name="widthM" [ngModel]="w.widthM" (ngModelChange)="setInWorld('widthM', $event)" /></label>
+      <label>Height (m) <input type="number" step="any" data-field="heightM" name="heightM" [ngModel]="w.heightM" (ngModelChange)="setInWorld('heightM', $event)" /></label>
+      <label>Opacity <input type="number" step="any" min="0" max="1" data-field="opacity" name="opacity" [ngModel]="w.opacity" (ngModelChange)="setInWorld('opacity', $event)" /></label>
+    }
+  </form>
+} @else if (stop(); as s) {
+  <form class="inspector" (submit)="$event.preventDefault()">
+    <label>Stop title <input type="text" data-field="stop-title" name="stopTitle" [ngModel]="s.title" (ngModelChange)="setStopTitle($event)" /></label>
+  </form>
+} @else {
+  <p class="hint" data-inspector-empty>Select a stop or overlay to edit it.</p>
+}

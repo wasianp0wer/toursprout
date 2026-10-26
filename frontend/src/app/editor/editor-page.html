@@ -19,6 +19,10 @@
     @if (autosave.status() === 'error' && autosave.message()) {
       <p class="fatal" data-autosave-error>{{ autosave.message() }}</p>
     }
-    <p class="placeholder">The outline, inspector, map and panorama panes arrive next.</p>
+    <div class="panes">
+      <app-outline-pane />
+      <app-inspector-pane />
+    </div>
+    <p class="placeholder">The map and panorama panes arrive next.</p>
   </section>
 }

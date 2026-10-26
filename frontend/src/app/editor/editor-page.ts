@@ -1,6 +1,8 @@
 import { Component, inject, signal } from '@angular/core';
 import { Autosave } from './autosave';
 import { EditorStore } from './editor-store';
+import { InspectorPane } from './inspector-pane';
+import { OutlinePane } from './outline-pane';
 import { SessionApi } from '../core/session-api';
 import { TourApi } from '../core/tour-api';
 
@@ -16,7 +18,7 @@ import { TourApi } from '../core/tour-api';
  */
 @Component({
   selector: 'app-editor-page',
-  imports: [],
+  imports: [OutlinePane, InspectorPane],
   templateUrl: './editor-page.html',
   styleUrl: './editor-page.css',
 })
