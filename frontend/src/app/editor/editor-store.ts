@@ -107,13 +107,32 @@ export class EditorStore {
 
   /** Replace the draft wholesale. Loading a document is not an edit. */
   load(tour: Tour): void {
+    this.clear();
     this._draft.set(tour);
-    this._selectedId.set(null);
     this._savedDoc.set(tour);
+  }
+
+  /**
+   * Back to no tour at all — for closing one.
+   *
+   * This store is providedIn root, so it outlives the editor page: without
+   * this, a closed tour's draft, selection and undo history would still be
+   * sitting here, and whatever opened next would be looking at them. Every
+   * field resets, which is also what `load` needs, so `load` is this plus
+   * the new document and nothing else can drift out of step with it.
+   */
+  clear(): void {
+    this._draft.set(null);
+    this._selectedId.set(null);
+    this._savedDoc.set(null);
     this._lastError.set(null);
     this._undoStack.set([]);
     this._manualHeadings.set(new Set());
     this._pendingDefaults.set(null);
+    // Keyed by imageId, so a stale fix is already ignored for another
+    // panorama; cleared anyway, because with no tour open there is no
+    // camera standing anywhere.
+    this._panoramaPosition.set(null);
   }
 
   select(id: string | null): void {

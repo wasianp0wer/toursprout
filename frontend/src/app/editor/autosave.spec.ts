@@ -400,4 +400,82 @@ describe('Autosave', () => {
     await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
     expect(autosave.status()).toBe('saved');
   });
+  // Closing a tour has to be able to switch autosave off. Everything below
+  // is about the one thing that must not happen afterwards: a save reporting
+  // itself against a session that is no longer there.
+  describe('stop', () => {
+    it('stops watching the draft, and says nothing is in progress', () => {
+      store.load(tour());
+      autosave.start();
+      autosave.stop();
+      store.apply((t) => addStop(t, 'Second'));
+      flush();
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS * 2);
+      expect(putTour).not.toHaveBeenCalled();
+      expect(autosave.status()).toBe('idle');
+      expect(autosave.message()).toBeNull();
+    });
+
+    it('cancels a debounced save that has not fired yet', () => {
+      store.load(tour());
+      autosave.start();
+      store.apply((t) => addStop(t, 'Second'));
+      flush();
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS - 1);
+      autosave.stop();
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+      expect(putTour).not.toHaveBeenCalled();
+    });
+
+    // Review Focus 3. The PUT was already on the wire when the tour was
+    // closed, so it lands on a session the close has deleted and the backend
+    // 409s it. Reporting that would paint "Save failed" over a close that
+    // worked, which is the misleading message this whole branch is about.
+    it('does not report a save that fails after it was stopped', async () => {
+      const { resolvers } = pendingRejections();
+      store.load(tour());
+      autosave.start();
+      editAndDebounce('Second');
+      expect(putTour).toHaveBeenCalledTimes(1);
+
+      autosave.stop();
+      resolvers[0]({ status: 409, error: { detail: 'no tour is open' } });
+      await ticks();
+
+      expect(autosave.status()).toBe('idle');
+      expect(autosave.message()).toBeNull();
+    });
+
+    it('clears a failure it had already reported', async () => {
+      putTour.mockRejectedValue({ status: 422, error: { detail: 'invalid document' } });
+      store.load(tour());
+      autosave.start();
+      store.apply((t) => addStop(t, 'Second'));
+      flush();
+      await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+      expect(autosave.status()).toBe('error');
+
+      autosave.stop();
+      expect(autosave.status()).toBe('idle');
+      expect(autosave.message()).toBeNull();
+    });
+
+    it('saves again once restarted', () => {
+      store.load(tour());
+      autosave.start();
+      autosave.stop();
+      autosave.start();
+      editAndDebounce('Second');
+      expect(putTour).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /** putTour calls that stay pending until the test rejects them. */
+  function pendingRejections() {
+    const resolvers: Array<(err: unknown) => void> = [];
+    putTour.mockImplementation(
+      () => new Promise<SessionSummary>((_resolve, reject) => { resolvers.push(reject); }),
+    );
+    return { resolvers };
+  }
 });

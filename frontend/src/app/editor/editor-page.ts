@@ -1,6 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { Autosave } from './autosave';
+import { CloseDialog } from './close-dialog';
 import { EditMapPane } from './edit-map-pane';
 import { EditPanoramaPane } from './edit-panorama-pane';
 import { EditorStore } from './editor-store';
@@ -11,22 +13,24 @@ import { SessionApi } from '../core/session-api';
 import { TourApi } from '../core/tour-api';
 
 /**
- * The editor's route shell: load whatever is open (or explain that nothing
- * is, and offer to start something) and keep autosave running underneath.
+ * The editor's route shell: load whatever is open and keep autosave running
+ * underneath, plus the one way out — closing the tour.
  *
- * Nothing being open is a normal state here, not an error — a fresh
- * checkout has an empty working directory, and that is not a failure the
- * author needs an actionable message about.
+ * Nothing being open is no longer something this page explains. The welcome
+ * screen at '/' owns getting a tour into the session, and an editor that
+ * also offered to start one would be a second front door, so arriving here
+ * with nothing open simply goes there.
  */
 @Component({
   selector: 'app-editor-page',
-  imports: [OutlinePane, InspectorPane, EditMapPane, EditPanoramaPane],
+  imports: [OutlinePane, InspectorPane, EditMapPane, EditPanoramaPane, CloseDialog],
   templateUrl: './editor-page.html',
   styleUrl: './editor-page.css',
 })
 export class EditorPage {
   private readonly sessionApi = inject(SessionApi);
   private readonly tourApi = inject(TourApi);
+  private readonly router = inject(Router);
   protected readonly store = inject(EditorStore);
   protected readonly autosave = inject(Autosave);
 
@@ -42,10 +46,20 @@ export class EditorPage {
 
   protected readonly loading = signal(true);
   protected readonly open = signal(false);
-  protected readonly starting = signal(false);
   protected readonly error = signal<string | null>(null);
-  /** What the author types before starting a new tour; the tour's id is slugged from it. */
-  protected readonly newTitle = signal('');
+  /** The close dialog is up. */
+  protected readonly closing = signal(false);
+  /** Why the close itself failed, if it did. Separate from `error`, which
+   * replaces the whole editor: a refused close leaves the tour open and
+   * editable, and hiding it behind a fatal message would be a lie. */
+  protected readonly closeFailed = signal<string | null>(null);
+  /**
+   * How many media files the session reported when it was opened. The only
+   * number on the close dialog that cannot be read off the draft — media
+   * lives on disk, not in the document — so an upload since then is not
+   * counted. Everything else the dialog says comes from the live draft.
+   */
+  protected readonly mediaCount = signal(0);
 
   constructor() {
     void this.init();
@@ -54,7 +68,18 @@ export class EditorPage {
   private async init(): Promise<void> {
     try {
       const summary = await this.sessionApi.get();
-      if (summary.open) await this.openDocument();
+      if (!summary.open) {
+        // `navigate` resolving false (a guard refused) strands the author as
+        // thoroughly as it rejecting, and silently, so both land here. With
+        // the empty state gone there is nothing else on this route to see.
+        const arrived = await this.router.navigate(['/']).catch(() => false);
+        if (!arrived) {
+          this.error.set('No tour is open, and the start screen could not be reached. Reload this page to go there.');
+        }
+        return;
+      }
+      this.mediaCount.set(summary.mediaCount ?? 0);
+      await this.openDocument();
     } catch (err) {
       this.error.set(initFailureMessage(err));
     } finally {
@@ -69,16 +94,42 @@ export class EditorPage {
     this.open.set(true);
   }
 
-  protected async startNewTour(): Promise<void> {
-    this.starting.set(true);
-    this.error.set(null);
+  protected askToClose(): void {
+    this.closeFailed.set(null);
+    this.closing.set(true);
+  }
+
+  /**
+   * Close the tour, in this order: stop autosave, delete the session, clear
+   * the draft, go to the front door.
+   *
+   * The order is the whole point. Autosave is stopped FIRST because a PUT
+   * already on the wire lands on a session this is about to delete, comes
+   * back 409, and would put "Save failed" on screen over a close that
+   * worked — the misleading message this branch exists to remove. Clearing
+   * the draft matters for the same reason: EditorStore is providedIn root
+   * and outlives this page, so a closed tour left in it is a tour the next
+   * screen can still see.
+   *
+   * Called only from the close dialog's confirmation, which does not arm
+   * until the author has the bundle or has said they do not want it.
+   */
+  protected async closeTour(): Promise<void> {
+    this.closing.set(false);
+    this.autosave.stop();
     try {
-      await this.sessionApi.newTour(this.newTitle().trim() || 'Untitled tour');
-      await this.openDocument();
-    } catch {
-      this.error.set('Could not start a new tour.');
-    } finally {
-      this.starting.set(false);
+      await this.sessionApi.close();
+    } catch (err) {
+      // Nothing was closed, so put the editor back exactly as it was,
+      // autosave included: the author's next keystroke must still be saved.
+      this.autosave.start();
+      this.closeFailed.set(err instanceof Error && err.message ? err.message : 'the request failed');
+      return;
+    }
+    this.store.clear();
+    const arrived = await this.router.navigate(['/']).catch(() => false);
+    if (!arrived) {
+      this.error.set('The tour is closed. Reload this page to go back to the start screen.');
     }
   }
 

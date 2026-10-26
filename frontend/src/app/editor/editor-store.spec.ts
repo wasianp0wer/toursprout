@@ -168,4 +168,27 @@ describe('EditorStore', () => {
     store.load(tour());
     expect(store.pendingDefaults()).toBeNull();
   });
+
+  // Closing a tour leaves this store in the process (it is providedIn root),
+  // so "no tour is open" has to be a state it can actually be in — otherwise
+  // the next screen is looking at the closed tour's draft.
+  it('clear leaves no trace of the tour that was open', () => {
+    store.load(tour());
+    store.apply((t) => addTextOverlay(t, 's1', 'A note'));
+    store.select('s1');
+    store.markHeadingManual('o1', true);
+    store.setPendingDefaults({ creator: 'Ada', license: 'CC0' });
+    store.setPanoramaPosition({ imageId: 'img-1', lng: -77.3, lat: 38.84 });
+
+    store.clear();
+
+    expect(store.draft()).toBeNull();
+    expect(store.selectedId()).toBeNull();
+    expect(store.canUndo()).toBe(false);
+    expect(store.dirty()).toBe(false);
+    expect(store.lastError()).toBeNull();
+    expect(store.manualHeadings().size).toBe(0);
+    expect(store.pendingDefaults()).toBeNull();
+    expect(store.panoramaPosition()).toBeNull();
+  });
 });

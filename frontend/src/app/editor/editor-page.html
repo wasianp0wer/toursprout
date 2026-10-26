@@ -2,30 +2,25 @@
   <p class="loading">Loading the editor…</p>
 } @else if (error()) {
   <p class="fatal" data-error>{{ error() }}</p>
-} @else if (!open()) {
-  <section class="empty" data-empty>
-    <h1>No tour is open</h1>
-    <p>Start a new tour to begin editing, or open an existing one from the command line.</p>
-    <form (submit)="$event.preventDefault(); startNewTour()">
-      <label>Tour title
-        <input type="text" data-new-title placeholder="Untitled tour" [value]="newTitle()" (input)="newTitle.set($any($event.target).value)" />
-      </label>
-    </form>
-    <button type="button" (click)="startNewTour()" [disabled]="starting()" data-new-tour>
-      {{ starting() ? 'Starting…' : 'New tour' }}
-    </button>
-  </section>
-} @else {
+} @else if (open()) {
   <section class="shell" data-shell>
     <header>
       <input class="tour-title" type="text" aria-label="Tour title" data-tour-title [value]="store.draft()?.title ?? ''" (input)="setTitle($any($event.target).value)" />
       <input class="tour-description" type="text" aria-label="Tour description" placeholder="A line about this tour" data-tour-description [value]="store.draft()?.description ?? ''" (input)="setDescription($any($event.target).value)" />
       <span class="autosave-status" data-autosave-status>{{ saveLabel() }}</span>
+      <!-- A plain link, not a routerLink, on purpose: the full page load is
+           what guarantees the viewer bootstraps `tour-data/` afresh, which
+           is exactly what a preview is for. -->
+      <a href="/view" data-preview>Preview</a>
       <a href="/api/session/export" download data-export>Export bundle</a>
       <a href="/api/session/publish" download data-publish>Publish site</a>
+      <button type="button" class="close-tour" data-close-tour (click)="askToClose()">Close tour</button>
     </header>
     @if (autosave.status() === 'error' && autosave.message()) {
       <p class="fatal" data-autosave-error>{{ autosave.message() }}</p>
+    }
+    @if (closeFailed(); as message) {
+      <p class="fatal" data-close-failed>The tour was not closed: {{ message }}.</p>
     }
     <div class="workspace">
       <div class="sidebar">
@@ -36,4 +31,13 @@
       <app-edit-panorama-pane />
     </div>
   </section>
+  @if (closing()) {
+    <app-close-dialog
+      [tourTitle]="store.draft()?.title ?? ''"
+      [stopCount]="store.draft()?.stops.length ?? 0"
+      [mediaCount]="mediaCount()"
+      (closed)="closeTour()"
+      (cancelled)="closing.set(false)"
+    />
+  }
 }

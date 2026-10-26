@@ -1,0 +1,58 @@
+:host { display: contents; }
+
+/* Over the editor, not beside it: the one decision on this screen that
+   cannot be undone should not have to compete with a map for attention. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(10, 12, 15, 0.72);
+}
+
+.panel {
+  box-sizing: border-box;
+  width: min(32rem, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  background: #171a1f;
+  border: 1px solid #343a44;
+  border-radius: 6px;
+  color: #c9ccd3;
+}
+
+.panel h2 { margin: 0; font-size: 1.1rem; color: #e8b04b; letter-spacing: 0.03em; }
+.warning { margin: 0; }
+.lead { margin: 0; color: #9aa0ab; }
+
+button { font: inherit; border-radius: 4px; cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+/* Keeping a copy is the action this dialog wants the author to take, so it
+   is the only one that looks like a button worth pressing. */
+.primary {
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  background: #e8b04b;
+  color: #0f1114;
+  border: none;
+  font-weight: 600;
+}
+
+.kept { margin: 0; color: #7fb069; }
+.failed { margin: 0; color: #e8825b; }
+
+.acknowledge { display: flex; gap: 0.5rem; align-items: baseline; font-size: 0.9rem; color: #9aa0ab; }
+
+.actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 0.25rem; }
+
+/* Deliberately the quietest thing here, and deliberately still obvious. */
+.quiet { padding: 0.4rem 0.9rem; background: transparent; color: #c9ccd3; border: 1px solid #343a44; }
+.danger { padding: 0.4rem 0.9rem; background: transparent; color: #e8825b; border: 1px solid #5c3a30; }

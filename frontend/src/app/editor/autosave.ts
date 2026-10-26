@@ -76,6 +76,12 @@ export class Autosave {
    */
   private queued: Promise<void> | null = null;
 
+  /**
+   * Set by `stop()`, cleared by `start()`. While set, no save may start and
+   * no save's outcome may be reported: see `stop()`.
+   */
+  private stopped = false;
+
   private readonly _status = signal<AutosaveStatus>('idle');
   readonly status = this._status.asReadonly();
 
@@ -90,6 +96,7 @@ export class Autosave {
    * debounce timer on top of the first.
    */
   start(): void {
+    this.stopped = false;
     if (this.watcher) return;
     this.watcher = effect(
       () => {
@@ -100,6 +107,33 @@ export class Autosave {
       },
       { injector: this.injector },
     );
+  }
+
+  /**
+   * Stop watching, and stop reporting — for closing a tour.
+   *
+   * This service is providedIn root, so it outlives the editor page. Closing
+   * a tour deletes the session it has been saving to, and without this the
+   * watcher would go on PUTting the stale draft at a session that is no
+   * longer there; the 409 that comes back would paint "Save failed" over a
+   * close that worked, which is exactly the misleading message this branch
+   * exists to remove. That is also why the close sequence stops autosave
+   * BEFORE it deletes the session, not after.
+   *
+   * A request already on the wire cannot be recalled, so `stopped` silences
+   * its outcome as well: what the server says about a tour that is being
+   * closed is no longer news the author can act on, good or bad. Anything
+   * queued behind it is dropped for the same reason. `start()` clears the
+   * flag, so re-entering the editor with another tour saves normally.
+   */
+  stop(): void {
+    this.stopped = true;
+    this.clearTimer();
+    this.watcher?.destroy();
+    this.watcher = null;
+    this.queued = null;
+    this._status.set('idle');
+    this._message.set(null);
   }
 
   /** Save right now, bypassing the debounce — e.g. before navigating away. */
@@ -162,6 +196,9 @@ export class Autosave {
    */
   private async runSave(): Promise<void> {
     this.queued = null;
+    // A follow-up chained onto an in-flight save cannot be unchained, so a
+    // stop between the two is caught here instead.
+    if (this.stopped) return;
     if (this.inFlight) return this.save();
     const draft = this.store.draft();
     if (!draft) return;
@@ -169,6 +206,9 @@ export class Autosave {
     this.inFlight = (async () => {
       try {
         await this.callPut(draft);
+        // Stopped mid-flight: the tour is being closed, so neither this
+        // save's success nor the draft's state is anything to report.
+        if (this.stopped) return;
         this._message.set(null);
         // Only if nothing newer arrived during the flight; otherwise the
         // follow-up is still owed and the draft is genuinely unsaved.
@@ -185,6 +225,7 @@ export class Autosave {
           void this.save();
         }
       } catch (err) {
+        if (this.stopped) return;
         this._status.set('error');
         this._message.set(messageFrom(err));
       } finally {

@@ -63,7 +63,8 @@ export class SessionApi {
   }
 
   /** Starts a brand-new skeleton tour. Only valid while nothing is open —
-   * the editor page's empty state is the only caller today. */
+   * the welcome screen is the only caller, and the only screen reached with
+   * nothing open. */
   newTour(title: string): Promise<SessionSummary> {
     return this.send(this.http.post<SessionSummary>('/api/session/new', { title }));
   }
