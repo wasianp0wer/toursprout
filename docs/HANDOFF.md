@@ -22,7 +22,7 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 405 backend (pytest), 598 frontend (Vitest); lint and production
+**Tests:** 407 backend (pytest), 598 frontend (Vitest); lint and production
 build clean via `make check`. Eager bundle 2.15 MB raw / 372.02 kB transferred;
 the editor is a lazy chunk, 102.13 kB raw / 23.77 kB transferred, and the
 welcome screen is another, 11.62 kB raw / 3.81 kB transferred.
@@ -131,8 +131,9 @@ The checklist for the first browser session, in the order to do it, is
   `content/examples/fairfax-old-town/`, whose `mediaDir` points at the shared
   `content/media/`. **Opening an example copies; it never mutates the
   example**, and nothing in `make content` writes to `content/examples/` —
-  that is true because no script under `content/scripts/` names the
-  directory, not because a test pins it.
+  pinned by two tests in `backend/tests/test_content.py` that read the scripts
+  and the Makefile's `content:` recipe as text and fail if either names that
+  directory.
 - **Publish.** `GET /api/session/publish` returns a static site (built app plus
   the working directory under `tour-data/`).
 - **Content pipeline.** `make content` still generates the seed tour
@@ -389,7 +390,8 @@ Every item below is still true as of 2026-10-26. None has been closed.
    does **not** resolve this and is not affected by it:
    `content/examples/fairfax-old-town/tour.json` is a frozen committed
    snapshot (identical in content to the seed tour today, but its own file),
-   and nothing in `make content` writes to `content/examples/`. That is why
+   and nothing in `make content` writes to `content/examples/` — which is now
+   a test rather than a coincidence (`test_content.py`). That is why
    the example's recorded figures stay reproducible whatever the pipeline
    does — and it is also one more copy of the document to keep in mind when
    this item is finally decided. Nobody here can
@@ -588,7 +590,10 @@ Two things worth keeping in mind afterwards:
   written down in `UNVERIFIED.md` entries 20 to 22 rather than left to be
   rediscovered.
 
-Figures after: 405 backend, 598 frontend.
+Figures after: 407 backend, 598 frontend. The last two of those arrived with
+this documentation pass rather than the feature: writing down "`make content`
+leaves `content/examples/` alone" turned out to be a claim nothing enforced,
+so `test_content.py` now enforces it.
 
 The front door has never been seen in a browser either, so it arrives with
 thirteen new `UNVERIFIED.md` entries, and the welcome screen is now that

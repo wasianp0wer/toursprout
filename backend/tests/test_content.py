@@ -139,3 +139,75 @@ def test_split_shape_rephoto_heading_is_also_derived_not_authored():
     assert overlay["anchor"] == {"type": "geo", "lng": -77.307, "lat": 38.846, "altitudeM": 8.0}
     assert overlay["display"]["widthM"] == 30
     assert overlay["display"]["heightM"] == 24
+
+
+# --- the pipeline and the shipped examples stay apart -----------------------
+
+REPO = Path(__file__).resolve().parents[2]
+SCRIPTS = REPO / "content" / "scripts"
+
+# Every spelling by which something here could reach `content/examples/`: the
+# quoted component a `Path(...) / "examples"` needs, the literal path, and the
+# module and constant that already know the directory's name
+# (`backend/app/examples.py`). Deliberately not a bare `examples`, which would
+# fail over the word appearing in a comment.
+EXAMPLES_REFERENCES = (
+    '"examples"',
+    "'examples'",
+    "content/examples",
+    "app.examples",
+    "EXAMPLES_DIRNAME",
+)
+
+
+def _names_the_examples_directory(text: str) -> list[str]:
+    return [ref for ref in EXAMPLES_REFERENCES if ref in text]
+
+
+def test_the_content_pipeline_never_names_the_examples_directory():
+    """`make content` must leave `content/examples/` alone, and this is the
+    test that makes that true rather than accidental.
+
+    The shipped example is a frozen committed snapshot precisely because the
+    pipeline overwrites what it generates: `make content` regenerates
+    `content/tours/fairfax-old-town.json` and silently reverts the hand-tuned
+    rephoto alignment in `de48b0d` (HANDOFF.md, Outstanding item 2). An
+    example that the pipeline could rewrite would have the same problem, and
+    its recorded figures -- stopCount 6, mediaCount 15, orphanCount 6 -- would
+    stop being reproducible.
+
+    Same idiom as the allowlist tie-tests in test_media_store.py: read the
+    source as text and fail when it says something it should not. If a script
+    genuinely needs to read an example one day, that is a deliberate decision
+    and this test is where to record it -- do not widen it to make a write
+    pass.
+    """
+    offenders = {
+        script.name: found
+        for script in sorted(SCRIPTS.glob("*.py"))
+        if (found := _names_the_examples_directory(script.read_text()))
+    }
+    assert offenders == {}, (
+        f"a content script now names the examples directory: {offenders}"
+    )
+
+
+def test_the_content_make_target_never_names_the_examples_directory():
+    """The other way `make content` could reach it: a recipe line of its own.
+
+    The scripts are not the whole of the target -- a `cp` or an `rm` in the
+    Makefile would write to `content/examples/` without any script mentioning
+    it -- so the recipe is read too. Only the `content:` target's own lines,
+    since the rest of the Makefile has no business being constrained by this.
+    """
+    lines = (REPO / "Makefile").read_text().splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("content:"))
+    recipe = []
+    for line in lines[start + 1:]:
+        if line and not line.startswith(("\t", " ")):
+            break
+        recipe.append(line)
+    assert recipe, "could not find the content: target's recipe"
+
+    found = _names_the_examples_directory("\n".join(recipe))
+    assert found == [], f"the content: target now names the examples directory: {found}"

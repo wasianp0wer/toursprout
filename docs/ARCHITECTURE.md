@@ -324,8 +324,13 @@ reproducible while `content/source/stops.json` and the seed tour drift
 (`HANDOFF.md`, Outstanding item 2). Its `mediaDir` points at the shared
 `content/media/`, because the pipeline regenerates those files under the same
 names; it is the document that drifts, so it is the document that is frozen.
-No test enforces the separation — it holds because no script under
-`content/scripts/` names the directory.
+The separation is **enforced, not accidental**:
+`test_the_content_pipeline_never_names_the_examples_directory` and
+`test_the_content_make_target_never_names_the_examples_directory`
+(`backend/tests/test_content.py`) read the scripts and the Makefile's
+`content:` recipe as text and fail if either names that directory. Same idiom
+as the allowlist tie-tests — this repository's answer to a documented
+guarantee is a test that fails.
 
 **A heading is never set without the panorama gate.** An in-world photograph's
 `headingDeg` must be derived from where the camera really stood, never from

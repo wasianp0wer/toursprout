@@ -46,11 +46,15 @@ make serve      # builds the frontend, serves everything on :8000
 ```
 
 Then open <http://localhost:8000>. FastAPI serves both the API and the built
-Angular bundle, so there is one process and no proxy. The viewer reads the tour
-that is open in the session, so a fresh checkout shows nothing until one is
-opened: `docs/HANDOFF.md` has the tested procedure for opening the committed
-Old Town Fairfax tour, and for starting an empty one, importing a `.zip`,
-exporting, and publishing a static site.
+Angular bundle, so there is one process and no proxy. `/` works out who is
+asking: with nothing in the session it shows a welcome screen, where *Old Town
+Fairfax* opens the committed six-stop tour — document, media and all — in one
+click, and where a `.zip` or a loose `tour.json` with its media folder can be
+dropped instead; with a tour open it goes straight to the editor; and on a
+published static site, where there is no backend to answer, it is the viewer.
+`/view` is the viewer with a backend up, which is what the editor's *Preview*
+link uses. `docs/HANDOFF.md` has the same operations as `curl`, for a terminal
+with no browser, plus exporting and publishing.
 
 ## Walking and comparing
 

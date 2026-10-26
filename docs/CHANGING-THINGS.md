@@ -4,17 +4,24 @@
 order to touch them**, then **what fails if you stop early**. Run everything
 through `make` (`make check` runs lint, both test suites and the build).
 
-Two of the project's rules are duplicated across Python and TypeScript, and a
-backend test reads the TypeScript source and fails when the copies drift:
+Several of the project's rules cannot be enforced by a type or an import, so a
+backend test reads the other side as **text** and fails when it drifts:
 
 - `test_the_frontend_mode_table_matches_this_one` in
-  `backend/tests/test_models.py` (display modes);
-- `test_the_frontend_extension_lists_match_the_allowed_types` in
-  `backend/tests/test_media_store.py` (media extensions).
+  `backend/tests/test_models.py` (display modes, Python vs TypeScript);
+- `test_the_frontend_extension_lists_match_the_allowed_types` and
+  `test_the_frontend_droppable_list_matches_the_import_allowlist` in
+  `backend/tests/test_media_store.py` (media extensions, and the welcome
+  screen's drop filter against the *import* allowlist);
+- `test_the_content_pipeline_never_names_the_examples_directory` and
+  `test_the_content_make_target_never_names_the_examples_directory` in
+  `backend/tests/test_content.py` (the shipped examples are a frozen snapshot,
+  so `make content` must not be able to write to them).
 
-That is the pattern to copy whenever you create a third duplicated rule: this
-repository's answer to documentation going stale is a test that fails. This
-file says plainly, entry by entry, where a test exists and where it does not.
+That is the pattern to copy whenever you create a rule that lives in two
+places, or a guarantee a document makes on code's behalf: this repository's
+answer to documentation going stale is a test that fails. This file says
+plainly, entry by entry, where a test exists and where it does not.
 Where one does not, the step is only a convention; do not trust the green
 build to catch it. For the shape of the system see
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
@@ -304,8 +311,9 @@ This rule lives in **three** places. Missing the third is how they drift.
 `DROPPABLE_MEDIA_EXTS` in `document-ops.ts` — what the welcome screen's drop
 filter accepts — is **derived** (`[...IMAGE_EXTS, '.jpeg', ...AUDIO_EXTS]`), so
 it is not a fifth copy and needs no edit. It mirrors `bundle.MEDIA_EXTENSIONS`,
-which is `ALLOWED_TYPES` plus `.jpeg` on the backend side, by the same
-construction. Keep both derived rather than listing extensions again: the
+which is `ALLOWED_TYPES` plus `.jpeg` on the backend side, and
+`test_the_frontend_droppable_list_matches_the_import_allowlist` ties the two
+together. Keep both derived rather than listing extensions again: the
 filter exists so the author reads "left out" instead of a refusal, and a drop
 filter stricter than the import allowlist silently discards media the backend
 would have taken.
@@ -441,4 +449,4 @@ repository renders a page, so entries 19 to 22 of
 | what `/` decides, or a route | `frontend/src/app/app.routes.ts`, then entry 10 |
 | the welcome screen's drop filter or its messages | `frontend/src/app/welcome/dropped-files.ts` (pure), then `welcome-page.ts` |
 | the close dialog's gate, or the bundle download | `frontend/src/app/editor/close-dialog.ts`; the teardown order is `editor-page.ts`'s `closeTour` |
-| a shipped example | `content/examples/<id>/example.json`; `backend/app/examples.py` reads it. `make content` must keep leaving that directory alone |
+| a shipped example | `content/examples/<id>/example.json`; `backend/app/examples.py` reads it. `make content` must keep leaving that directory alone, and `test_content.py` fails if a script or the `content:` recipe names it |
