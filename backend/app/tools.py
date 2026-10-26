@@ -24,7 +24,7 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel, Field, field_validator
 
-from .media_store import MediaError, sniff
+from .media_store import MAX_FILE_BYTES, MediaError, sniff
 
 UA = "clio-wired-prototype/0.1 (graduates@rrchnm.org)"
 
@@ -40,8 +40,12 @@ OVERPASS_MIRRORS = [
 # Per-request timeouts, seconds. Overpass is per mirror, with a total budget.
 MAPILLARY_TIMEOUT = 15.0
 LOC_TIMEOUT = 30.0  # loc.gov returns large payloads
-OVERPASS_TIMEOUT = 15.0
-OVERPASS_BUDGET = 40.0
+# The 45 s figures come from ONE observation: the live run measured Overpass
+# at 34-42 s per query (and one 502). A too-generous timeout costs a slower
+# failure; a too-tight one costs the feature outright, so these err long.
+# Adjust against your own network.
+OVERPASS_TIMEOUT = 45.0
+OVERPASS_BUDGET = 45.0
 SAY_TIMEOUT = 60.0
 FFMPEG_TIMEOUT = 60.0
 
@@ -175,7 +179,10 @@ def find_panoramas(client: httpx.Client, token: str, lng: float, lat: float,
         geom = img.get("computed_geometry") or img.get("geometry")
         if not geom or not img.get("id"):
             continue
-        ilng, ilat = geom["coordinates"]
+        try:
+            ilng, ilat = (float(v) for v in geom["coordinates"])
+        except (KeyError, TypeError, ValueError):
+            continue  # a malformed geometry is skipped, never a 500
         is_pano = bool(img.get("is_pano"))
         if pano_only and not is_pano:
             continue
@@ -443,6 +450,8 @@ class NarrateRequest(BaseModel):
 
 FETCH_ATTEMPTS = 5
 FETCH_TIMEOUT = 30.0
+# Total, across every attempt and redirect hop: 5 x 30 s would be minutes.
+FETCH_DEADLINE = 90.0
 MAX_REDIRECTS = 5
 
 
@@ -470,42 +479,72 @@ def check_archive_url(url: str) -> str:
     return url.strip()
 
 
+def _too_big() -> ToolError:
+    return ToolError(502, f"the archive image is larger than the {MAX_FILE_BYTES // (1024 * 1024)} MB limit")
+
+
+def _get_capped(client: httpx.Client, url: str, deadline: float) -> tuple[int, str | None, bytes]:
+    """One GET, streamed, returning (status, location, body). The body is
+    abandoned as soon as it passes MAX_FILE_BYTES, so a huge rendition never
+    sits whole in memory before the media store's own cap sees it; a declared
+    Content-Length over the cap is refused before a byte is read. The
+    per-request timeout only bounds each read, so `deadline` bounds the whole."""
+    with client.stream("GET", url, follow_redirects=False) as resp:
+        if resp.status_code != 200:
+            return resp.status_code, resp.headers.get("location"), b""
+        declared = resp.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > MAX_FILE_BYTES:
+            raise _too_big()
+        body = bytearray()
+        for chunk in resp.iter_bytes():
+            body += chunk
+            if len(body) > MAX_FILE_BYTES:
+                raise _too_big()
+            if time.monotonic() > deadline:
+                raise ToolError(502, "downloading the image took too long")
+        return 200, None, bytes(body)
+
+
 def fetch_archive_image(client: httpx.Client, url: str) -> bytes:
     """Download an archive image. Lifted from relevance.get_bytes_with_retry:
     transport failures and 5xx retry; 4xx means unavailable and does not.
     Redirects are followed by hand so each hop is re-checked against the
     allowlist. The body must be an image by its magic bytes, not by its
-    Content-Type."""
+    Content-Type. Streamed and size-capped, and bounded by FETCH_DEADLINE in
+    total across every attempt and hop."""
     current = check_archive_url(url)
     last = "no response"
+    deadline = time.monotonic() + FETCH_DEADLINE
     for attempt in range(FETCH_ATTEMPTS):
+        if time.monotonic() > deadline:
+            break
         try:
             hops = 0
             while True:
-                resp = client.get(current, follow_redirects=False)
-                if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("location"):
+                status, location, body = _get_capped(client, current, deadline)
+                if status in (301, 302, 303, 307, 308) and location:
                     hops += 1
                     if hops > MAX_REDIRECTS:
                         raise ToolError(502, "the archive redirected too many times")
-                    current = check_archive_url(str(httpx.URL(current).join(resp.headers["location"])))
+                    current = check_archive_url(str(httpx.URL(current).join(location)))
                     continue
                 break
-            if resp.status_code == 200:
+            if status == 200:
                 try:
-                    kind, _ext = sniff(resp.content)
+                    kind, _ext = sniff(body)
                 except MediaError:
                     kind = ""
                 if not kind.startswith("image/"):
                     raise ToolError(502, "the archive returned something that is not an image")
-                return resp.content
-            if resp.status_code < 500:
+                return body
+            if status < 500:
                 raise ToolError(
-                    502, f"the archive has no image at that address (HTTP {resp.status_code})")
-            last = f"HTTP {resp.status_code}"
+                    502, f"the archive has no image at that address (HTTP {status})")
+            last = f"HTTP {status}"
         except ToolError:
             raise
         except httpx.HTTPError as exc:
             last = _describe(exc)
         if attempt < FETCH_ATTEMPTS - 1:
             time.sleep(RETRY_PAUSE)
-    raise ToolError(502, f"could not download the image after {FETCH_ATTEMPTS} attempts ({last})")
+    raise ToolError(502, f"could not download the image ({last}; gave up after {FETCH_ATTEMPTS} attempts or {int(FETCH_DEADLINE)} s)")

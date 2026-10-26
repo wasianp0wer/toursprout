@@ -476,3 +476,78 @@ def test_archive_fetch_refuses_audio_bytes(client):
 def test_archive_fetch_needs_an_open_tour(client):
     r = client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"})
     assert r.status_code == 409
+
+
+@pytest.mark.parametrize("geometry", [
+    {"type": "Point"},                              # no coordinates
+    {"type": "Point", "coordinates": [-77.3]},      # too short
+    {"type": "Point", "coordinates": "nowhere"},    # wrong type
+    {"type": "Point", "coordinates": [None, 1]},
+])
+def test_panoramas_skip_a_malformed_geometry_instead_of_500ing(client, geometry):
+    body = {"data": [
+        {"id": "bad", "computed_geometry": geometry, "is_pano": True},
+        MAPILLARY_LIST["data"][2]]}
+    mock(client, lambda request: httpx.Response(200, json=body))
+    r = client.post("/api/tools/panoramas", json={"lng": -77.3062, "lat": 38.846})
+    assert r.status_code == 200
+    assert [c["imageId"] for c in r.json()["candidates"]] == ["near"]
+
+
+# --- archive-fetch: size and time bounds -----------------------------------
+
+def test_archive_fetch_aborts_a_body_that_outgrows_the_cap(client, monkeypatch):
+    open_tour(client)
+    monkeypatch.setattr("app.tools.MAX_FILE_BYTES", 1000)
+    pulled = []
+
+    def chunks():
+        yield JPEG
+        for _ in range(10_000):  # an endless-seeming body, no Content-Length
+            pulled.append(1)
+            yield b"\x00" * 500
+    mock(client, lambda request: httpx.Response(200, content=chunks()))
+    r = client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"})
+    assert r.status_code == 502
+    assert "limit" in r.json()["detail"]
+    assert len(pulled) < 10  # abandoned early, not read to the end
+
+
+def test_archive_fetch_refuses_early_on_a_declared_length(client, monkeypatch):
+    open_tour(client)
+    monkeypatch.setattr("app.tools.MAX_FILE_BYTES", 1000)
+    pulled = []
+
+    def chunks():
+        pulled.append(1)
+        yield JPEG
+    mock(client, lambda request: httpx.Response(
+        200, headers={"content-length": "5000000"}, content=chunks()))
+    r = client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"})
+    assert r.status_code == 502 and "limit" in r.json()["detail"]
+    assert not pulled
+
+
+def test_archive_fetch_gives_up_at_the_total_deadline(client, monkeypatch, fast_retry):
+    """Five attempts at 30 s each must not be allowed to add up."""
+    open_tour(client)
+    clock = [1000.0]
+    monkeypatch.setattr("app.tools.time.monotonic", lambda: clock[0])
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        clock[0] += 40  # each attempt "takes" 40 s and fails with a 503
+        return httpx.Response(503)
+    mock(client, handler)
+    r = client.post(FETCH, json={"imageUrl": "https://tile.loc.gov/t/1.jpg"})
+    assert r.status_code == 502
+    assert len(calls) == 3  # 90 s deadline: attempts at 0, 40, 80, then stop
+
+
+def test_overpass_timeouts_cover_the_only_measurement_we_have():
+    """The live run saw Overpass take 34-42 s. A timeout below that makes the
+    places tool fail every time, so pin the floor."""
+    from app import tools
+    assert tools.OVERPASS_TIMEOUT >= 42
+    assert tools.OVERPASS_BUDGET >= tools.OVERPASS_TIMEOUT
