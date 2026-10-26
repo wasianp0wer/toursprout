@@ -209,4 +209,98 @@ describe('Autosave', () => {
     await Promise.resolve();
     expect(autosave.status()).toBe('idle');
   });
+
+  function pendingPuts() {
+    const sent: unknown[] = [];
+    const resolvers: Array<(value: SessionSummary) => void> = [];
+    putTour.mockImplementation((doc: unknown) => {
+      sent.push(doc);
+      return new Promise<SessionSummary>((resolve) => { resolvers.push(resolve); });
+    });
+    return { sent, resolvers };
+  }
+
+  async function ticks(n = 6): Promise<void> {
+    for (let i = 0; i < n; i++) await Promise.resolve();
+  }
+
+  function editAndDebounce(name: string): void {
+    store.apply((t) => addStop(t, name));
+    flush();
+    vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+  }
+
+  // An edit that lands while the queued follow-up is itself on the wire must
+  // get its own PUT; it must not be folded into a follow-up that already
+  // read the draft before the edit.
+  it('saves an edit made during the follow-up save\'s flight', async () => {
+    const { sent, resolvers } = pendingPuts();
+    store.load(tour());
+    autosave.start();
+
+    editAndDebounce('Second');
+    expect(putTour).toHaveBeenCalledTimes(1); // first flight
+    editAndDebounce('Third');
+    expect(putTour).toHaveBeenCalledTimes(1);
+
+    resolvers[0]({ open: true } as SessionSummary);
+    await ticks();
+    expect(putTour).toHaveBeenCalledTimes(2); // follow-up now in flight
+
+    editAndDebounce('Fourth'); // lands during the follow-up's flight
+    const newest = store.draft();
+    expect(putTour).toHaveBeenCalledTimes(2);
+
+    resolvers[1]({ open: true } as SessionSummary);
+    await ticks();
+    expect(putTour).toHaveBeenCalledTimes(3);
+    expect(sent[2]).toBe(newest);
+
+    resolvers[2]({ open: true } as SessionSummary);
+    await ticks();
+    expect(store.dirty()).toBe(false);
+  });
+
+  it('does not mark clean when the draft changed during the save', async () => {
+    const { resolvers } = pendingPuts();
+    store.load(tour());
+    autosave.start();
+
+    editAndDebounce('Second');
+    editAndDebounce('Third'); // changes the draft during flight #1
+    resolvers[0]({ open: true } as SessionSummary);
+    await ticks();
+    // The follow-up is still on the wire, so the newest edit is unsaved.
+    expect(putTour).toHaveBeenCalledTimes(2);
+    expect(store.dirty()).toBe(true);
+  });
+
+  // A save()/flush() slipping into the microtask gap between one save
+  // clearing inFlight and the queued follow-up starting must not produce two
+  // concurrent PUTs. Sweep the injection point across the gap.
+  it.each([0, 1, 2, 3, 4, 5, 6])(
+    'never has two PUTs in flight when flush() runs %i microtasks after a save settles',
+    async (n) => {
+      let live = 0;
+      let maxLive = 0;
+      const resolvers: Array<(value: SessionSummary) => void> = [];
+      putTour.mockImplementation(() => {
+        live++;
+        maxLive = Math.max(maxLive, live);
+        return new Promise<SessionSummary>((resolve) => {
+          resolvers.push((v) => { live--; resolve(v); });
+        });
+      });
+      store.load(tour());
+      autosave.start();
+
+      editAndDebounce('Second');
+      editAndDebounce('Third'); // queues a follow-up
+      resolvers[0]({ open: true } as SessionSummary);
+      for (let i = 0; i < n; i++) await Promise.resolve();
+      void autosave.flush();
+      await ticks(10);
+      expect(maxLive).toBe(1);
+    },
+  );
 });

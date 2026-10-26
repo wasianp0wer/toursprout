@@ -131,18 +131,23 @@ export class Autosave {
       if (!this.queued) {
         // `runSave` catches its own errors (see below) and so never
         // rejects, which is what makes chaining with a plain `.then` safe.
-        const after = this.inFlight.then(() => this.runSave());
-        this.queued = after.finally(() => {
-          if (this.queued === after) this.queued = null;
-        });
+        this.queued = this.inFlight.then(() => this.runSave());
       }
       return this.queued;
     }
     return this.runSave();
   }
 
-  /** Does the actual PUT. Only ever called when nothing else is in flight. */
+  /**
+   * Does the actual PUT. `queued` is released the moment the follow-up
+   * STARTS running (not when it settles), so an edit arriving during its
+   * flight queues a genuinely new follow-up instead of being folded into one
+   * that already read the draft. Re-checks `inFlight` because a caller can
+   * slip in between the previous save clearing it and this running.
+   */
   private async runSave(): Promise<void> {
+    this.queued = null;
+    if (this.inFlight) return this.save();
     const draft = this.store.draft();
     if (!draft) return;
     this._status.set('saving');
@@ -151,7 +156,9 @@ export class Autosave {
         await this.api.putTour(draft);
         this._status.set('idle');
         this._message.set(null);
-        this.store.markClean();
+        // Only if nothing newer arrived during the flight; otherwise the
+        // follow-up is still owed and the draft is genuinely unsaved.
+        if (this.store.draft() === draft) this.store.markClean();
       } catch (err) {
         this._status.set('error');
         this._message.set(messageFrom(err));
