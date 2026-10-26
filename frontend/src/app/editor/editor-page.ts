@@ -140,6 +140,14 @@ export class EditorPage {
    *
    * Called only from the close dialog's confirmation, which does not arm
    * until the author has the bundle or has said they do not want it.
+   *
+   * `closing.set(false)` is FIRST, and that is a decision rather than a
+   * consequence of unmount order. Dismissing the dialog before the DELETE
+   * means a failed close leaves the author back on the editor with the
+   * dialog shut, so a second attempt costs them the export gate again. That
+   * is the safe default: re-acknowledging before a second attempt to delete
+   * the only copy of their tour is cheap, and an armed dialog left hanging
+   * over a close that did not happen is one click from doing it by accident.
    */
   protected async closeTour(): Promise<void> {
     this.closing.set(false);

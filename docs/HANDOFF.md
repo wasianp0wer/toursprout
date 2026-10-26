@@ -22,10 +22,10 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 407 backend (pytest), 599 frontend (Vitest); lint and production
-build clean via `make check`. Eager bundle 2.15 MB raw / 372.09 kB transferred;
-the editor is a lazy chunk, 102.13 kB raw / 23.77 kB transferred, and the
-welcome screen is another, 11.62 kB raw / 3.83 kB transferred.
+**Tests:** 410 backend (pytest), 605 frontend (Vitest); lint and production
+build clean via `make check`. Eager bundle 2.15 MB raw / 371.80 kB transferred;
+the editor is a lazy chunk, 102.13 kB raw / 23.78 kB transferred, and the
+welcome screen is another, 11.84 kB raw / 3.92 kB transferred.
 
 Two warnings in that run predate this branch and are not yours to chase: the
 backend suite reports two deprecations from inside starlette and fastapi
@@ -615,3 +615,39 @@ The front door has never been seen in a browser either, so it arrives with
 thirteen new `UNVERIFIED.md` entries, and the welcome screen is now that
 document's entry 1 — it is how you get a tour open before checking anything
 else.
+
+### What the whole-branch review changed afterwards
+
+Three things it found were worth fixing before handing the branch over, all
+of them the same shape: a guarantee the branch states in one place and does
+not keep in another.
+
+- **The drop zone was the hole in the one-tour guarantee.** `new` and the
+  examples route both 409 while a tour is open, because replacing
+  `content/work/` throws away the author's only copy of an unexported tour.
+  `POST /api/session/import-files` did not, so a drop onto a *stale* welcome
+  screen — a second tab left showing the front door — replaced the first
+  tab's tour silently. It now refuses in the same words. The `.zip` route has
+  the same hole and predates this branch; it is left for a follow-up rather
+  than widened into a review fix, and a `force` flag is the suggested shape.
+- **That route also wrote a big drop to disk twice before refusing it**, on
+  the event loop: staging copied every part into a temp tree, `write_bundle`
+  deflated the lot, and only `read_bundle` then applied the 5000-entry /
+  512 MB caps. Both are now checked off the parts list first, and the route
+  is a plain `def` so the copy runs in the threadpool rather than stalling
+  every other request this process serves. A folder of two thousand JPEGs is
+  not an exotic drop for someone who moves photographs on USB sticks.
+- **Two messages were nearly true, which is this branch's own defect to
+  commit.** A `.zip` dropped with anything beside it fell through to the
+  loose-file path and was reported as not being part of a tour; it now says a
+  bundle has to be dropped on its own. And the skipped notice gave the media
+  allow-list as its reason for a list that also holds AppleDouble sidecars,
+  whose names end `.jpg`; it now gives the general reason.
+
+Smaller: `entry-page.spec.ts` now asserts the "no further `/api` call" the
+design named and the tests had not; the window-level stray-drag guard no
+longer takes `preventDefault` from a text field or claims the whole page for
+a drag carrying no files; and `editor-page.ts` records why the close dialog
+shuts before the DELETE rather than after it.
+
+Figures after: 410 backend, 605 frontend.
