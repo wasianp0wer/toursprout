@@ -14,7 +14,13 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import media_store, tools
-from .bundle import BundleError, missing_media, write_bundle
+from .bundle import (
+    MAX_ENTRIES,
+    MAX_TOTAL_BYTES,
+    BundleError,
+    missing_media,
+    write_bundle,
+)
 from .config import Settings
 from .config import settings as default_settings
 from .examples import ExampleError, list_examples, open_example
@@ -84,6 +90,26 @@ def _reject_cross_site(request: Request) -> None:
         raise HTTPException(
             status_code=403, detail="cross-site requests are not allowed"
         )
+
+
+def _part_size(part: UploadFile) -> int:
+    """How many bytes a multipart part holds.
+
+    `UploadFile.size` is what the parser counted and is typed `int | None`,
+    so it is not something to arithmetic over unchecked. When it is missing,
+    measure the spooled file instead of either trusting a zero (which would
+    waive the cap) or assuming the worst (which would refuse a drop the
+    author could perfectly well have made). Seeking a `SpooledTemporaryFile`
+    reads nothing and the position is put back, so the staging that follows
+    still sees the stream at the start.
+    """
+    if part.size is not None:
+        return part.size
+    here = part.file.tell()
+    try:
+        return part.file.seek(0, os.SEEK_END)
+    finally:
+        part.file.seek(here)
 
 
 def _viewer_config(cfg: Settings) -> dict:
@@ -249,7 +275,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         return {**session.summary(), "warnings": warnings}
 
     @app.post("/api/session/import-files", dependencies=[Depends(_reject_cross_site)])
-    async def import_files(files: list[UploadFile]) -> dict:
+    def import_files(files: list[UploadFile]) -> dict:
         # A loose `tour.json` plus its media, for the author whose tour is
         # not zipped (the repository's own is not). Each part's filename is
         # its path relative to the bundle root. Staged into the same kind of
@@ -257,7 +283,60 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         # so nothing is validated twice or differently; the temp-file
         # discipline is that route's, except that the staging helper opens
         # the destination itself, so the mkstemp fd is closed straight away.
+        #
+        # Plain `def`, so FastAPI runs this in the threadpool, for the reason
+        # spelled out on `upload_media` below: `stage_loose_bundle` copies
+        # every part into a staging tree and then deflates the lot, which for
+        # a real media folder is seconds to minutes. On the event loop that
+        # stalls every other request this process serves — the `tour-data/`
+        # media the editor is displaying included — while the welcome screen
+        # shows "Opening…" with nothing to cancel. Nothing here awaits:
+        # `UploadFile.file` is a synchronous `SpooledTemporaryFile`, which is
+        # what the staging helper wants anyway.
         session = app.state.session
+        # Guarded before anything is staged, exactly as `import_example` is
+        # and for the identical reason: this replaces the working directory,
+        # and the author's only copy of an unexported tour is in it. The
+        # welcome screen is reached only when nothing is open, but a *stale*
+        # welcome screen in a second tab is ordinary, and there the drop zone
+        # must refuse for the same reason its two neighbouring controls do.
+        if session.is_open:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "a tour is already open; export it first, or close it "
+                    "before importing"
+                ),
+            )
+        # The caps, off the parts list, before a byte is written. Starlette
+        # has already spooled every part by the time this handler runs, but
+        # staging would then copy them ALL into a temp tree and deflate that
+        # into a zip — roughly twice the drop's size in $TMPDIR, on the
+        # machine whose working directory is the author's only copy — only
+        # for `read_bundle` to apply these same two limits and refuse. The
+        # zip route refuses from the archive's metadata for the same reason
+        # (`bundle.py:_check_safe`); this is the loose route's equivalent.
+        #
+        # These are an early-out, not the enforcement — `read_bundle` still
+        # counts real bytes as it extracts, and still has the last word. See
+        # `_part_size` for why a part's declared size is not simply summed.
+        if len(files) > MAX_ENTRIES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"too many files in the drop: {len(files)}, "
+                    f"limit {MAX_ENTRIES}"
+                ),
+            )
+        total = sum(_part_size(f) for f in files)
+        if total > MAX_TOTAL_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"that drop is too large: {total} bytes, "
+                    f"limit {MAX_TOTAL_BYTES}"
+                ),
+            )
         fd, tmp_name = tempfile.mkstemp(suffix=".zip")
         os.close(fd)
         staged = Path(tmp_name)

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import inspect
 import json
 import zipfile
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app import main
 from app.bundle import BundleError
 from app.config import Settings
 from app.loose_import import _media_name
@@ -106,13 +108,88 @@ def test_refuses_html_wearing_an_image_extension(client):
     assert res.status_code == 400
 
 
-def test_a_refused_drop_leaves_the_open_tour(client):
+def test_refuses_a_drop_while_a_tour_is_open(client):
+    """The hole the welcome screen's other two controls did not have.
+
+    A *stale* welcome screen is ordinary: the author opened the app in two
+    tabs and made a tour in one, so the other still shows the front door.
+    There, *New empty tour* 409s and *Open example* 409s, both because
+    replacing the working directory throws away the author's only copy of an
+    unexported tour. A VALID drop is the case that mattered — it needs no
+    refusal of its own to be stopped, so before this guard it simply
+    succeeded, and the other tab's tour was gone without a word.
+    """
     client.post("/api/session/new", json={"title": "Keep me"})
     res = client.post("/api/session/import-files", files=[
+        ("files", ("tour.json", tour_json(), "application/json")),
+        ("files", ("media/photo.jpg", JPEG, "image/jpeg")),
+    ])
+    assert res.status_code == 409
+    assert "already open" in res.json()["detail"]
+    assert client.get("/api/session").json()["title"] == "Keep me"
+
+
+def test_refuses_too_many_parts_before_staging_anything(client, monkeypatch):
+    """The count cap, and WHERE it is applied.
+
+    `read_bundle` already refuses more than `MAX_ENTRIES`, but only after
+    `stage_loose_bundle` has copied the whole drop into a staging tree and
+    deflated it into a zip — twice the drop's bytes written to $TMPDIR on
+    the machine whose working directory is the author's only copy. The spy is
+    the assertion that matters: the limits are checked off the parts list,
+    before a byte is written.
+
+    The constants are patched rather than honoured so that the test does not
+    have to post five thousand parts; the route reads them as module
+    globals for exactly this reason.
+    """
+    staged: list[object] = []
+    monkeypatch.setattr(main, "MAX_ENTRIES", 2)
+    monkeypatch.setattr(main, "stage_loose_bundle",
+                        lambda *a, **k: staged.append(a))
+    res = client.post("/api/session/import-files", files=[
+        ("files", ("tour.json", tour_json(), "application/json")),
+        ("files", ("media/photo.jpg", JPEG, "image/jpeg")),
+        ("files", ("media/other.jpg", JPEG, "image/jpeg")),
+    ])
+    assert res.status_code == 400
+    assert "too many" in res.json()["detail"]
+    assert staged == []
+
+
+def test_refuses_an_oversized_drop_before_staging_anything(client, monkeypatch):
+    """The byte cap. The frontend's own `MAX_FILES` caps the count but not
+    the size, and a folder of two thousand JPEGs is an ordinary thing for
+    someone who moves photographs on USB sticks: it is well under 2000 files
+    and far over 512 MB. Same spy, same reason.
+    """
+    staged: list[object] = []
+    monkeypatch.setattr(main, "MAX_TOTAL_BYTES", len(JPEG))
+    monkeypatch.setattr(main, "stage_loose_bundle",
+                        lambda *a, **k: staged.append(a))
+    res = client.post("/api/session/import-files", files=[
+        ("files", ("tour.json", tour_json(), "application/json")),
         ("files", ("media/photo.jpg", JPEG, "image/jpeg")),
     ])
     assert res.status_code == 400
-    assert client.get("/api/session").json()["title"] == "Keep me"
+    assert "too large" in res.json()["detail"]
+    assert staged == []
+
+
+def test_the_loose_route_runs_in_the_threadpool(client):
+    """Pinned on the endpoint itself, because no behavioural test here can
+    see it: TestClient serialises requests, so a blocked event loop looks
+    exactly like a working one.
+
+    `stage_loose_bundle` copies every part and deflates the lot — seconds to
+    minutes for a real media folder — and an `async def` would run all of
+    that on the event loop, stalling every other request the backend serves,
+    `tour-data/` media included. A plain `def` hands it to the threadpool.
+    Same reason `upload_media` is a plain `def`; see its comment.
+    """
+    route = next(r for r in client.app.routes
+                 if getattr(r, "path", None) == "/api/session/import-files")
+    assert not inspect.iscoroutinefunction(route.endpoint)
 
 
 def test_refuses_cross_site(client):

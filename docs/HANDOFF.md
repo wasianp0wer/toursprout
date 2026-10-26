@@ -118,7 +118,8 @@ The checklist for the first browser session, in the order to do it, is
   POST   /api/session/examples/{id}        409 if open, 404 unknown, 400 malformed
   POST   /api/session/import               form field `file`, one .zip
   POST   /api/session/import-files         form field `files`; each part's FILENAME is
-                                           its bundle-relative path (media/pano/x.jpg)
+                                           its bundle-relative path (media/pano/x.jpg);
+                                           409 if a tour is already open
   PUT    /api/session/tour                 the whole document; 409 if nothing is open
   POST   /api/session/media                one upload, through store_media
   GET    /api/session/export               the .zip; 409 on missing media
@@ -186,7 +187,9 @@ stale idea of the session, and saying so beats agreeing with it.
 
 Loose files go to a second import route, which is what the welcome screen's
 drop zone uses. Each part's *filename* is its path inside the bundle, so
-nested media keeps its directory:
+nested media keeps its directory. **Close the open tour first** — this
+replaces `content/work/`, so it 409s while a tour is open, exactly as `new`
+and the examples route do:
 
 ```sh
 curl -X POST localhost:8000/api/session/import-files \
