@@ -169,11 +169,21 @@ export class Autosave {
     this.inFlight = (async () => {
       try {
         await this.callPut(draft);
-        this._status.set('saved');
         this._message.set(null);
         // Only if nothing newer arrived during the flight; otherwise the
         // follow-up is still owed and the draft is genuinely unsaved.
         this.store.markSaved(draft);
+        if (this.store.draft() === draft) {
+          this._status.set('saved');
+        } else if (!this.store.dirty()) {
+          // The draft moved on and came back to the last-saved document (an
+          // undo during the flight): `dirty` is false so the watcher will
+          // never fire, yet disk holds `draft`, not the current draft. Owe
+          // the follow-up here. Chained behind this in-flight save, it
+          // re-reads the draft when it starts, like any queued save.
+          // (If dirty, the watcher has already scheduled one.)
+          void this.save();
+        }
       } catch (err) {
         this._status.set('error');
         this._message.set(messageFrom(err));

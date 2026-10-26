@@ -324,6 +324,39 @@ describe('Autosave', () => {
     expect(putTour).toHaveBeenLastCalledWith(original);
   });
 
+  // The residual of item 1: an undo back to the saved document WHILE an edit's
+  // PUT is in flight makes dirty false, so nothing would ever write the undo.
+  it('writes an undo made while the edit it undoes is still in flight', async () => {
+    const resolvers: Array<(value: SessionSummary) => void> = [];
+    putTour.mockImplementation(
+      () => new Promise<SessionSummary>((resolve) => { resolvers.push(resolve); }),
+    );
+    store.load(tour());
+    autosave.start();
+    const a = store.draft();
+    store.apply((t) => addStop(t, 'Second'));
+    flush();
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    expect(putTour).toHaveBeenCalledTimes(1);
+
+    store.undo();
+    flush();
+    expect(store.draft()).toBe(a);
+    expect(store.dirty()).toBe(false);
+
+    resolvers[0]({ open: true } as SessionSummary);
+    await vi.advanceTimersByTimeAsync(0);
+    // Disk holds B, the draft is A: not "saved" yet.
+    expect(autosave.status()).not.toBe('saved');
+    expect(putTour).toHaveBeenCalledTimes(2);
+    expect(putTour).toHaveBeenLastCalledWith(a);
+
+    resolvers[1]({ open: true } as SessionSummary);
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    expect(autosave.status()).toBe('saved');
+    expect(putTour).toHaveBeenCalledTimes(2);
+  });
+
   it('does not save, mark dirty or push undo for a refused transform', async () => {
     store.load(tour());
     autosave.start();
