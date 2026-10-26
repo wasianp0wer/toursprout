@@ -17,3 +17,6 @@ frontend/playwright-report/
 backend/.ruff_cache/
 backend/.pytest_cache/
 content/work/
+
+# Visual brainstorming companion mockups
+.superpowers/
