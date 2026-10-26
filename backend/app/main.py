@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .bundle import BundleError, missing_media, write_bundle
 from .config import Settings
 from .config import settings as default_settings
+from .media_store import MAX_FILE_BYTES, MediaError, store_media
 from .publish import PublishError, build_site
 from .session import Session, SessionConflict
 
@@ -181,6 +182,42 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             staged.unlink(missing_ok=True)
         session.write_config(_viewer_config(app.state.cfg))
         return {**session.summary(), "warnings": warnings}
+
+    @app.post("/api/session/media", dependencies=[Depends(_reject_cross_site)])
+    async def upload_media(file: UploadFile) -> dict:
+        session = app.state.session
+        if not session.is_open:
+            raise HTTPException(
+                status_code=409,
+                detail="no tour is open; call POST /api/session/new first",
+            )
+        # Same discipline as import: spool to disk, guard the temp file from
+        # the moment it exists. The copy stops one byte past the per-file
+        # cap, so an oversized upload is never held in memory whole.
+        fd, tmp_name = tempfile.mkstemp(suffix=".upload")
+        staged = Path(tmp_name)
+        try:
+            try:
+                with os.fdopen(fd, "wb") as tmp:
+                    shutil.copyfileobj(file.file, tmp)
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=400, detail=f"could not save the upload: {exc}"
+                ) from exc
+            if staged.stat().st_size > MAX_FILE_BYTES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"that file is over the {MAX_FILE_BYTES} byte limit",
+                )
+            try:
+                media_id = store_media(
+                    session.path, staged.read_bytes(), file.filename or ""
+                )
+            except MediaError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            staged.unlink(missing_ok=True)
+        return {**session.summary(), "mediaId": media_id}
 
     @app.get("/api/session/export")
     def export_bundle() -> Response:

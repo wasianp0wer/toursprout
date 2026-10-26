@@ -483,3 +483,66 @@ def test_tour_data_media_path_traversal_is_refused(media_clip):
 
     # The legitimate file must still be reachable afterward.
     assert client.get("/tour-data/media/clip.bin").content == payload
+
+
+JPEG = b"\xff\xd8\xff\xe0" + b"J" * 32
+
+
+def test_upload_media_stores_and_reports_it(client):
+    client.post("/api/session/new", json={"title": "T"})
+    r = client.post("/api/session/media",
+                    files={"file": ("../../x.html", JPEG, "text/html")})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mediaId"].endswith(".jpg") and "/" not in body["mediaId"]
+    assert body["mediaCount"] == 1
+    assert body["orphanCount"] == 1
+
+
+def test_upload_media_refuses_a_non_media_payload_with_400(client):
+    client.post("/api/session/new", json={"title": "T"})
+    r = client.post("/api/session/media",
+                    files={"file": ("a.jpg", b"<script>x</script>", "image/jpeg")})
+    assert r.status_code == 400
+    assert "not an allowed" in r.json()["detail"]
+    assert client.get("/api/session").json()["mediaCount"] == 0
+
+
+def test_upload_media_without_a_tour_is_409(client):
+    r = client.post("/api/session/media", files={"file": ("a.jpg", JPEG)})
+    assert r.status_code == 409
+
+
+def test_upload_media_refuses_a_cross_site_request(client):
+    client.post("/api/session/new", json={"title": "T"})
+    r = client.post("/api/session/media", files={"file": ("a.jpg", JPEG)},
+                    headers={"Sec-Fetch-Site": "cross-site"})
+    assert r.status_code == 403
+    assert client.get("/api/session").json()["mediaCount"] == 0
+
+
+def test_upload_media_oversize_is_400_and_leaves_no_temp_file(client, monkeypatch, tmp_path):
+    import tempfile
+
+    import app.media_store as ms
+    monkeypatch.setattr(ms, "MAX_FILE_BYTES", 10)
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "spool"))
+    (tmp_path / "spool").mkdir()
+    client.post("/api/session/new", json={"title": "T"})
+    r = client.post("/api/session/media", files={"file": ("a.jpg", JPEG)})
+    assert r.status_code == 400
+    assert list((tmp_path / "spool").iterdir()) == []
+
+
+def test_upload_media_spool_failure_is_400_and_leaves_no_temp_file(client, monkeypatch, tmp_path):
+    import shutil
+    import tempfile
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "spool"))
+    (tmp_path / "spool").mkdir()
+    def boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(shutil, "copyfileobj", boom)
+    client.post("/api/session/new", json={"title": "T"})
+    r = client.post("/api/session/media", files={"file": ("a.jpg", JPEG)})
+    assert r.status_code == 400
+    assert list((tmp_path / "spool").iterdir()) == []

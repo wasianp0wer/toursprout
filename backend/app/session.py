@@ -16,6 +16,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from .bundle import BUNDLE_VERSION, read_bundle
+from .media_store import orphan_ids
 from .migration import migrate_v1_to_v2
 from .models import Tour
 
@@ -168,6 +169,7 @@ class Session:
             "title": tour.title,
             "stopCount": len(tour.stops),
             "mediaCount": count,
+            "orphanCount": len(orphan_ids(self.path, tour)),
         }
 
     def _write_bundle_json(self, tour_id: str) -> None:
