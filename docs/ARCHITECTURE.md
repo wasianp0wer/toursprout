@@ -16,6 +16,14 @@ the page, which is why a published tour needs no server.
 ```
  browser                                   FastAPI (backend/app)            disk
  ───────                                   ─────────────────────            ────
+ entry    EntryPage ──GET /api/session──►  session.summary()
+            no answer → reveal the viewer in place (published site)
+            open:true → /edit       open:false → WelcomePage (lazy)
+
+ welcome  WelcomePage ─POST import / import-files / examples / new──────►  bundle.py,
+                                                                          loose_import.py,
+                                                                          examples.py
+                                                                             │
  viewer   ViewerPage ──GET tour-data/*──►  StaticFiles mount ────────────►  content/work/
                                            (/tour-data)                      ├─ bundle.json
  editor   EditorPage                                                         ├─ tour.json
@@ -23,6 +31,7 @@ the page, which is why a published tour needs no server.
                                     │            │                           └─ media/
                                     │            └──PUT /api/session/tour──► Session.write_tour
                                     └── ToolsApi / SessionApi ─/api/…──────► tools.py, media_store.py
+   CloseDialog ──GET export, then DELETE /api/session──────────────────────► Session.close
 ```
 
 ### Backend (`backend/app/`)
@@ -32,8 +41,10 @@ the page, which is why a published tour needs no server.
 | `models.py` | The schema, and the single source of truth for it: `Tour`, `Stop`, `Overlay` and its three axes (`kind`, `anchor`, `display`), the `Credit` union, `DISPLAY_MODES_BY_KIND`, `SCHEMA_VERSION`. See ADR 0001. |
 | `migration.py` | `migrate_v1_to_v2`: pure dict-in, dict-out. Stays in the tree because exported bundles in the wild are still v1. |
 | `session.py` | The open document: a working directory (`content/work/`, from `config.py`). `Session.write_tour` validates then swaps atomically; `Session.new`, `replace_from`, `write_config`, `summary`. |
-| `media_store.py` | The only door bytes enter `media/` through: sniffing, `ALLOWED_TYPES`, the content-hashed id, size caps, `orphan_ids`. |
-| `bundle.py` | The `.zip` form of the document: `write_bundle`, `read_bundle`, and everything that makes importing an untrusted archive safe. `missing_media` is shared with export. |
+| `media_store.py` | The **upload** door into `media/`: sniffing, `ALLOWED_TYPES`, the content-hashed id, size caps, `orphan_ids`. It is not the only door — import has its own, and the two are not interchangeable. See "Media comes in by two doors" below. |
+| `bundle.py` | The `.zip` form of the document: `write_bundle`, `read_bundle`, `stage_bundle_root`, and everything that makes importing an untrusted archive safe. `_check_media_file` is the import allowlist — see "Media comes in by two doors" below. `missing_media` is shared with export. |
+| `loose_import.py` | `stage_loose_bundle`: a loose `tour.json` plus its media parts, zipped into an ordinary bundle. It validates every path and then hands off, so a loose drop gets the same allowlist, migration, orphan warnings and atomic swap as a `.zip`. Nothing here writes to the working directory. |
+| `examples.py` | The tours that ship with the application: `list_examples`, `open_example`. An example is a directory under `content/examples/` holding `example.json` (id from the directory name, plus title, description, `document`, `mediaDir`) and a frozen `tour.json`. Opening one stages a bundle and hands it to `Session.replace_from`, so it is an import; it copies and never mutates the example. |
 | `publish.py` | `build_site`: the built Angular app plus the working directory under `tour-data/`, zipped. |
 | `tools.py` | The acquisition tools (panorama search, place search, archive search, archive image fetch, narration) as functions over an injectable `httpx.Client`. ADR 0004. |
 | `main.py` | `create_app`: the routes, the `/tour-data` mount, the SPA fallback, the cross-site guard (`_reject_cross_site`), and `_viewer_config`. Routing and HTTP status mapping only; the work is in the modules above. |
@@ -44,15 +55,71 @@ the page, which is why a published tour needs no server.
 | Folder | Owns |
 | --- | --- |
 | `core/` | Shared by viewer and editor. `tour.models.ts` (TypeScript mirror of the schema), `tour-api.ts` (`TourApi`: reads `tour-data/`), `tour-store.ts` (`TourStore`: the viewer's walking state), `arrival.ts`, `geo.ts`, `credit.ts`, `config-store.ts`. Also the two **editor-only** HTTP clients, `session-api.ts` and `tools-api.ts`, which live here but are never used by the viewer. |
-| `viewer/` | `viewer-page.ts` (`ViewerPage`): loads config and tour, composes `map/`, `panorama/`, `stop/`. Route `''` (and `**`). |
+| `entry/` | Route `''`. `entry-page.ts` (`EntryPage`): the three-way decision below, and `SESSION_PROBE_TIMEOUT_MS`. Eager, and deliberately small. Its CSS is load-bearing — read the comment in `entry-page.css` before changing it. |
+| `welcome/` | The front door, a lazy chunk reached only from `EntryPage`. `welcome-page.ts` (`WelcomePage`) and `dropped-files.ts`, which is the pure part: `readDroppedFiles` walks a dropped directory with `webkitGetAsEntry`, and `sortDrop` files each part under `media/`, keeps its nesting, and filters what a tour cannot contain. |
+| `viewer/` | `viewer-page.ts` (`ViewerPage`): loads config and tour, composes `map/`, `panorama/`, `stop/`. Routes `view` and `**`, and mounted in place by `EntryPage` at `''`. |
 | `map/`, `stop/` | The viewer's minimap (`map-pane.ts`, `route.ts`) and stop panel (`stop-panel.ts`). |
 | `panorama/` | Everything that touches mapillary-js or three.js, behind the `PanoramaViewer` interface (`panorama-viewer.ts`) and the `PANORAMA_VIEWER` token. `in-world-placement.ts`, `camera-sync.ts` and `edge-picker.ts` are the pure parts; `fake-viewer.ts` is the test double. Used by both the viewer and the editor. |
-| `editor/` | Route `edit`. `document-ops.ts` (pure document transforms), `editor-store.ts` (`EditorStore`: draft, selection, undo, dirty), `autosave.ts` (`Autosave`), and the surfaces: `outline-pane.ts`, `inspector-pane.ts`, `edit-map-pane.ts`, `edit-panorama-pane.ts`, assembled by `editor-page.ts`. Pure helpers: `footprint.ts`, `nudge.ts`; `recorder.ts` wraps `MediaRecorder`. ADR 0003. |
+| `editor/` | Route `edit`. `document-ops.ts` (pure document transforms), `editor-store.ts` (`EditorStore`: draft, selection, undo, dirty), `autosave.ts` (`Autosave`), `close-dialog.ts` (the guard in front of deleting the working copy), and the surfaces: `outline-pane.ts`, `inspector-pane.ts`, `edit-map-pane.ts`, `edit-panorama-pane.ts`, assembled by `editor-page.ts`. Pure helpers: `footprint.ts`, `nudge.ts`; `recorder.ts` wraps `MediaRecorder`. ADR 0003. |
 
-`app.routes.ts` is the whole router: `''` and `**` are `ViewerPage`, loaded
-eagerly; `edit` is `EditorPage`, lazy, so visitors never download editor code.
+`app.routes.ts` is the whole router: `''` is `EntryPage` and `view` and `**`
+are `ViewerPage`, all three eager; `edit` is `EditorPage` and the welcome
+screen is a `@defer` block inside `EntryPage`, both lazy, so visitors download
+neither.
 
-## Three flows
+### Routing: who is asking
+
+Three audiences arrive at `/`. A member of the public opening a published tour
+must get the tour. An author with a tour open should land in the editor. An
+author with nothing open needs somewhere to import a bundle or open an
+example, and is the only one of the three who may ever see the welcome
+screen — a published site that asked its visitors to import a `.zip` would
+have leaked the author's workbench, which is the failure `EntryPage` exists to
+prevent.
+
+A published site has no backend, so whether `/api/session` answers is the only
+signal that separates the two worlds. `EntryPage` therefore probes it once:
+
+| What the probe says | What happens |
+| --- | --- |
+| The request failed, or answered 200 with something that is not a session summary, or did not answer inside `SESSION_PROBE_TIMEOUT_MS` (2 s) | Reveal `ViewerPage` **in place**. No navigation, so the published URL is untouched. |
+| `{"open": true, …}` | Navigate to `/edit`. |
+| `{"open": false}` | Render the welcome screen, its own lazy chunk. |
+
+Three things about that are deliberate and are easy to undo by accident.
+
+- **A 200 is not proof of a backend.** A static host with SPA rewriting
+  answers every unknown path with `index.html`, so the body's *shape* is
+  checked (`isSessionSummary`: an object with a boolean `open`) and not just
+  the status. The cost of believing a 200 is showing the workbench to the
+  public.
+- **The viewer is mounted before the probe resolves, not after.** It is in the
+  DOM from the first paint and merely hidden, so its `tour-data/` fetches are
+  issued concurrently with the probe and the published visitor pays no extra
+  round trip — which is the same promise `''` kept by being `ViewerPage`
+  outright. It is hidden rather than shown because in an authoring checkout
+  with nothing open those fetches 404, and the viewer's "no tour is open"
+  message must not flash in front of an author on their way to `/edit`.
+- **Hidden means `visibility`, never `display`.** `.viewer-slot[hidden]` sets
+  `display: block; visibility: hidden; pointer-events: none`, and the
+  `display: block` is there to override the UA stylesheet's
+  `[hidden] { display: none }` by hand. With no layout box the viewer's
+  `tour-data/` fetches — which usually win the race against the probe — would
+  have `MapPane` initialise Leaflet against a 0×0 container, and **nothing in
+  `frontend/src` calls `invalidateSize` or watches for a resize**, so the map
+  would stay grey after the reveal. `entry-page.spec.ts` reads the CSS as text
+  and fails if `display: none` appears in that rule or if `display: block` and
+  `visibility: hidden` do not, because jsdom computes no layout and cannot
+  catch this any other way.
+
+`view` exists because `/` now goes to the editor whenever a tour is open, so
+without it the viewer is unreachable with a backend up; the editor's *Preview*
+is a plain `<a href="/view">` and the full page load is the point. `**` is
+still `ViewerPage` and not `EntryPage`, because the only URL that reaches it
+is `index.html` under `<base href="./">` on a static host — a published site
+by construction.
+
+## Four flows
 
 ### 1. A tour is read
 
@@ -77,9 +144,13 @@ The same code serves two very different hosts:
   `index.html` (`<base href="./">` in `frontend/src/index.html` is what makes
   the URLs relative).
 
-There is no "am I published?" check anywhere. One set of URLs is the whole
-reason a published site needs no backend. `config.json` is written by the
-backend on startup, `new` and `import` (`Session.write_config`, from
+There is no "am I published?" check anywhere **in the viewer**. One set of URLs
+is the whole reason a published site needs no backend. `EntryPage` does ask
+the question, once, at `''` — see "Routing: who is asking" above — but it asks
+it on the viewer's behalf and the viewer is never told the answer: it loads
+from `tour-data/` either way. `config.json` is written by the
+backend on startup and by every way a tour gets in — `new`, `import`,
+`import-files`, `examples` (`Session.write_config`, from
 `_viewer_config`); it is derived state, not part of the document, and is not
 in an exported bundle. The Mapillary token it carries is a public client
 token and does travel with a published site.
@@ -152,6 +223,35 @@ Export (`GET /api/session/export`, `write_bundle`) is the same idea without the
 application: `bundle.json`, `tour.json`, `media/`, with `config.json` and
 dotfiles left out, and a 409 if the tour references media that is missing.
 
+### 4. A tour gets in, and gets out again
+
+Four ways in, and they converge:
+
+```
+a .zip                 POST /api/session/import        ─┐
+a loose tour.json      POST /api/session/import-files  ─┤ stage a bundle zip
+  plus its media         (loose_import)                 ├► Session.replace_from
+a shipped example      POST /api/session/examples/{id} ─┘   (read_bundle: allowlist,
+  (examples)                                                 migration, warnings,
+                                                             staged atomic swap)
+an empty tour          POST /api/session/new           ──► Session.new (skeleton)
+```
+
+`replace_from` is the whole of it: the three import paths differ only in how
+they assemble a zip, so none of them repeats a validation, an allowlist, a
+migration or the swap. That is why adding a fifth way in means producing a
+bundle zip and handing it over, and not writing to the working directory —
+see entry 9 in [`CHANGING-THINGS.md`](CHANGING-THINGS.md).
+
+Out again is `DELETE /api/session` → `Session.close` → `_discard`, which is
+the only code that removes the working directory (`Session.new(force=True)`
+shares it). It refuses with 409 when nothing is open rather than agreeing with
+a caller whose idea of the session is stale. The frontend half is ordered and
+the order matters: autosave is stopped **before** the `DELETE`, because a
+`PUT` already on the wire would land on a dead session, come back 409 and put
+"Save failed" on screen over a close that worked; the draft store is cleared
+**after**, because `EditorStore` is `providedIn: 'root'` and outlives the page.
+
 ## What each layer may not do
 
 These constraints are the architecture. The file list above can be rediscovered
@@ -188,6 +288,44 @@ together (ADR 0004). The client sends bytes and receives a `mediaId`; it only
 ever *reads* ids (`TourApi.mediaUrl`, `mediaKindOf`). Imported bundles are held
 to the same definition (`bundle._check_media_file`), so the upload path is not
 the only one policed.
+
+**Media comes in by two doors, and they are not interchangeable.** Both decide
+what counts as media, both sniff the bytes, and swapping one for the other
+breaks a tour quietly.
+
+- `bundle._check_media_file` is the **import** door. It sniffs and
+  extension-checks and **preserves file names and nested directories**. It is
+  reached by `read_bundle`, and therefore by `POST /api/session/import`,
+  `POST /api/session/import-files` (through `loose_import.stage_loose_bundle`)
+  and `POST /api/session/examples/{id}` (through `examples.open_example`).
+- `media_store.store_media` is the **upload** door. It deliberately
+  **renames** every file to `<slug>-<contenthash><ext>` and writes it flat
+  into `media/`, which is what makes the "client never names a file" rule
+  above true. It is reached by `POST /api/session/media` and by the two tools
+  that produce a file (`archive-fetch`, `narrate`).
+
+**Every path that brings a whole tour in uses the import door. Never
+`store_media`.** The repository's own tour is the case that proves why: it
+references media by exact name (`court-1863.jpg`) and six panoramas by nested
+path (`"cachedPath": "media/pano/pano-historic-courthouse.jpg"`). Routed
+through `store_media`, all nine of those `mediaId`s would be renamed and
+`pano/` flattened under six new names, and the document would point at files
+that no longer exist under the names it uses —
+so the session's figures would not match and export would 409 on missing
+media instead. `test_opening_the_fairfax_example_matches_the_recorded_figures`
+in `backend/tests/test_examples.py` pins `stopCount` 6, `mediaCount` 15,
+`orphanCount` 6 and the surviving names and paths precisely so that this
+refactor fails loudly. The two lists also differ in content: import allows
+`.jpeg`, `ALLOWED_TYPES` does not.
+
+**Nothing in `make content` writes to `content/examples/`.** The shipped
+example is a frozen committed snapshot, which is what keeps its figures
+reproducible while `content/source/stops.json` and the seed tour drift
+(`HANDOFF.md`, Outstanding item 2). Its `mediaDir` points at the shared
+`content/media/`, because the pipeline regenerates those files under the same
+names; it is the document that drifts, so it is the document that is frozen.
+No test enforces the separation — it holds because no script under
+`content/scripts/` names the directory.
 
 **A heading is never set without the panorama gate.** An in-world photograph's
 `headingDeg` must be derived from where the camera really stood, never from

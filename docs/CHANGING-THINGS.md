@@ -234,10 +234,23 @@ A bundle is `bundle.json`, `tour.json` and `media/`, as a zip.
    working from files with no server; `app.routes.ts` keeps `**` pointing at
    `ViewerPage` so `https://host/tour/index.html` does not render a blank
    page.
-3. What `config.json` holds is `_viewer_config` in `main.py`; the viewer reads
+3. `''` is `EntryPage`, not the viewer: it probes `/api/session`, gets nothing
+   on a published site, and reveals the `ViewerPage` it already mounted. So a
+   published site now makes exactly one request that fails by design, and
+   **everything in `EntryPage` is downloaded and run by the public**. Keep it
+   small, keep the welcome screen inside its `@defer` block (importing
+   `WelcomePage` anywhere outside it silently pulls the chunk into the eager
+   bundle), and read "Routing: who is asking" in
+   [`ARCHITECTURE.md`](ARCHITECTURE.md) before touching `entry/entry-page.css`
+   — the three declarations on `.viewer-slot[hidden]` are what keep the
+   viewer's layout box while it is hidden, and without the box Leaflet
+   initialises at 0×0 and never recovers.
+4. What `config.json` holds is `_viewer_config` in `main.py`; the viewer reads
    it through `core/config-store.ts`.
-4. Anything the viewer newly needs must come from `tour-data/`. It must never
-   reach for `/api` (a published site has none).
+5. Anything the viewer newly needs must come from `tour-data/`. It must never
+   reach for `/api` (a published site has none). `EntryPage`'s probe is the
+   one `/api` call on the published path, and it belongs to the router, not to
+   the viewer.
 
 **Fails if incomplete:** `backend/tests/test_publish.py`
 (`test_the_site_contains_the_application_and_the_tour`,
@@ -245,8 +258,10 @@ A bundle is `bundle.json`, `tour.json` and `media/`, as a zip.
 `test_the_published_tour_document_is_the_working_one`); the spec *"reads
 everything from tour-data/ and never touches /api"* in
 `frontend/src/app/core/tour-api.spec.ts`; `viewer/viewer-page.spec.ts` for the
-viewer's loading. The Playwright suite in `frontend/tests/e2e/` (`make e2e`) can
-exercise the real thing but cannot run inside the Claude Code sandbox; nothing
+viewer's loading; `entry/entry-page.spec.ts` for the published branch — it
+covers a failed probe, a 200 of HTML, a timeout, and (by reading the CSS as
+text) the hidden-but-laid-out wrapper. The Playwright suite in
+`frontend/tests/e2e/` (`make e2e`) can exercise the real thing but cannot run inside the Claude Code sandbox; nothing
 in this repository's `make check` renders a page.
 
 ## 8. Change which media types are accepted
@@ -286,6 +301,15 @@ This rule lives in **three** places. Missing the third is how they drift.
 - `frontend/src/app/editor/recorder.ts`: `extensionFor`, only a hint for what
   the browser records; the server picks the real extension.
 
+`DROPPABLE_MEDIA_EXTS` in `document-ops.ts` — what the welcome screen's drop
+filter accepts — is **derived** (`[...IMAGE_EXTS, '.jpeg', ...AUDIO_EXTS]`), so
+it is not a fifth copy and needs no edit. It mirrors `bundle.MEDIA_EXTENSIONS`,
+which is `ALLOWED_TYPES` plus `.jpeg` on the backend side, by the same
+construction. Keep both derived rather than listing extensions again: the
+filter exists so the author reads "left out" instead of a refusal, and a drop
+filter stricter than the import allowlist silently discards media the backend
+would have taken.
+
 **The third duplication**: `frontend/src/app/core/tour.models.ts` mirrors
 `models.py` by hand with no drift test. `models.py`'s docstring says the
 frontend interfaces mirror the exported JSON Schema; in fact
@@ -296,6 +320,105 @@ property. Treat the TypeScript mirror as manual until someone writes that test.
 (`test_the_frontend_extension_lists_match_the_allowed_types`). Step 1 without a
 `SAMPLES` entry fails `test_allowed_types_covers_every_sample`. Nothing fails
 for the "four more" list.
+
+## 9. Add a new way of getting a tour into the session
+
+There are four today — a `.zip`, a loose `tour.json` plus its media, a shipped
+example, and an empty tour — and they converge on one function. A fifth
+belongs in that shape, not beside it.
+
+1. **Produce a bundle zip and hand it to `Session.replace_from`.** Do not
+   write to the working directory yourself. `replace_from` → `read_bundle` is
+   where the media allowlist, the schema migration, the orphan warnings and
+   the staged atomic swap live, and every one of them is a thing a second
+   implementation would get subtly wrong. `backend/app/bundle.py` gives you
+   `stage_bundle_root(root, document, media_streams)` and `write_bundle`;
+   `loose_import.stage_loose_bundle` and `examples.open_example` are the two
+   worked examples, and both are short because of it.
+2. **Use the import allowlist, never `store_media`.**
+   `bundle._check_media_file` preserves file names and nested directories;
+   `media_store.store_media` renames every file to `<slug>-<contenthash><ext>`
+   and flattens it into `media/`. A tour's document names its media, so the
+   upload door breaks every id it touches. See "Media comes in by two doors"
+   in [`ARCHITECTURE.md`](ARCHITECTURE.md). This is the single most expensive
+   mistake available in this area.
+3. **Filter in the frontend, refuse in the backend — both.** The route refuses
+   a part it does not recognise and refuses the whole drop with it, which is
+   correct defence in depth and a terrible way for an author to find out that
+   one `manifest.json` came along. So `welcome/dropped-files.ts` answers every
+   refusal it can see coming (`sortDrop`, `problemWith`) and reports what it
+   left out; the backend stays strict. Add a new refusal in `loose_import.py`
+   and you add its counterpart there, or the author pays a round trip to be
+   told something the screen already knew.
+4. `backend/app/main.py`: the route, under `/api/session/…`, with
+   `dependencies=[Depends(_reject_cross_site)]`. Map the module's exceptions
+   (`BundleError`, `ExampleError` → 400; an unknown id → 404) and refuse with
+   409 if a tour is already open *when the route replaces rather than
+   imports* — `new` and `examples` do, `import` and `import-files`
+   deliberately do not, because the welcome screen is the only caller and it
+   is only reachable with nothing open. Call
+   `session.write_config(_viewer_config(app.state.cfg))` afterwards, as every
+   other way in does, or the viewer has no Mapillary token.
+5. `frontend/src/app/core/session-api.ts`: the method, going through `send`
+   so a failure arrives as an `Error` carrying the backend's own `detail`.
+6. `frontend/src/app/welcome/welcome-page.ts`: the control, calling
+   `this.open(() => …)`. That helper owns the whole shape — set `busy`, show
+   the backend's message on failure, navigate to `/edit` only on success, and
+   leave `busy` set if the navigation itself fails so nothing can be used
+   against a session that now has a tour in it. Do not reimplement it.
+
+**Fails if incomplete:** `backend/tests/test_examples.py` and
+`test_loose_import.py` are the patterns to copy, and
+`test_opening_the_fairfax_example_matches_the_recorded_figures` is the one
+that catches step 2 — it pins `stopCount` 6, `mediaCount` 15, `orphanCount` 6
+and the surviving `media/pano/` paths against the repository's real content.
+Step 4's dependency is covered by a per-route test and nothing more —
+`test_delete_session_refuses_cross_site` in `test_session_api.py`,
+`test_post_example_refuses_cross_site` in `test_examples.py`,
+`test_refuses_cross_site` in `test_loose_import.py` — so **a new route that
+forgets `_reject_cross_site` fails nothing until you write its test**. Write
+it with the route. **Nothing fails** if you skip step 3: the drop simply
+gets refused whole, with the server's wording, which is the defect the front
+door was built to remove.
+
+## 10. Change what `/` decides, or add a route
+
+`frontend/src/app/app.routes.ts` is still the whole router, and its comment is
+the argument for each route's eagerness; read it before moving anything.
+
+1. `app.routes.ts`. `''` is `EntryPage` (eager), `view` and `**` are
+   `ViewerPage` (eager), `edit` is lazy, and `**` must stay last. A new
+   authoring route is lazy. A new route that a *published* site could reach
+   is a different question — there are only two such URLs, `/` and
+   `index.html` — and the answer is almost certainly no.
+2. `frontend/src/app/entry/entry-page.ts` for the decision itself. The three
+   outcomes and why each is what it is are in "Routing: who is asking"
+   ([`ARCHITECTURE.md`](ARCHITECTURE.md)). Two rules that are not obvious from
+   the code: a non-JSON 200 must be treated as "no backend", because that is
+   what a static host with SPA rewriting answers and the cost of believing it
+   is showing the workbench to the public; and anything that resolves the
+   probe must also check `gone`, because the visitor may have navigated away
+   inside the probe window and deciding on their behalf would move them.
+3. `entry/entry-page.html` and `entry-page.css` together. The viewer is
+   mounted from the first paint and hidden, so its `tour-data/` fetches run
+   concurrently with the probe; hiding it with `display: none` gives Leaflet a
+   0×0 container and there is no `invalidateSize` anywhere to recover. If you
+   need the probing state to show something, add it to the `probing` branch —
+   do not reveal the viewer earlier.
+4. `SESSION_PROBE_TIMEOUT_MS` if the deadline is what is wrong. It exists for
+   a host that black-holes `/api/session` rather than refusing it; the cost of
+   raising it is a longer blank page for that visitor, and the cost of
+   lowering it is an author with a slow backend being sent to the viewer.
+
+**Fails if incomplete:** `frontend/src/app/entry/entry-page.spec.ts` covers
+all three outcomes, the timeout, the HTML-200 case, the concurrent viewer
+bootstrap, the already-left case, and the CSS declarations (read as text,
+because jsdom computes no layout). `app.spec.ts` covers the route table
+itself: `''` to the entry page, `view` to the viewer, `edit` to the editor.
+**Nothing
+fails** if you break the published site's *appearance* — no test in this
+repository renders a page, so entries 19 to 22 of
+[`UNVERIFIED.md`](UNVERIFIED.md) are the only check that exists.
 
 ---
 
@@ -314,3 +437,8 @@ for the "four more" list.
 | a route or its error status | `backend/app/main.py` |
 | where the working directory lives | `backend/app/config.py` (`Settings.work_dir`) |
 | the seed tour | `content/source/stops.json`, `content/scripts/build_tour.py` (`make content`); `stops.json` has drifted and `make content` would revert the hand alignment, so see `HANDOFF.md` Outstanding item 2 first |
+| a way of getting a tour into the session | entry 9; produce a bundle zip and hand it to `Session.replace_from`, never `store_media` |
+| what `/` decides, or a route | `frontend/src/app/app.routes.ts`, then entry 10 |
+| the welcome screen's drop filter or its messages | `frontend/src/app/welcome/dropped-files.ts` (pure), then `welcome-page.ts` |
+| the close dialog's gate, or the bundle download | `frontend/src/app/editor/close-dialog.ts`; the teardown order is `editor-page.ts`'s `closeTour` |
+| a shipped example | `content/examples/<id>/example.json`; `backend/app/examples.py` reads it. `make content` must keep leaving that directory alone |

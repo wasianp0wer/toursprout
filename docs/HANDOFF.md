@@ -22,13 +22,21 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 320 backend (pytest), 528 frontend (Vitest); lint and production
-build clean via `make check`. Eager bundle 2.13 MB raw / 371.39 kB transferred;
-the editor is a lazy chunk, 102.69 kB raw / 23.88 kB transferred.
+**Tests:** 405 backend (pytest), 598 frontend (Vitest); lint and production
+build clean via `make check`. Eager bundle 2.15 MB raw / 372.02 kB transferred;
+the editor is a lazy chunk, 102.13 kB raw / 23.77 kB transferred, and the
+welcome screen is another, 11.62 kB raw / 3.81 kB transferred.
 
-**The editor has never been seen in a browser.** No browser can launch in the
-development sandbox, so the editor, its microphone recording and its
-acquisition tools have *never* been seen running. Their verification is the
+Two warnings in that run predate this branch and are not yours to chase: the
+backend suite reports two deprecations from inside starlette and fastapi
+(`httpx` with `starlette.testclient`, and the `anyio.abc.BlockingPortal`
+alias), and `ng build` warns that `leaflet`, used by `edit-map-pane.ts`, is
+not ESM and may cause optimization bailouts.
+
+**The editor and the welcome screen have never been seen in a browser.** No
+browser can launch in the development sandbox, so the editor, its microphone
+recording, its acquisition tools and the whole front door — drop zone, close
+dialog and all — have *never* been seen running. Their verification is the
 jsdom suite plus the backend tests, which prove the logic, not the pixels. The
 viewer predates the editor and was probably worked on with a browser in
 earlier sessions (the hand alignment in `de48b0d` was probably tuned by eye),
@@ -40,7 +48,25 @@ The checklist for the first browser session, in the order to do it, is
 
 **What exists:**
 
-- **Viewer** (`/`). Six stops, all working: Historic Courthouse, Marr Monument,
+- **A front door** (`/`). `''` is no longer the viewer: it is a small eager
+  `EntryPage` that probes `GET /api/session` with a 2 s deadline and resolves
+  three ways. Request failed, a 200 that is not a session summary (what a
+  static host with SPA rewriting answers), or the deadline → render the
+  **viewer in place**, no navigation, which is the published-site case.
+  `{open: true}` → go to `/edit`. `{open: false}` → the welcome screen, a
+  lazy chunk. The viewer is mounted from the first paint and merely hidden
+  while the probe runs, so its `tour-data/` fetches are already in flight and
+  a published visitor pays no extra round trip. See `ARCHITECTURE.md`,
+  "Routing: who is asking".
+- **Welcome screen** (the `{open: false}` branch of `/`). The only screen that
+  can get a tour into the session, and there are four ways: drop or browse to
+  a `.zip` bundle; drop or browse to a loose `tour.json` with its `media`
+  folder (the document must be named exactly `tour.json`); start an empty
+  tour from a title; or open an example in one click. Guide links are present
+  and inert by the author's decision. With no examples configured the example
+  block is absent, which is the state every author but this one is in.
+- **Viewer** (`/view`, and `/` on a published site). Six stops, all working:
+  Historic Courthouse, Marr Monument,
   Old Town Hall, Ratcliffe-Allison-Pozer House, Fairfax Museum, City Hall.
   Ground arrows navigate image by image; the arrow toward the next stop is
   highlighted (mapillary-js `highlightId`). Arriving at a stop's designated
@@ -51,17 +77,62 @@ The checklist for the first browser session, in the order to do it, is
   in and the rest hidden. The Leaflet minimap has numbered pins and a route
   polyline; the current stop is gold and drawn on top; clicking a pin moves the
   tour. The viewer loads everything from `tour-data/` beside the page, with no
-  `/api` call.
+  `/api` call. `/view` exists because `/` now goes to the editor whenever a
+  tour is open; `**` still resolves to the viewer for `index.html` under
+  `<base href="./">`.
 - **Editor** (`/edit`). Four surfaces over one draft: outline, numeric
   inspector, editable map, editable panorama; undo; debounced autosave through
   the session API. It names the tour, writes stop text, places media, uploads
   images and audio, records narration from the microphone, and has four
   acquisition tools (panoramas, places, archive search/fetch, narration) backed
-  by `backend/app/tools.py`.
+  by `backend/app/tools.py`. Its top bar carries *Preview* (a plain link to
+  `/view`, so a full page load) beside Export and Publish. It no longer has a
+  "no tour is open" empty state — the welcome screen owns creating a tour, so
+  `/edit` with nothing open navigates to `/`.
+- **Close tour** (the editor's top bar). The only way back to the front door,
+  and it is guarded, because the working directory is the only copy that
+  exists: the dialog names the tour, its stop count and its media count, says
+  closing deletes the working copy, and will not arm *Close and delete* until
+  the author has either downloaded `tour.zip` or ticked the acknowledgement.
+  The download is a `fetch` of `GET /api/session/export` as a blob, so the
+  transfer resolving is the proof that releases the gate and `blob.size` is
+  the size shown. An export that 409s (the document references media the
+  archive has not got) is reported and does **not** block the close — the
+  acknowledgement is still the way out, so nobody is trapped in a tour they
+  cannot leave. Closing then runs, in this order: stop autosave → `DELETE
+  /api/session` → clear the draft store → navigate to `/`. Autosave first,
+  because a `PUT` already on the wire lands on a dead session and 409s, and
+  "Save failed" over a close that worked is the misleading message this branch
+  exists to remove.
 - **Session API.** The open tour is an unpacked working directory
   (`content/work/`, git-ignored) that every edit writes through to; there is no
-  explicit save. A session API opens, edits, exports and publishes it as a
-  `.zip`.
+  explicit save. A session API opens, edits, closes, exports and publishes it
+  as a `.zip`. The whole surface:
+
+  ```
+  GET    /api/session                      {"open": false} or a summary
+  DELETE /api/session                      discard the working copy; 409 if nothing is open
+  POST   /api/session/new                  {"title": …}; 409 unless {"force": true}
+  GET    /api/session/examples             {"examples": [{id, title, description}]}
+  POST   /api/session/examples/{id}        409 if open, 404 unknown, 400 malformed
+  POST   /api/session/import               form field `file`, one .zip
+  POST   /api/session/import-files         form field `files`; each part's FILENAME is
+                                           its bundle-relative path (media/pano/x.jpg)
+  PUT    /api/session/tour                 the whole document; 409 if nothing is open
+  POST   /api/session/media                one upload, through store_media
+  GET    /api/session/export               the .zip; 409 on missing media
+  GET    /api/session/publish              a backend-free static site
+  ```
+- **Shipped examples.** `content/examples/<id>/` holds `example.json` (title,
+  description, `document`, `mediaDir`) and a frozen `tour.json`;
+  `backend/app/examples.py` stages it as a bundle and hands it to
+  `Session.replace_from`, so opening one is an import and reuses every
+  guarantee import already makes. The one entry today is
+  `content/examples/fairfax-old-town/`, whose `mediaDir` points at the shared
+  `content/media/`. **Opening an example copies; it never mutates the
+  example**, and nothing in `make content` writes to `content/examples/` —
+  that is true because no script under `content/scripts/` names the
+  directory, not because a test pins it.
 - **Publish.** `GET /api/session/publish` returns a static site (built app plus
   the working directory under `tour-data/`).
 - **Content pipeline.** `make content` still generates the seed tour
@@ -78,14 +149,18 @@ make content   # regenerate panoramas, images, narration, tour JSON
 make e2e       # Playwright; cannot run inside the sandbox
 ```
 
-The editor lives at <http://localhost:8000/edit> once `make serve` is running
-and a tour is open in the session. Edits autosave to the working directory.
+With `make serve` running, open <http://localhost:8000/> and the application
+sorts out where you belong: the welcome screen if nothing is open, the editor
+if something is. <http://localhost:8000/view> is the viewer, which `/` no
+longer reaches while a tour is open. Edits autosave to the working directory.
 
 `make content` only regenerates `content/tours/fairfax-old-town.json`; nothing
 reads that file into the open session automatically, so there is no SQLite
-seeding left to restart the backend over. To open, save and ship a tour, drive
-the session API directly. `PUT` and `POST` bodies are JSON, so every command
-that sends one needs the content-type header: `curl -d` alone sends
+seeding left to restart the backend over. The welcome screen at `/` is the
+normal way to open a tour; everything below is the same thing without a
+browser, which is the only way to do it in this development sandbox. `PUT` and
+`POST` bodies are JSON, so every command that sends one needs the
+content-type header: `curl -d` alone sends
 `application/x-www-form-urlencoded`, which FastAPI hands to pydantic as raw
 bytes and pydantic refuses with a 422 (`{"type":"dict_type",...}`):
 
@@ -93,11 +168,37 @@ bytes and pydantic refuses with a 422 (`{"type":"dict_type",...}`):
 curl -X POST localhost:8000/api/session/new \
   -H 'Content-Type: application/json' -d '{"title": "A tour"}'      # start empty
 curl -X POST localhost:8000/api/session/import -F file=@tour.zip    # open a bundle
+curl localhost:8000/api/session/examples                            # what examples exist
+curl -X POST localhost:8000/api/session/examples/fairfax-old-town   # open one, media and all
 curl -X PUT localhost:8000/api/session/tour \
   -H 'Content-Type: application/json' -d @tour.json                 # write the document
 curl localhost:8000/api/session/export -o tour.zip                  # save it out as a zip
 curl localhost:8000/api/session/publish -o site.zip                 # a backend-free static site
+curl -X DELETE localhost:8000/api/session                           # discard the working copy
 ```
+
+`DELETE /api/session` is what the editor's *Close tour* calls. It deletes
+`content/work/` and there is no undo: export first. It refuses with 409 when
+nothing is open, which is deliberate — a caller asking to close nothing has a
+stale idea of the session, and saying so beats agreeing with it.
+
+Loose files go to a second import route, which is what the welcome screen's
+drop zone uses. Each part's *filename* is its path inside the bundle, so
+nested media keeps its directory:
+
+```sh
+curl -X POST localhost:8000/api/session/import-files \
+  -F 'files=@content/tours/fairfax-old-town.json;filename=tour.json' \
+  -F 'files=@content/media/court-1863.jpg;filename=media/court-1863.jpg' \
+  -F 'files=@content/media/pano/pano-historic-courthouse.jpg;filename=media/pano/pano-historic-courthouse.jpg'
+```
+
+The document has to arrive as `tour.json`; the route refuses the whole drop
+over a part it does not recognise, a hidden (dot-prefixed) path component, or
+the same bundle path twice. The welcome screen filters those out *before*
+posting — which is the whole point of the loose-file path, since
+`content/media/` holds a `manifest.json` beside the photographs — and names
+what it left out. `curl` does not filter, so it is the caller's job here.
 
 Every edit above writes straight through to `content/work/`. See
 `docs/decisions/0002-the-tour-is-a-portable-document.md` for why "save" works
@@ -116,13 +217,43 @@ renderer boundaries.
 
 ### Opening the existing six-stop tour
 
-Nothing above, and nothing elsewhere in the repo, actually gets the
-hand-authored Old Town Fairfax tour into the application — there is no
-bundle of it checked in, and no command that makes one. `content/tours/
-fairfax-old-town.json` is the document; `content/media/` is its media,
-committed alongside it but never copied anywhere by any script. The working
-sequence, run from the repo root with the backend already up
-(`make serve`):
+**Open <http://localhost:8000/> and click *Old Town Fairfax* under "Open an
+example".** That is the whole procedure now. The six-stop hand-authored tour
+is a shipped example (`content/examples/fairfax-old-town/`), and opening it
+creates the session, writes the document and copies the media through the
+import allowlist in one request — the `curl` and `cp` sequence below, done
+server-side and atomically, with `manifest.json` excluded rather than copied
+and later refused.
+
+Verified against a live backend (a throwaway one on a temp `CONTENT_DIR`, so
+the author's own `content/work/` was never touched):
+`POST /api/session/examples/fairfax-old-town` returns `"stopCount": 6`,
+`"mediaCount": 15`, `"orphanCount": 6` and six informational warnings, one per
+panorama (`media/pano/pano-<stop>.jpg is not referenced by any overlay`), and
+`GET /api/session/export` then returns the same 4.5&nbsp;MB zip as before
+(4,536,271 bytes). The equivalent loose import — `tour.json` plus every
+image and audio file under `content/media/`, posted to
+`/api/session/import-files` — was run against the same backend and returns
+the same three figures and the same six warnings. The *drop zone* that would
+do that from a browser is a separate matter and is unverified
+(`UNVERIFIED.md` entry 14). A backend test
+(`test_opening_the_fairfax_example_matches_the_recorded_figures`) pins all
+three figures and the surviving names and `media/pano/` paths, so a future
+refactor that routed examples through the upload path fails loudly.
+
+#### The headless fallback
+
+**Kept because this development sandbox has no browser**, so the paragraph
+above cannot be run here; it is not a second bootstrap procedure, it is the
+same one without a window. Run from the repo root with `make serve` up:
+
+```sh
+curl -X POST localhost:8000/api/session/examples/fairfax-old-town
+```
+
+That one line replaces everything below it, and the rest of this section is
+kept only to explain what it does and what used to go wrong. The long way,
+which is still what to reach for with a tour that is *not* a shipped example:
 
 ```sh
 curl -X POST localhost:8000/api/session/new \
@@ -144,7 +275,8 @@ curl localhost:8000/api/session/export -o fairfax-old-town.zip
 `GET /api/session` reports `"mediaCount": 0`, every photograph and narration
 clip the viewer tries to load 404s, and the bundle `export` produces is one
 `import` later refuses — the document references media the archive doesn't
-have.
+have. The example route exists because this step was forgotten, and the
+welcome screen exists because this whole section was the only way in.
 
 **Do not copy `content/media/manifest.json`, and do not use
 `cp content/media/*`.** That glob sweeps the manifest in, and import refuses
@@ -253,7 +385,14 @@ Every item below is still true as of 2026-10-26. None has been closed.
    would also change the derived headings to 105.0/147.2), or let the editor
    take ownership of the document and retire `stops.json` entirely. The editor
    is now able to take ownership whenever the author says so; until they do,
-   **the content pipeline stays**, and so does the drift. Nobody here can
+   **the content pipeline stays**, and so does the drift. The shipped example
+   does **not** resolve this and is not affected by it:
+   `content/examples/fairfax-old-town/tour.json` is a frozen committed
+   snapshot (identical in content to the seed tour today, but its own file),
+   and nothing in `make content` writes to `content/examples/`. That is why
+   the example's recorded figures stay reproducible whatever the pipeline
+   does — and it is also one more copy of the document to keep in mind when
+   this item is finally decided. Nobody here can
    judge either change by eye, because the alignment was probably tuned in a browser
    (an inference, see above) and none can run in this environment.
 3. **Rephotography is demonstrated at one stop.** Targeted searching found
@@ -284,7 +423,7 @@ Every item below is still true as of 2026-10-26. None has been closed.
 8. **Unverified, from sub-project 3b (media and acquisition):**
    - Recorded audio against the sniffer in a real browser. The MP4 brand is
      the risk, in Safari and also in Chromium, whose recorder prefers MP4 where
-     `isTypeSupported` allows (`UNVERIFIED.md` entries 7 and 8).
+     `isTypeSupported` allows (`UNVERIFIED.md` entries 8 and 9).
    - A real loc.gov redirect through `archive-fetch`.
    - Overpass mirrors other than `overpass-api.de`, which answered in 34-42 s
      from this machine against a 15 s client timeout.
@@ -416,4 +555,42 @@ Figures after: 320 backend, 530 frontend.
 
 **This is the first thing a real run found, and it was a message that sent
 the reader to the wrong place.** `UNVERIFIED.md` exists for exactly this; its
-entry 1 is still the right place to start.
+first entry is still the right place to start. (It was "the editor loads at
+all" when this was written; the front door below put a new entry in front of
+it.)
+
+### Sub-project 5: the front door
+
+The run above left the honest message "no tour is open", which was an
+improvement and still not usable: the application had no way to get data into
+itself, and everything that put a tour in the session was a `curl` transcribed
+out of this file. So `''` stopped being the viewer and became a decider.
+
+What landed: a three-way `EntryPage` at `''`; a lazy welcome screen with a
+drop zone, a *New empty tour* box and a shelf of examples; `DELETE
+/api/session`, `GET /api/session/examples`, `POST /api/session/examples/{id}`
+and `POST /api/session/import-files`; the Fairfax tour as a frozen committed
+example under `content/examples/`; a guarded *Close tour* in the editor, with
+the blob download that releases its gate; a *Preview* link; and an explicit
+`view` route. The editor's "no tour is open" empty state was removed, so there
+is one front door and not two.
+
+Two things worth keeping in mind afterwards:
+
+- **The eager bundle barely moved** — 2.13 MB raw / 371.39 kB transferred
+  before, 2.15 MB / 372.02 kB after — because the welcome screen is its own
+  11.62 kB chunk and a published visitor never fetches it. That was the
+  constraint the whole routing design was built around.
+- **A published visitor now pays a probe.** It is issued concurrently with
+  the viewer's own `tour-data/` fetches, so a refused connection costs
+  nothing measurable; a host that *black-holes* `/api/session` instead costs
+  the full 2 s deadline, as a blank page. That is a deliberate trade and it is
+  written down in `UNVERIFIED.md` entries 20 to 22 rather than left to be
+  rediscovered.
+
+Figures after: 405 backend, 598 frontend.
+
+The front door has never been seen in a browser either, so it arrives with
+thirteen new `UNVERIFIED.md` entries, and the welcome screen is now that
+document's entry 1 — it is how you get a tour open before checking anything
+else.
