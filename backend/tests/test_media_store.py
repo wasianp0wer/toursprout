@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -224,3 +225,22 @@ def test_mp3_without_an_id3_tag_is_recognised(head):
 
 def test_a_jpeg_is_not_mistaken_for_an_mp3_frame_sync():
     assert sniff(JPEG_BYTES)[0] == "image/jpeg"
+
+
+def _ts_list(src: str, name: str) -> set[str]:
+    line = next(ln for ln in src.splitlines() if ln.startswith(f"const {name} ="))
+    return set(re.findall(r"'(\.[a-z0-9]+)'", line))
+
+
+def test_the_frontend_extension_lists_match_the_allowed_types():
+    """document-ops.ts hand-mirrors ALLOWED_TYPES as IMAGE_EXTS / AUDIO_EXTS
+    to decide what kind a stored id is. Same idiom as the display-mode table
+    in test_models: read the TypeScript and fail when the two drift."""
+    from app.media_store import ALLOWED_TYPES
+
+    src = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "app"
+           / "editor" / "document-ops.ts").read_text()
+    want_image = {ext for t, ext in ALLOWED_TYPES.items() if t.startswith("image/")}
+    want_audio = {ext for t, ext in ALLOWED_TYPES.items() if t.startswith("audio/")}
+    assert _ts_list(src, "IMAGE_EXTS") == want_image
+    assert _ts_list(src, "AUDIO_EXTS") == want_audio

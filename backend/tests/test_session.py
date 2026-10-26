@@ -151,3 +151,16 @@ def test_a_failed_write_tour_leaves_the_previous_file_intact(session, monkeypatc
     assert session.tour().title == "Original"
     # The temp file that never got to replace it is cleaned up too.
     assert _no_tmp_leftovers(session.path)
+
+
+@pytest.mark.parametrize("title,slug", [
+    ("Untitled tour", "untitled-tour"),
+    ("Courthouse Square", "courthouse-square"),
+    ("Mason's \"Walk\" / 1st & Main!", "masons-walk-1st-main"),
+    ("***", "untitled"),
+])
+def test_a_tour_id_is_a_safe_slug_of_the_title(title, slug):
+    """The id names the exported file in a Content-Disposition header, and
+    authors now type the title."""
+    from app.session import skeleton
+    assert skeleton(title)["id"] == slug

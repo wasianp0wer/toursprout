@@ -32,6 +32,14 @@ export function legalModesFor(kind: OverlayKind): readonly DisplayMode[] {
   return DISPLAY_MODES_BY_KIND[kind];
 }
 
+/**
+ * What a new stop's text says until the author writes their own. The backend
+ * skeleton uses the same words. The viewer shows the summary, and "Narrate
+ * this text" reads it, so it must never be synthesised and credited as if it
+ * were the author's: see `narrationSource`.
+ */
+export const PLACEHOLDER_SUMMARY = 'Describe this place.';
+
 export class LastStopError extends Error {
   constructor() {
     // Tour.stops has min_length=1. Producing an empty tour would make the
@@ -76,7 +84,7 @@ export function addStop(tour: Tour, title: string): Tour {
   const last = tour.stops[tour.stops.length - 1];
   const stop: Stop = {
     id, order: tour.stops.length + 1, title,
-    summary: 'Describe this place.',
+    summary: PLACEHOLDER_SUMMARY,
     // Start where the previous stop is: an author adds the next stop near the
     // last one far more often than at the origin, and (0, 0) is in the ocean.
     location: last ? { ...last.location } : { lng: 0, lat: 0 },
@@ -374,6 +382,8 @@ export function setOverlayHeadingManual(
   return setInWorldField(tour, overlayId, { headingDeg });
 }
 
+// Mirror ALLOWED_TYPES in backend/app/media_store.py; a backend test reads
+// these two lines and fails if the sets drift.
 const IMAGE_EXTS = ['.jpg', '.png', '.webp'];
 const AUDIO_EXTS = ['.wav', '.m4a', '.mp3', '.ogg', '.webm'];
 
@@ -483,6 +493,20 @@ export function setCreditText(tour: Tour, overlayId: string, text: string): Tour
   }));
 }
 
+/** Rename the tour. The tour's id is fixed when it is created and is not touched. */
+export function setTourTitle(tour: Tour, title: string): Tour {
+  return { ...tour, title };
+}
+
+export function setTourDescription(tour: Tour, description: string): Tour {
+  return { ...tour, description };
+}
+
+/** The stop's text: what the viewer's stop panel shows, and what narration reads. */
+export function setStopSummary(tour: Tour, stopId: string, summary: string): Tour {
+  return mapStop(tour, stopId, (s) => ({ ...s, summary }));
+}
+
 export function setStopTitle(tour: Tour, stopId: string, title: string): Tour {
   return mapStop(tour, stopId, (s) => ({ ...s, title }));
 }
@@ -557,7 +581,9 @@ export function narrationSource(
   for (const s of tour.stops) {
     if (s.id === selectedId) {
       const text = s.summary.trim();
-      return text ? { stopId: s.id, text, title: `Narration of ${s.title} (synthesised voice)` } : null;
+      // The placeholder is not the author's words; narrating it would store
+      // audio of "Describe this place." and credit it to them.
+      return text && text !== PLACEHOLDER_SUMMARY ? { stopId: s.id, text, title: `Narration of ${s.title} (synthesised voice)` } : null;
     }
     const o = s.overlays.find((x) => x.id === selectedId);
     if (o) {

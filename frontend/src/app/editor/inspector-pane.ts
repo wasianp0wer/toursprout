@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { EditorStore } from './editor-store';
 import {
   creditText, deriveOverlayHeading, legalKindsFor, legalModesFor, panoramaFixForStop, setCreditText, setInWorldField,
-  selectPanorama, setOverlayAnchorKeepingHeading, setStopLocation, setOverlayHeadingManual, setOverlayKind, setOverlayMode, setStopTitle, updateOverlay,
+  selectPanorama, setOverlayAnchorKeepingHeading, setStopLocation, setOverlayHeadingManual, setOverlayKind, setOverlayMode, setStopSummary, setStopTitle, updateOverlay,
   type DisplayMode,
 } from './document-ops';
 import type { InWorldDisplay, OverlayKind } from '../core/tour.models';
@@ -93,6 +93,11 @@ export class InspectorPane {
   protected setStopTitle(v: string): void {
     const s = this.stop();
     if (s) this.store.apply((t) => setStopTitle(t, s.id, v));
+  }
+
+  protected setStopSummary(v: string): void {
+    const s = this.stop();
+    if (s) this.store.apply((t) => setStopSummary(t, s.id, v));
   }
 
   protected setKind(kind: string): void {

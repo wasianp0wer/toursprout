@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -61,7 +62,7 @@ def skeleton(title: str) -> dict:
     rather than in an error state. The panorama is a placeholder the author
     replaces; `Stop` requires one and there is nothing honest to put there yet.
     """
-    slug = "-".join(title.lower().split()) or "untitled"
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower().replace("'", "")).strip("-") or "untitled"
     return {
         "id": slug,
         "schemaVersion": 2,

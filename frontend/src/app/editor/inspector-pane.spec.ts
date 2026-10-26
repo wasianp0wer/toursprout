@@ -250,6 +250,19 @@ describe('InspectorPane', () => {
     expect(input('[data-field="stop-title"]').value).toBe('Stop 1');
     expect(q('[data-field="lng"]')).toBeNull();
   });
+
+  it('edits the stop text, which is what the viewer shows and narration reads', async () => {
+    store.load(tour());
+    store.select('s1');
+    fixture = TestBed.createComponent(InspectorPane);
+    el = fixture.nativeElement;
+    await settle();
+    const ta = q('[data-field="stop-summary"]') as HTMLTextAreaElement;
+    ta.value = 'The old courthouse.';
+    ta.dispatchEvent(new Event('input'));
+    await settle();
+    expect(store.draft()!.stops[0].summary).toBe('The old courthouse.');
+  });
 });
 
 describe('InspectorPane: placing a stop', () => {

@@ -76,6 +76,47 @@ describe('EditorPage', () => {
     expect(el.querySelector('[data-shell]')).toBeTruthy();
   });
 
+  it('names the new tour with what the author typed', async () => {
+    const fixture = TestBed.createComponent(EditorPage);
+    fixture.detectChanges();
+    http.expectOne('/api/session').flush({ open: false });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const input = el.querySelector('[data-new-title]') as HTMLInputElement;
+    input.value = '  Courthouse Square  ';
+    input.dispatchEvent(new Event('input'));
+    (el.querySelector('[data-new-tour]') as HTMLButtonElement).click();
+    const req = http.expectOne('/api/session/new');
+    expect(req.request.body).toEqual({ title: 'Courthouse Square' });
+    req.flush({ open: true, title: 'Courthouse Square' });
+    await fixture.whenStable();
+    http.expectOne('tour-data/tour.json').flush(tour());
+    await fixture.whenStable();
+  });
+
+  it('edits the title and description in the header, and links export and publish', async () => {
+    const fixture = TestBed.createComponent(EditorPage);
+    fixture.detectChanges();
+    http.expectOne('/api/session').flush({ open: true, title: 'T' });
+    await fixture.whenStable();
+    http.expectOne('tour-data/tour.json').flush(tour());
+    await fixture.whenStable();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const title = el.querySelector('[data-tour-title]') as HTMLInputElement;
+    title.value = 'Second Tour';
+    title.dispatchEvent(new Event('input'));
+    const desc = el.querySelector('[data-tour-description]') as HTMLInputElement;
+    desc.value = 'A walk';
+    desc.dispatchEvent(new Event('input'));
+    expect(store.draft()?.title).toBe('Second Tour');
+    expect(store.draft()?.description).toBe('A walk');
+    expect(el.querySelector('[data-export]')?.getAttribute('href')).toBe('/api/session/export');
+    expect(el.querySelector('[data-publish]')?.getAttribute('href')).toBe('/api/session/publish');
+  });
+
   it('shows an actionable message when the backend is unreachable', async () => {
     const fixture = TestBed.createComponent(EditorPage);
     fixture.detectChanges();

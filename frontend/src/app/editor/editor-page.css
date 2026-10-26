@@ -50,3 +50,14 @@ button[data-new-tour]:disabled { opacity: 0.6; cursor: default; }
   .sidebar app-outline-pane { flex: none; max-height: 14rem; }
   .sidebar app-inspector-pane { flex: none; overflow: visible; }
 }
+
+.tour-title, .tour-description {
+  background: transparent; color: inherit; border: 1px solid transparent; border-radius: 4px;
+  font: inherit; padding: 0.15rem 0.4rem;
+}
+.tour-title { font-size: 1.25rem; font-weight: 600; color: #e8b04b; letter-spacing: 0.03em; min-width: 12rem; }
+.tour-description { flex: 1 1 auto; min-width: 8rem; color: #9aa0ab; }
+.tour-title:hover, .tour-description:hover, .tour-title:focus, .tour-description:focus { border-color: #3a3f48; }
+.shell header a { font-size: 0.8rem; color: #e8b04b; }
+.empty label { display: block; margin-top: 1rem; }
+.empty input { margin-left: 0.5rem; padding: 0.35rem 0.5rem; }

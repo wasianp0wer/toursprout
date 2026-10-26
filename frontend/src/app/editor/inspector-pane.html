@@ -40,6 +40,7 @@
 } @else if (stop(); as s) {
   <form class="inspector" (submit)="$event.preventDefault()">
     <label>Stop title <input type="text" data-field="stop-title" name="stopTitle" [ngModel]="s.title" (ngModelChange)="setStopTitle($event)" /></label>
+    <label>Text <textarea data-field="stop-summary" name="stopSummary" [ngModel]="s.summary" (ngModelChange)="setStopSummary($event)"></textarea></label>
     <label>Longitude <input type="number" step="any" data-field="stop-lng" name="stopLng" [ngModel]="s.location.lng" (ngModelChange)="setLocation('lng', $event)" /></label>
     <label>Latitude <input type="number" step="any" data-field="stop-lat" name="stopLat" [ngModel]="s.location.lat" (ngModelChange)="setLocation('lat', $event)" /></label>
     <p class="note" data-stop-panorama>Panorama: {{ s.panorama.imageId }}</p>

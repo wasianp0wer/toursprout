@@ -5,6 +5,7 @@ import { EditPanoramaPane } from './edit-panorama-pane';
 import { EditorStore } from './editor-store';
 import { InspectorPane } from './inspector-pane';
 import { OutlinePane } from './outline-pane';
+import { setTourDescription, setTourTitle } from './document-ops';
 import { SessionApi } from '../core/session-api';
 import { TourApi } from '../core/tour-api';
 
@@ -42,6 +43,8 @@ export class EditorPage {
   protected readonly open = signal(false);
   protected readonly starting = signal(false);
   protected readonly error = signal<string | null>(null);
+  /** What the author types before starting a new tour; the tour's id is slugged from it. */
+  protected readonly newTitle = signal('');
 
   constructor() {
     void this.init();
@@ -69,12 +72,20 @@ export class EditorPage {
     this.starting.set(true);
     this.error.set(null);
     try {
-      await this.sessionApi.newTour('Untitled tour');
+      await this.sessionApi.newTour(this.newTitle().trim() || 'Untitled tour');
       await this.openDocument();
     } catch {
       this.error.set('Could not start a new tour.');
     } finally {
       this.starting.set(false);
     }
+  }
+
+  protected setTitle(v: string): void {
+    this.store.apply((t) => setTourTitle(t, v));
+  }
+
+  protected setDescription(v: string): void {
+    this.store.apply((t) => setTourDescription(t, v));
   }
 }

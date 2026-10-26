@@ -5,6 +5,7 @@ import {
   setOverlayKind, slugify, uniqueId, updateOverlay,
   creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
   setStopLocation, selectPanorama, archiveCredit, narrationSource,
+  PLACEHOLDER_SUMMARY, setStopSummary, setTourDescription, setTourTitle,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
 import type { Tour } from '../core/tour.models';
@@ -621,5 +622,34 @@ describe('narrationSource', () => {
     expect(narrationSource(t, 'o1')).toBeNull();
     expect(narrationSource(t, 'zz')).toBeNull();
     expect(narrationSource(t, null)).toBeNull();
+  });
+});
+
+describe('naming and describing', () => {
+  it('setTourTitle and setTourDescription change only their field and do not mutate', () => {
+    const x = tour(); const snap = JSON.stringify(x);
+    const y = setTourTitle(x, 'Second Tour');
+    expect(y.title).toBe('Second Tour');
+    expect(y.id).toBe(x.id);
+    expect(y.stops).toBe(x.stops);
+    expect(setTourDescription(x, 'A walk').description).toBe('A walk');
+    expect(JSON.stringify(x)).toBe(snap);
+  });
+
+  it('setStopSummary rewrites one stop\'s text', () => {
+    const x = tour([stop('s1', 1), stop('s2', 2)]); const snap = JSON.stringify(x);
+    const y = setStopSummary(x, 's2', 'The courthouse stood here.');
+    expect(y.stops[1].summary).toBe('The courthouse stood here.');
+    expect(y.stops[0]).toBe(x.stops[0]);
+    expect(JSON.stringify(x)).toBe(snap);
+  });
+
+  it('a new stop carries the placeholder, and narration refuses to read it', () => {
+    const t = addStop(tour(), 'Courthouse');
+    const added = t.stops[t.stops.length - 1];
+    expect(added.summary).toBe(PLACEHOLDER_SUMMARY);
+    expect(narrationSource(t, added.id)).toBeNull();
+    const written = setStopSummary(t, added.id, 'Built in 1800.');
+    expect(narrationSource(written, added.id)).toMatchObject({ text: 'Built in 1800.' });
   });
 });
