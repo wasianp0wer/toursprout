@@ -177,18 +177,26 @@ describe('inspector helpers', () => {
     expect(get(before).anchor.lng).toBe(-77.3);
   });
 
-  it('entering inWorld derives the heading from the stop location', () => {
+  it('entering inWorld derives the heading from the supplied panorama position', () => {
     const base = t();
     base.stops[0].overlays[0].anchor = { type: 'geo', lng: -77.3, lat: 38.841, altitudeM: 2 };
-    const d = get(setOverlayMode(base, 'o1', 'inWorld')).display;
+    const pano = { lng: -77.3, lat: 38.84 };
+    const d = get(setOverlayMode(base, 'o1', 'inWorld', pano)).display;
     expect(d.mode).toBe('inWorld');
-    // stop is due south of the anchor
-    expect((d as { headingDeg: number }).headingDeg).toBeCloseTo(180, 3);
+    expect((d as { headingDeg: number }).headingDeg).toBeCloseTo(deriveHeading(
+      base.stops[0].overlays[0].anchor, pano), 6);
+  });
+
+  it('entering inWorld without a panorama position does not derive from the stop', () => {
+    const base = t();
+    base.stops[0].overlays[0].anchor = { type: 'geo', lng: -77.3, lat: 38.841, altitudeM: 2 };
+    const d = get(setOverlayMode(base, 'o1', 'inWorld', null)).display as { headingDeg: number };
+    expect(d.headingDeg).toBe(0);
   });
 
   it('refuses a mode that is illegal for the kind', () => {
     const base = tour([stop('s1', 1, [overlay('o1')])]);
-    expect(setOverlayMode(base, 'o1', 'inWorld')).toEqual(base);
+    expect(setOverlayMode(base, 'o1', 'inWorld', { lng: 0, lat: 0 })).toEqual(base);
   });
 
   it('setInWorldField ignores non-inWorld overlays', () => {
@@ -196,12 +204,29 @@ describe('inspector helpers', () => {
     expect(get(setInWorldField(base, 'o1', { widthM: 9 })).display).toEqual(get(base).display);
   });
 
-  it('re-derives heading after the anchor moves', () => {
-    let x = setOverlayMode(t(), 'o1', 'inWorld');
+  it('re-derives heading from the panorama position after the anchor moves', () => {
+    const pano = { lng: -77.3, lat: 38.84 };
+    let x = setOverlayMode(t(), 'o1', 'inWorld', pano);
     x = setInWorldField(x, 'o1', { headingDeg: 1 });
     x = setOverlayAnchor(x, 'o1', { lat: 38.841 });
-    x = deriveOverlayHeading(x, 'o1');
+    x = deriveOverlayHeading(x, 'o1', pano);
     expect((get(x).display as { headingDeg: number }).headingDeg).toBeCloseTo(180, 3);
+  });
+
+  it('computes nothing when the panorama position is unknown', () => {
+    const x = setInWorldField(setOverlayMode(t(), 'o1', 'inWorld', null), 'o1', { headingDeg: 77 });
+    expect(deriveOverlayHeading(x, 'o1', null)).toBe(x);
+  });
+
+  it('regression: courthouse 1863 derives from the real panorama, not the stop (about 105, not 283)', () => {
+    const x = tour([stop('s1', 1, [overlay('o1', {
+      kind: 'image',
+      anchor: { type: 'geo', lng: -77.30732, lat: 38.84562, altitudeM: 2 },
+      display: { mode: 'inWorld', opacity: 0.8, headingDeg: 0, widthM: 4, heightM: 3 },
+    })])]);
+    const out = deriveOverlayHeading(x, 'o1', { lng: -77.306888, lat: 38.845534 });
+    expect((get(out).display as { headingDeg: number }).headingDeg).toBeGreaterThan(100);
+    expect((get(out).display as { headingDeg: number }).headingDeg).toBeLessThan(110);
   });
 
   it('edits credit text for original and sourced credits', () => {

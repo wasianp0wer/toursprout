@@ -89,14 +89,14 @@ export class InspectorPane {
   protected setMode(mode: string): void {
     const o = this.overlay();
     if (!o) return;
-    this.store.apply((t) => setOverlayMode(t, o.id, mode as DisplayMode));
+    this.store.apply((t) => setOverlayMode(t, o.id, mode as DisplayMode, this.store.panoramaPosition()));
     this.mark(o.id, false);
   }
 
   protected derive(): void {
     const o = this.overlay();
-    if (!o) return;
-    this.store.apply((t) => deriveOverlayHeading(t, o.id));
+    if (!o || !this.store.panoramaPosition()) return;
+    this.store.apply((t) => deriveOverlayHeading(t, o.id, this.store.panoramaPosition()));
     this.mark(o.id, false);
   }
 }

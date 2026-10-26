@@ -230,29 +230,36 @@ export function setInWorldField(
 /**
  * Switch an overlay to another display mode. Refuses an illegal mode for the
  * overlay's kind (returns the tour unchanged). Entering inWorld seeds the
- * heading by derivation from the owning stop's panorama, not a typed default.
+ * heading by derivation from the REAL panorama position. The stop's location
+ * is never a substitute: the panorama stands where the camera car drove, tens
+ * of metres from the building, and that swings a bearing by up to 178 degrees.
+ * With no position known the heading is a placeholder 0 for the author to derive.
  */
-export function setOverlayMode(tour: Tour, overlayId: string, mode: DisplayMode): Tour {
-  const owner = tour.stops.find((s) => s.overlays.some((o) => o.id === overlayId));
+export function setOverlayMode(
+  tour: Tour, overlayId: string, mode: DisplayMode, panorama: LngLatLike | null,
+): Tour {
   return mapOverlay(tour, overlayId, (o) => {
     if (!legalModesFor(o.kind).includes(mode) || o.display.mode === mode) return o;
     if (mode === 'marker') {
       return { ...o, display: { mode, icon: o.kind === 'image' ? 'photo' : o.kind === 'audio' ? 'audio' : 'note' } };
     }
     if (mode === 'ambient') return { ...o, display: { mode, autoplay: false } };
-    const headingDeg = owner ? deriveHeading(o.anchor, owner.location) : 0;
+    const headingDeg = panorama ? deriveHeading(o.anchor, panorama) : 0;
     return { ...o, display: { mode, opacity: 0.8, headingDeg, widthM: 4, heightM: 3 } };
   });
 }
 
-/** Re-derive an inWorld overlay's heading from its stop's panorama position. */
-export function deriveOverlayHeading(tour: Tour, overlayId: string): Tour {
-  const owner = tour.stops.find((s) => s.overlays.some((o) => o.id === overlayId));
-  if (!owner) return tour;
-  return setInWorldField(tour, overlayId, {
-    headingDeg: deriveHeading(
-      owner.overlays.find((o) => o.id === overlayId)!.anchor, owner.location),
-  });
+/**
+ * Re-derive an inWorld overlay's heading from the real panorama position.
+ * Returns the tour untouched when the position is unknown: never guess.
+ */
+export function deriveOverlayHeading(
+  tour: Tour, overlayId: string, panorama: LngLatLike | null,
+): Tour {
+  if (!panorama) return tour;
+  const o = tour.stops.flatMap((s) => s.overlays).find((x) => x.id === overlayId);
+  if (!o) return tour;
+  return setInWorldField(tour, overlayId, { headingDeg: deriveHeading(o.anchor, panorama) });
 }
 
 /** The credit's human-facing text: creator for original, source for sourced. */

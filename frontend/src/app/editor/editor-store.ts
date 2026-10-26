@@ -6,6 +6,7 @@
  * the editor's state machine is testable without a browser.
  */
 import { Injectable, computed, signal } from '@angular/core';
+import type { LngLatLike } from '../core/geo';
 import type { Overlay, Stop, Tour } from '../core/tour.models';
 
 /** How many past documents the undo stack keeps, so a long session cannot grow without bound. */
@@ -18,6 +19,19 @@ export class EditorStore {
   private readonly _dirty = signal(false);
   private readonly _lastError = signal<string | null>(null);
   private readonly _undoStack = signal<Tour[]>([]);
+
+  private readonly _panoramaPosition = signal<LngLatLike | null>(null);
+
+  /**
+   * Where the panorama being viewed actually stands, or null until something
+   * supplies it (the panorama pane, task 5, from mapillary-js). Heading
+   * derivation uses this and nothing else: stop.location is the building,
+   * not the camera, and deriving from it can point a photo backwards.
+   */
+  readonly panoramaPosition = this._panoramaPosition.asReadonly();
+  setPanoramaPosition(pos: LngLatLike | null): void {
+    this._panoramaPosition.set(pos);
+  }
 
   readonly draft = this._draft.asReadonly();
   readonly selectedId = this._selectedId.asReadonly();

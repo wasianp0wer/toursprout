@@ -21,7 +21,10 @@
         <input type="number" step="any" data-field="headingDeg" name="headingDeg" [ngModel]="w.headingDeg" (ngModelChange)="setInWorld('headingDeg', $event)" />
       </label>
       <div class="heading-row">
-        <button type="button" data-derive-heading (click)="derive()">Derive heading from panorama</button>
+        <button type="button" data-derive-heading [disabled]="!store.panoramaPosition()" (click)="derive()">Derive heading from panorama</button>
+        @if (!store.panoramaPosition()) {
+          <span class="override" data-derive-unavailable>Unavailable until the panorama's position is known. Heading is a placeholder until then.</span>
+        }
         @if (headingOverridden()) {
           <span class="override" data-heading-override>Manual override. Derive again to go back.</span>
         }

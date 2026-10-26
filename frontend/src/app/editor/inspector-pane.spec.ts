@@ -23,8 +23,10 @@ describe('InspectorPane', () => {
     display: { mode: 'inWorld', opacity: 0.8, headingDeg: 10, widthM: 4, heightM: 3 },
   });
 
-  const start = async (o: Overlay) => {
+  const PANO = { lng: -77.3, lat: 38.84 };
+  const start = async (o: Overlay, pano: { lng: number; lat: number } | null = PANO) => {
     store.load(tour([stop('s1', 1, [o])]));
+    if (pano) store.setPanoramaPosition(pano);
     store.select(o.id);
     fixture = TestBed.createComponent(InspectorPane);
     el = fixture.nativeElement;
@@ -108,7 +110,18 @@ describe('InspectorPane', () => {
     expect(q('[data-heading-override]')).toBeNull();
   });
 
-  it('derive heading replaces the value', async () => {
+  it('disables derive with an explanation while the panorama position is unknown', async () => {
+    await start(inWorld(), null);
+    expect((q('[data-derive-heading]') as HTMLButtonElement).disabled).toBe(true);
+    expect(q('[data-derive-unavailable]')?.textContent?.length).toBeGreaterThan(0);
+    (q('[data-derive-heading]') as HTMLElement).click(); await settle();
+    expect((ov().display as { headingDeg: number }).headingDeg).toBe(10);
+    store.setPanoramaPosition(PANO); await settle();
+    expect((q('[data-derive-heading]') as HTMLButtonElement).disabled).toBe(false);
+    expect(q('[data-derive-unavailable]')).toBeNull();
+  });
+
+  it('derive heading replaces the value, using the supplied panorama position', async () => {
     await start(inWorld());
     (q('[data-derive-heading]') as HTMLElement).click(); await settle();
     expect((ov().display as { headingDeg: number }).headingDeg).toBeCloseTo(180, 3);
