@@ -19,11 +19,13 @@
     @if (autosave.status() === 'error' && autosave.message()) {
       <p class="fatal" data-autosave-error>{{ autosave.message() }}</p>
     }
-    <div class="panes">
-      <app-outline-pane />
-      <app-inspector-pane />
+    <div class="workspace">
+      <div class="sidebar">
+        <app-outline-pane />
+        <app-inspector-pane />
+      </div>
+      <app-edit-map-pane />
+      <app-edit-panorama-pane />
     </div>
-    <app-edit-map-pane />
-    <app-edit-panorama-pane />
   </section>
 }

@@ -37,4 +37,13 @@ describe('app routing', () => {
     expect(harness.routeDebugElement?.componentInstance).toBeInstanceOf(EditorPage);
     http.expectOne('/api/session').flush({ open: false });
   });
+
+  // A published site opened as https://host/tour/index.html leaves the router
+  // the remainder `index.html`; without a wildcard that renders nothing.
+  it.each(['/index.html', '/anything/at/all'])("routes unmatched %s to the viewer", async (url) => {
+    const harness = await RouterTestingHarness.create(url);
+    expect(harness.routeDebugElement?.componentInstance).toBeInstanceOf(ViewerPage);
+    http.expectOne('tour-data/config.json').error(new ProgressEvent('network'));
+    http.expectOne('tour-data/tour.json').error(new ProgressEvent('network'));
+  });
 });

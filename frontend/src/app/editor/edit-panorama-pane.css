@@ -1,5 +1,5 @@
-:host { display: block; position: relative; }
-.panorama { width: 100%; height: 26rem; background: #1b1e24; border-radius: 4px; }
+:host { display: block; position: relative; height: 100%; }
+.panorama { width: 100%; height: 100%; min-height: 12rem; background: #1b1e24; border-radius: 4px; }
 .empty, .pano-error { position: absolute; top: 0.75rem; left: 0.75rem; margin: 0; color: #9aa0ab; font-size: 0.8rem; }
 .pano-error { color: #e8825b; }
 .controls {

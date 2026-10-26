@@ -1,5 +1,12 @@
-:host { display: block; height: 100vh; background: #0f1114; color: #c9ccd3; }
-.loading, .fatal, .empty, .shell { padding: 2rem; }
+:host { display: block; height: 100vh; overflow: hidden; background: #0f1114; color: #c9ccd3; }
+.loading, .fatal, .empty { padding: 2rem; }
+
+/* One viewport-tall shell: header on top, then three columns that share the
+   rest. The map and the panorama must be visible together, so neither sits
+   below the other, and nothing here can grow past the screen. */
+.shell { height: 100%; box-sizing: border-box; padding: 1rem 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.shell .fatal { padding: 0; margin: 0; }
+.shell h1 { margin: 0; font-size: 1.25rem; }
 .fatal { color: #e8825b; }
 .empty h1, .shell h1 { color: #e8b04b; letter-spacing: 0.03em; }
 .shell header {
@@ -24,4 +31,22 @@ button[data-new-tour] {
   font-weight: 600;
 }
 button[data-new-tour]:disabled { opacity: 0.6; cursor: default; }
-.panes { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(16rem, 1fr); gap: 1.5rem; }
+.workspace {
+  flex: 1 1 0; min-height: 0;
+  display: grid; gap: 1rem;
+  grid-template-columns: minmax(15rem, 20rem) minmax(0, 1fr) minmax(0, 1fr);
+}
+.sidebar { min-height: 0; display: flex; flex-direction: column; gap: 0.75rem; }
+/* The outline scrolls on its own so a long tour cannot push the inspector or the map away. */
+.sidebar app-outline-pane { flex: 0 1 45%; min-height: 6rem; overflow-y: auto; }
+.sidebar app-inspector-pane { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+.workspace > app-edit-map-pane, .workspace > app-edit-panorama-pane { min-height: 0; }
+
+/* A narrow window cannot hold three columns: stack them and let the page scroll. */
+@media (max-width: 60rem) {
+  :host { overflow-y: auto; height: auto; min-height: 100vh; }
+  .workspace { grid-template-columns: 1fr; }
+  .workspace > app-edit-map-pane, .workspace > app-edit-panorama-pane { height: 22rem; }
+  .sidebar app-outline-pane { flex: none; max-height: 14rem; }
+  .sidebar app-inspector-pane { flex: none; overflow: visible; }
+}

@@ -60,8 +60,8 @@ the editor does not rely on a 422 to find out it wrote nonsense.
 
 `TourStore` is the viewer's: which stop the visitor is at, where the
 panorama is, which opacities are showing. It has to work in a published site
-with no editor at all. `EditorStore` holds the draft, the selection, `dirty`,
-`lastError`, the undo stack, `panoramaPosition` and `manualHeadings`. Their
+with no editor at all. `EditorStore` holds the draft, the selection, the saved document (from which
+`dirty` is derived), `lastError`, the undo stack, `panoramaPosition` and `manualHeadings`. Their
 lifetimes are unrelated: navigation state resets when the visitor moves on;
 draft state must survive any number of navigations and is thrown away only
 by `load`. Merging them would make every viewer carry editor state it can
@@ -74,7 +74,9 @@ editing (`_alignmentOverride`).
 `EditorStore.apply(fn)` runs a transform against the draft. A transform that
 *throws* (for example refusing to delete the last stop) is caught into
 `lastError` and leaves the draft and the undo stack untouched; a failed edit
-is not an edit. A selection that no longer names anything in the draft is
+is not an edit. So is a transform that returns the **same reference**, which is
+the pure layer's signal for "refused": `apply` ignores it entirely, pushing no
+undo entry, dirtying nothing and triggering no save. A selection that no longer names anything in the draft is
 cleared automatically, so undo and delete cannot leave the panes pointing at
 nothing.
 
@@ -98,9 +100,17 @@ save is in flight; edits that arrive meanwhile are folded into a single
 queued follow-up that re-reads the draft when it starts, so it saves what the
 draft has become, not what it was. A rejected save (the backend returns 422)
 keeps the draft and retries on the next change, so a bad value never costs
-the author their work. `markClean()` runs only when the draft that was saved
-is still the current one; otherwise a slow save would mark newer, unsaved
-edits as clean. Whole-document writes match the session API's contract
+the author their work.
+
+`dirty` is **derived, not stored**: it is `draft !== savedDoc`, where
+`savedDoc` is set by `load` and by `markSaved(doc)`. It was first a stored
+flag set by hand at four sites, and was wrong three times at the same spot —
+undo forgot to set it, so an undo made after a save was never persisted. A
+derived value cannot be forgotten, and undoing back to exactly the saved
+document correctly reports clean. `markSaved(doc)` takes effect only if `doc`
+is still the draft; otherwise a slow save would mark newer, unsaved edits as
+clean. A `putTour` that throws synchronously is turned into a rejection, so a
+failed call can never leave a save marked in flight. Whole-document writes match the session API's contract
 (`PUT /api/session/tour`, decision 0002) and avoid inventing a patch format
 that would have to be kept in step with `document-ops`.
 
@@ -139,8 +149,8 @@ by 138 degrees, putting the subject behind the viewer. That is why
 `build_tour.py` derives headings, and the editor must do the same.
 
 During this sub-project the editor got it wrong the same way. The first
-"derive heading" action fell back to `stop.location` when it had no better
-position. On the real tour that is a **178-degree error** for the 1863
+"derive heading" action derived from `stop.location`; there was no fallback
+involved, it simply never used the panorama's position at all. On the real tour that is a **178-degree error** for the 1863
 courthouse photograph: it would have faced exactly backwards. `stop.location`
 is the building; the panorama is where the camera car stood, **38.7 m
 away**, and a bearing from the wrong end of that gap points the wrong way.
@@ -148,19 +158,36 @@ It was caught by arithmetic, not by eye, because no browser can run in this
 environment — which means nobody has ever looked at it, and a plausible-looking
 wrong angle would have been committed without anyone noticing.
 
-The fix is structural, not a fallback with a better default.
+The first fix was **UI-only and insufficient**: the Derive button was
+disabled until a panorama position was known, but the pure functions were not
+yet gated, so everything that did not go through that button (switching an
+overlay to `inWorld`, a typed heading, the map's rotation handle) could still
+write a heading from the wrong place. That is the strongest argument for where
+the gate lives. A disabled control protects one caller; the review that found
+the gap was reading the functions, not the screen.
+
+The fix that held is structural, not a fallback with a better default.
 `EditorStore.panoramaPosition` holds a `PanoramaFix` — `{imageId, lng, lat}`,
 keyed to *which* panorama it describes. `panoramaFixForStop(stop, fix)` is the
 single gate: it returns null unless the fix's `imageId` matches the stop's
-panorama. Deriving a heading, setting one by hand, and switching an overlay
-to `inWorld` (which needs a heading, and has no honest "unset" value) are all
-**refused inside the pure functions** — they hand back the same tour — not
+panorama. Deriving a heading, setting one by hand (the inspector's field and the
+map's handle both go through `setOverlayHeadingManual`), and switching an
+overlay to `inWorld` (which needs a heading, and has no honest "unset" value)
+are all **refused inside the pure functions** — they hand back the same tour — not
 merely disabled in the UI. A disabled button protects one caller; the
 function protects all of them, including ones not yet written. The panorama
 pane fills the seam from mapillary-js's `image` event and uses the id of the
 image **actually loaded**, not the one it asked for, because a load that lags
 the selection would otherwise publish the previous panorama's position under
 the new panorama's name.
+
+A derived heading is also kept an **invariant** rather than a one-time stamp:
+it is a function of the anchor, so moving the anchor (map drag, panorama
+nudge, inspector field) re-derives it, via `setOverlayAnchorKeepingHeading`,
+for every `inWorld` overlay not in `manualHeadings` while a fix is available.
+At the courthouse a 5 m sideways move swings the correct bearing by about 7
+degrees, and nothing would otherwise have told the author. `nudge.ts` has no
+heading keys for the same reason: it has no fix to offer.
 
 The cost: until the panorama has loaded, a stop's overlays cannot be switched
 to `inWorld` or have a heading derived, and a hand-set heading is only
@@ -196,8 +223,8 @@ Other costs:
   relaxed there, not worked around in the panes.
 - **New operations** go in `document-ops.ts` as pure functions that return
   the same reference when refused, and are applied through
-  `EditorStore.apply`. Undo, dirty tracking and autosave then work without
-  further change. Any operation that needs a heading must pass through
+  `EditorStore.apply`. Because `dirty` is derived and `apply` ignores a same-reference result,
+  undo, dirty tracking and autosave then work without further change. Any operation that needs a heading must pass through
   `panoramaFixForStop`.
 - **Retiring `content/source/stops.json`** (HANDOFF, outstanding item 2)
   becomes possible now that the document can be edited in place; this record

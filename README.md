@@ -67,7 +67,10 @@ imagery for the other five stops; the mechanism is general, the content is not.
 editor at <http://localhost:8000/edit> with a tour open in the session: the
 map places the photograph on the ground and sets its heading, the panorama
 shows how it sits in the real view, and the inspector sets every value
-numerically. Edits autosave. The heading is always derived from where the
+numerically. Edits autosave about half a second after the last change, while the editor
+is open; the header reads "All changes saved" once one has landed and "Save
+failed" if the backend rejected it (the draft is kept, and the next edit
+retries). The heading is always derived from where the
 panorama actually stands, never typed in blind, because every hand-guessed
 bearing in this project's history was wrong, one by 138 degrees; the editor
 refuses to derive one until the panorama has loaded. **The committed anchors
