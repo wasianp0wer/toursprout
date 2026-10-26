@@ -5,8 +5,9 @@ tours over real street-level imagery. This proof of concept is a six-stop tour
 of Old Town Fairfax, Virginia, with text, archival photography and narration
 anchored to points in the world and overlaid on 360° panoramas.
 
-It is a prototype: there is no editor interface, no authoring UI, and one
-hard-authored tour. The **schema** is the part meant to survive.
+It is a prototype: there is an authoring editor at `/edit`, but it has never been
+seen in a browser, and there is one hand-authored tour. The **schema** is the
+part meant to survive.
 
 ## What it is made of
 
@@ -62,33 +63,21 @@ Rephotography is demonstrated at the courthouse because that is where the
 archive actually is. Targeted searching found essentially no Old Town Fairfax
 imagery for the other five stops; the mechanism is general, the content is not.
 
-**Aligning a photograph.** Georeferencing by eye needs a browser, so open the
-app with `?align=1`:
-
-| Key | Effect |
-| --- | --- |
-| ← → ↑ ↓ | move the photograph on the ground |
-| `z` / `c` | raise and lower it (PgUp / PgDn also work) |
-| `+` / `-` | resize, preserving aspect ratio |
-| `[` / `]` | rotate its heading |
-
-The panel names the photograph it is aligning. With several at a stop, click
-a rephoto row in the stop panel to switch which one the keys move. The panel
-shows the live anchor and copies JSON shaped `{anchor, display}`. Paste it
-over the matching `rephotos[]` entry's `anchor` key (adding the `display`
-key alongside it) in `content/source/stops.json`, then `make content`;
-`build_tour.py` reads this split shape directly, alongside the older flat
-one. The pasted `display.headingDeg` is a live preview only and is always
-discarded — the shipped heading is derived afresh from the panorama's
-position, never authored, because every hand-guessed bearing in this
-project's history was wrong, one by 138 degrees. **The committed anchors are
-estimates, improved by hand in commit `de48b0d` but not finished** — further
-alignment needs someone at a browser.
+**Aligning a photograph.** Georeferencing by eye needs a browser. Open the
+editor at <http://localhost:8000/edit> with a tour open in the session: the
+map places the photograph on the ground and sets its heading, the panorama
+shows how it sits in the real view, and the inspector sets every value
+numerically. Edits autosave. The heading is always derived from where the
+panorama actually stands, never typed in blind, because every hand-guessed
+bearing in this project's history was wrong, one by 138 degrees; the editor
+refuses to derive one until the panorama has loaded. **The committed anchors
+are estimates, improved by hand in commit `de48b0d` but not finished** —
+further alignment needs someone at a browser. The old `?align=1` mode is gone.
 
 ## Tests
 
 ```sh
-make check      # lint + 173 backend tests + 213 frontend tests + production build
+make check      # lint + 197 backend tests + 397 frontend tests + production build
 ```
 
 Browser end-to-end tests exist in `frontend/tests/e2e/` but **cannot run inside

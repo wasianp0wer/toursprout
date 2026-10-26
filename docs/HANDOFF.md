@@ -28,11 +28,14 @@ Ratcliffe-Allison-Pozer House, Fairfax Museum, City Hall.
   ghosted in and the rest hidden.
 - **Map.** Leaflet minimap with numbered pins and a route polyline. Current
   stop is gold and drawn on top. Clicking a pin moves the tour.
-- **Alignment mode.** `?align=1` nudges the selected rephoto by keyboard and
-  emits anchor JSON to paste into content.
+- **Alignment mode (since removed).** `?align=1` nudged the selected rephoto by
+  keyboard and emitted anchor JSON to paste into content. It was retired when
+  the editor landed; `/edit` replaces it. See
+  `docs/decisions/0003-the-editor-is-three-surfaces-on-one-state.md`.
 
-Tests: **173 backend (pytest), 213 frontend (Vitest)**, lint and production
-build clean via `make check`. Bundle 2.04 MB raw / 348.40 kB transferred.
+Tests (at that commit): **173 backend (pytest), 213 frontend (Vitest)**, lint
+and production build clean via `make check`. Bundle 2.04 MB raw / 348.40 kB
+transferred.
 
 Since the state above was written, sub-project 2 (tasks 1-4, this branch)
 turned the tour into a portable document: the open tour is now an unpacked
@@ -44,6 +47,17 @@ hand-rolled Range handling (superseded by `StaticFiles`) are gone. See
 `docs/decisions/0002-the-tour-is-a-portable-document.md` for why, including
 the one place this departs from the agreed design.
 
+Since then, sub-project 3a (the editing core) added the editor at `/edit`:
+an outline, a numeric inspector, an editable map and an editable panorama
+over one draft, with undo and debounced autosave through the session API.
+`?align=1` and `frontend/src/app/align/` are gone. Current figures, from
+`make check`: **197 backend (pytest), 397 frontend (Vitest)**; eager bundle
+2.13 MB raw / 371.45 kB transferred; the editor is a lazy chunk, 75.99 kB raw
+/ 17.95 kB transferred. See
+`docs/decisions/0003-the-editor-is-three-surfaces-on-one-state.md` for why it
+is built this way, including the heading-derivation gate. None of the editor
+has been seen in a browser.
+
 ## Running it
 
 ```sh
@@ -51,6 +65,10 @@ make serve     # builds frontend, serves API + bundle on :8000
 make check     # lint + both suites + production build
 make content   # regenerate panoramas, images, narration, tour JSON
 ```
+
+The editor lives at <http://localhost:8000/edit> once `make serve` is running
+and a tour is open in the session (see the `curl` sequence below for opening
+the real one). Edits autosave to the working directory.
 
 `make content` only regenerates `content/tours/fairfax-old-town.json`; nothing
 reads that file into the open session automatically (that bridge is sub-project
@@ -133,7 +151,7 @@ assumed from reading the code:
   accepts, which is the whole point of exporting it in the first place.
 
 `?diag=1` exposes `window.__tour` and `window.__inWorld` and logs renderer
-boundaries. `?align=1` enables alignment mode.
+boundaries.
 
 ## Architecture, and why
 
@@ -188,8 +206,13 @@ anything. The ones that cost the most time:
 ## Outstanding
 
 1. **Rephoto alignment is unfinished.** The anchors are estimates, improved by
-   hand in commit `de48b0d` but not finished. Use `?align=1`; it needs eyes on
-   a browser.
+   hand in commit `de48b0d` but not finished. The tool for finishing it is now
+   the editor at `/edit` (`?align=1` is gone): select the photograph, drag it
+   on the map, then adjust height, size and opacity in the panorama pane and
+   inspector, with the heading derived from the panorama's real position.
+   What remains is the author's: someone has to do that in a browser and look
+   at the result. Nothing in the editor has been seen rendering, and this
+   cannot be closed from an environment where no browser runs.
 2. **`content/source/stops.json` has silently drifted from the shipped
    document, and nobody here can safely fix it.** Commit `de48b0d`
    ("adjustment") hand-edited the rephoto anchors directly in
