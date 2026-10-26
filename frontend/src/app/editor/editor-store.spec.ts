@@ -107,13 +107,45 @@ describe('EditorStore', () => {
     expect(store.lastError()).toBeNull();
   });
 
-  it('markClean clears dirty without touching the draft', () => {
+  it('markSaved clears dirty without touching the draft', () => {
     store.load(tour());
     store.apply((t) => addTextOverlay(t, 's1', 'A note'));
-    const draft = store.draft();
-    store.markClean();
+    const draft = store.draft()!;
+    store.markSaved(draft);
     expect(store.dirty()).toBe(false);
     expect(store.draft()).toBe(draft);
+  });
+
+  it('markSaved ignores a document that is no longer the draft', () => {
+    store.load(tour());
+    store.apply((t) => addTextOverlay(t, 's1', 'One'));
+    const stale = store.draft()!;
+    store.apply((t) => addTextOverlay(t, 's1', 'Two'));
+    store.markSaved(stale);
+    expect(store.dirty()).toBe(true);
+  });
+
+  it('is dirty after an undo that follows a save', () => {
+    store.load(tour());
+    store.apply((t) => addTextOverlay(t, 's1', 'A note'));
+    store.markSaved(store.draft()!);
+    store.undo();
+    expect(store.dirty()).toBe(true);
+  });
+
+  it('reports clean again when undo returns to exactly the saved document', () => {
+    store.load(tour());
+    store.apply((t) => addTextOverlay(t, 's1', 'A note'));
+    expect(store.dirty()).toBe(true);
+    store.undo();
+    expect(store.dirty()).toBe(false);
+  });
+
+  it('treats a refused transform (same reference back) as no edit at all', () => {
+    store.load(tour());
+    store.apply((t) => t);
+    expect(store.canUndo()).toBe(false);
+    expect(store.dirty()).toBe(false);
   });
 
   it('tracks manually oriented headings, clears them on load, and keeps them out of the document', () => {

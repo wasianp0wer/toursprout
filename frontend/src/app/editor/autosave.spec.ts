@@ -84,7 +84,7 @@ describe('Autosave', () => {
     resolvePut({ open: true } as SessionSummary);
     await Promise.resolve();
     await Promise.resolve();
-    expect(autosave.status()).toBe('idle');
+    expect(autosave.status()).toBe('saved');
   });
 
   it('keeps the draft when the save is rejected', async () => {
@@ -129,7 +129,7 @@ describe('Autosave', () => {
     flush();
     await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
     expect(putTour).toHaveBeenCalledTimes(2);
-    expect(autosave.status()).toBe('idle');
+    expect(autosave.status()).toBe('saved');
   });
 
   it('flush saves immediately without waiting for the debounce', async () => {
@@ -139,7 +139,7 @@ describe('Autosave', () => {
     flush();
     await autosave.flush();
     expect(putTour).toHaveBeenCalledTimes(1);
-    expect(autosave.status()).toBe('idle');
+    expect(autosave.status()).toBe('saved');
   });
 
   it('clears dirty on a successful save', async () => {
@@ -207,7 +207,7 @@ describe('Autosave', () => {
     resolvers[1]({ open: true } as SessionSummary);
     await Promise.resolve();
     await Promise.resolve();
-    expect(autosave.status()).toBe('idle');
+    expect(autosave.status()).toBe('saved');
   });
 
   function pendingPuts() {
@@ -303,4 +303,68 @@ describe('Autosave', () => {
       expect(maxLive).toBe(1);
     },
   );
+
+  // Item 1: `dirty` is derived (draft !== last saved document), so an undo
+  // after a successful save is an unsaved change like any other.
+  it('persists an undo made after a successful save', async () => {
+    store.load(tour());
+    autosave.start();
+    const original = store.draft();
+    store.apply((t) => addStop(t, 'Second'));
+    flush();
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    expect(putTour).toHaveBeenCalledTimes(1);
+    expect(store.dirty()).toBe(false);
+
+    store.undo();
+    flush();
+    expect(store.draft()).toBe(original);
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    expect(putTour).toHaveBeenCalledTimes(2);
+    expect(putTour).toHaveBeenLastCalledWith(original);
+  });
+
+  it('does not save, mark dirty or push undo for a refused transform', async () => {
+    store.load(tour());
+    autosave.start();
+    // Same reference back is the pure layer's contract for a refusal.
+    store.apply((t) => t);
+    flush();
+    expect(store.dirty()).toBe(false);
+    expect(store.canUndo()).toBe(false);
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS * 2);
+    expect(putTour).not.toHaveBeenCalled();
+  });
+
+  // Item 7: a putTour that throws synchronously used to leave inFlight set
+  // forever (finally ran before the outer assignment), after which save()
+  // and runSave() re-queued each other in an unbounded microtask loop.
+  it('survives a putTour that throws synchronously and saves again on the next edit', async () => {
+    putTour.mockImplementationOnce(() => { throw new Error('sync boom'); });
+    store.load(tour());
+    autosave.start();
+    store.apply((t) => addStop(t, 'Second'));
+    flush();
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    expect(autosave.status()).toBe('error');
+    expect(autosave.message()).toBe('sync boom');
+    expect(putTour).toHaveBeenCalledTimes(1);
+
+    store.apply((t) => addStop(t, 'Third'));
+    flush();
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    expect(putTour).toHaveBeenCalledTimes(2);
+    expect(autosave.status()).toBe('saved');
+    expect(store.dirty()).toBe(false);
+  });
+
+  it('says nothing has been saved yet until a save lands, then that it was saved', async () => {
+    store.load(tour());
+    autosave.start();
+    expect(autosave.status()).toBe('idle');
+    store.apply((t) => addStop(t, 'Second'));
+    flush();
+    await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS);
+    expect(autosave.status()).toBe('saved');
+  });
 });

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { Autosave } from './autosave';
 import { EditMapPane } from './edit-map-pane';
 import { EditPanoramaPane } from './edit-panorama-pane';
@@ -27,6 +27,16 @@ export class EditorPage {
   private readonly tourApi = inject(TourApi);
   protected readonly store = inject(EditorStore);
   protected readonly autosave = inject(Autosave);
+
+  /** The only save feedback the author gets, so it says what is true. */
+  protected readonly saveLabel = computed(() => {
+    switch (this.autosave.status()) {
+      case 'saving': return 'Saving…';
+      case 'saved': return this.store.dirty() ? 'Unsaved changes' : 'All changes saved';
+      case 'error': return 'Save failed';
+      default: return this.store.dirty() ? 'Unsaved changes' : 'No changes yet';
+    }
+  });
 
   protected readonly loading = signal(true);
   protected readonly open = signal(false);

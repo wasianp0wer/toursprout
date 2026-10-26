@@ -16,7 +16,11 @@ export const UNDO_DEPTH = 50;
 export class EditorStore {
   private readonly _draft = signal<Tour | null>(null);
   private readonly _selectedId = signal<string | null>(null);
-  private readonly _dirty = signal(false);
+  /**
+   * The document last known to be on disk (or just loaded). `dirty` is
+   * derived from it rather than stored, so no edit path can forget to set it.
+   */
+  private readonly _savedDoc = signal<Tour | null>(null);
   private readonly _lastError = signal<string | null>(null);
   private readonly _undoStack = signal<Tour[]>([]);
 
@@ -50,7 +54,8 @@ export class EditorStore {
 
   readonly draft = this._draft.asReadonly();
   readonly selectedId = this._selectedId.asReadonly();
-  readonly dirty = this._dirty.asReadonly();
+  /** Unsaved changes exist: the draft is not the document last saved. Undoing back to it is clean. */
+  readonly dirty = computed(() => this._draft() !== this._savedDoc());
   readonly lastError = this._lastError.asReadonly();
   readonly canUndo = computed(() => this._undoStack().length > 0);
 
@@ -91,7 +96,7 @@ export class EditorStore {
   load(tour: Tour): void {
     this._draft.set(tour);
     this._selectedId.set(null);
-    this._dirty.set(false);
+    this._savedDoc.set(tour);
     this._lastError.set(null);
     this._undoStack.set([]);
     this._manualHeadings.set(new Set());
@@ -102,12 +107,12 @@ export class EditorStore {
   }
 
   /**
-   * Marks the draft as having no unsaved changes, without touching it —
-   * for Autosave to call once a save has actually landed. Distinct from
-   * `load()`: it leaves the selection and undo stack exactly as they are.
+   * Record that `doc` is now on disk — for Autosave to call once a PUT has
+   * landed. Ignored unless `doc` is still the draft: a newer edit made during
+   * the flight is genuinely unsaved. Leaves selection and undo untouched.
    */
-  markClean(): void {
-    this._dirty.set(false);
+  markSaved(doc: Tour): void {
+    if (this._draft() === doc) this._savedDoc.set(doc);
   }
 
   /**
@@ -127,10 +132,12 @@ export class EditorStore {
       this._lastError.set(err instanceof Error ? err.message : String(err));
       return;
     }
+    // A refused transform returns the same reference by contract; it is not
+    // an edit, so it must not push undo, dirty the draft or trigger a save.
+    if (next === current) return;
     const stack = [...this._undoStack(), current];
     this._undoStack.set(stack.length > UNDO_DEPTH ? stack.slice(stack.length - UNDO_DEPTH) : stack);
     this._draft.set(next);
-    this._dirty.set(true);
     this._lastError.set(null);
     this.pruneDanglingSelection();
   }

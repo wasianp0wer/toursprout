@@ -20,6 +20,7 @@
 import { EffectRef, Injectable, Injector, effect, inject, signal } from '@angular/core';
 import { EditorStore } from './editor-store';
 import { SessionApi } from '../core/session-api';
+import type { Tour } from '../core/tour.models';
 
 /**
  * Long enough to coalesce a burst of edits (a few keystrokes, several
@@ -28,7 +29,7 @@ import { SessionApi } from '../core/session-api';
  */
 export const AUTOSAVE_DEBOUNCE_MS = 500;
 
-export type AutosaveStatus = 'idle' | 'saving' | 'error';
+export type AutosaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 /**
  * Pulls a human-readable message out of whatever `SessionApi.putTour`
@@ -139,6 +140,20 @@ export class Autosave {
   }
 
   /**
+   * Calls putTour so that a synchronous throw becomes a rejection. Otherwise
+   * the IIFE's `finally` would clear `inFlight` before the outer assignment
+   * set it, leaving it non-null forever and save()/runSave() queueing each
+   * other in an unbounded microtask loop.
+   */
+  private callPut(draft: Tour): Promise<unknown> {
+    try {
+      return Promise.resolve(this.api.putTour(draft));
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  }
+
+  /**
    * Does the actual PUT. `queued` is released the moment the follow-up
    * STARTS running (not when it settles), so an edit arriving during its
    * flight queues a genuinely new follow-up instead of being folded into one
@@ -153,12 +168,12 @@ export class Autosave {
     this._status.set('saving');
     this.inFlight = (async () => {
       try {
-        await this.api.putTour(draft);
-        this._status.set('idle');
+        await this.callPut(draft);
+        this._status.set('saved');
         this._message.set(null);
         // Only if nothing newer arrived during the flight; otherwise the
         // follow-up is still owed and the draft is genuinely unsaved.
-        if (this.store.draft() === draft) this.store.markClean();
+        this.store.markSaved(draft);
       } catch (err) {
         this._status.set('error');
         this._message.set(messageFrom(err));
