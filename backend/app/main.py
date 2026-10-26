@@ -18,6 +18,7 @@ from .bundle import BundleError, missing_media, write_bundle
 from .config import Settings
 from .config import settings as default_settings
 from .examples import ExampleError, list_examples, open_example
+from .loose_import import stage_loose_bundle
 from .media_store import MediaError, store_media
 from .publish import PublishError, build_site
 from .session import Session, SessionConflict
@@ -242,6 +243,32 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             warnings = session.replace_from(staged)
         except BundleError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            staged.unlink(missing_ok=True)
+        session.write_config(_viewer_config(app.state.cfg))
+        return {**session.summary(), "warnings": warnings}
+
+    @app.post("/api/session/import-files", dependencies=[Depends(_reject_cross_site)])
+    async def import_files(files: list[UploadFile]) -> dict:
+        # A loose `tour.json` plus its media, for the author whose tour is
+        # not zipped (the repository's own is not). Each part's filename is
+        # its path relative to the bundle root. Staged into the same kind of
+        # temp zip as `import_bundle` and handed to the same `replace_from`,
+        # so nothing is validated twice or differently; the temp-file
+        # discipline is that route's, for the same reasons.
+        session = app.state.session
+        fd, tmp_name = tempfile.mkstemp(suffix=".zip")
+        os.close(fd)
+        staged = Path(tmp_name)
+        try:
+            stage_loose_bundle([(f.filename or "", f.file) for f in files], staged)
+            warnings = session.replace_from(staged)
+        except BundleError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(
+                status_code=400, detail=f"could not save the upload: {exc}"
+            ) from exc
         finally:
             staged.unlink(missing_ok=True)
         session.write_config(_viewer_config(app.state.cfg))
