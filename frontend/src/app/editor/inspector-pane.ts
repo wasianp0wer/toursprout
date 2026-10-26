@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { EditorStore } from './editor-store';
 import {
@@ -14,8 +14,8 @@ type Num = number | null;
  * Numeric and text fields for the selected stop or overlay. All document
  * changes are delegated to document-ops transforms via store.apply.
  *
- * `manualHeading` is editor-only UI state (overlay ids whose heading the
- * author typed by hand). It is never written to the document.
+ * The manual-heading marker lives on EditorStore (shared with the map's
+ * rotation handle) and is never written to the document.
  */
 @Component({
   selector: 'app-inspector-pane',
@@ -25,7 +25,6 @@ type Num = number | null;
 })
 export class InspectorPane {
   protected readonly store = inject(EditorStore);
-  private readonly manualHeading = signal<ReadonlySet<string>>(new Set());
 
   protected readonly overlay = this.store.selectedOverlay;
   protected readonly kinds = computed<OverlayKind[]>(() => {
@@ -46,7 +45,7 @@ export class InspectorPane {
   });
   protected readonly headingOverridden = computed(() => {
     const o = this.overlay();
-    return !!o && this.manualHeading().has(o.id);
+    return !!o && this.store.manualHeadings().has(o.id);
   });
   protected readonly credit = computed(() => {
     const o = this.overlay();
@@ -54,9 +53,7 @@ export class InspectorPane {
   });
 
   private mark(id: string, on: boolean): void {
-    const next = new Set(this.manualHeading());
-    if (on) next.add(id); else next.delete(id);
-    this.manualHeading.set(next);
+    this.store.markHeadingManual(id, on);
   }
 
   protected setAnchor(field: 'lng' | 'lat' | 'altitudeM', v: Num): void {

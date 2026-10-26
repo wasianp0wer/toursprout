@@ -34,6 +34,20 @@ export class EditorStore {
     this._panoramaPosition.set(pos);
   }
 
+  private readonly _manualHeadings = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * Overlay ids whose heading the author set by hand (typed, or dragged on
+   * the map). Editor-only UI state shared by the inspector and the map; never
+   * written to the document. Cleared by `load`.
+   */
+  readonly manualHeadings = this._manualHeadings.asReadonly();
+  markHeadingManual(id: string, on: boolean): void {
+    const next = new Set(this._manualHeadings());
+    if (on) next.add(id); else next.delete(id);
+    this._manualHeadings.set(next);
+  }
+
   readonly draft = this._draft.asReadonly();
   readonly selectedId = this._selectedId.asReadonly();
   readonly dirty = this._dirty.asReadonly();
@@ -80,6 +94,7 @@ export class EditorStore {
     this._dirty.set(false);
     this._lastError.set(null);
     this._undoStack.set([]);
+    this._manualHeadings.set(new Set());
   }
 
   select(id: string | null): void {

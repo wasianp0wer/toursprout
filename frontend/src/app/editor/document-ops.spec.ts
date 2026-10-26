@@ -3,7 +3,7 @@ import {
   LastStopError, addStop, addTextOverlay, defaultCreditFor, deleteOverlay,
   deleteStop, deriveHeading, legalModesFor, moveStop, renumberStops,
   setOverlayKind, slugify, uniqueId, updateOverlay,
-  creditText, deriveOverlayHeading, setCreditText, setInWorldField, setOverlayAnchor, setOverlayMode, setStopTitle, legalKindsFor,
+  creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayMode, setStopTitle, legalKindsFor,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
 
@@ -309,5 +309,40 @@ describe('inspector helpers', () => {
     const out = deriveOverlayHeading(x, 'o1', { imageId: 'img-1', lng: -77.306888, lat: 38.845534 });
     expect(heading(out)).toBeGreaterThan(100);
     expect(heading(out)).toBeLessThan(110);
+  });
+});
+
+describe('setOverlayHeadingManual (the map rotation handle)', () => {
+  const PANO = { imageId: 'img-1', lng: -77.3069, lat: 38.8455 };
+  const build = () => tour([stop('s1', 1, [overlay('o1', {
+    kind: 'image', mediaId: 'p.jpg',
+    display: { mode: 'inWorld', opacity: 0.8, headingDeg: 10, widthM: 4, heightM: 3 },
+  })])]);
+  const heading = (t: ReturnType<typeof build>) =>
+    (t.stops[0].overlays[0].display as { headingDeg: number }).headingDeg;
+
+  it('sets the heading when the fix belongs to this stop panorama', () => {
+    expect(heading(setOverlayHeadingManual(build(), 'o1', 123, PANO))).toBe(123);
+  });
+
+  it('normalises into [0, 360)', () => {
+    expect(heading(setOverlayHeadingManual(build(), 'o1', -90, PANO))).toBe(270);
+  });
+
+  it('is refused (same reference) with no fix', () => {
+    const t = build();
+    expect(setOverlayHeadingManual(t, 'o1', 123, null)).toBe(t);
+  });
+
+  it('is refused for a fix that belongs to another panorama', () => {
+    const t = build();
+    expect(setOverlayHeadingManual(t, 'o1', 123, { ...PANO, imageId: 'img-2' })).toBe(t);
+  });
+
+  it('is refused for a non-finite heading and for a non-inWorld overlay', () => {
+    const t = build();
+    expect(setOverlayHeadingManual(t, 'o1', NaN, PANO)).toBe(t);
+    const m = tour([stop('s1', 1, [overlay('o1')])]);
+    expect(setOverlayHeadingManual(m, 'o1', 5, PANO)).toBe(m);
   });
 });

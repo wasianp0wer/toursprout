@@ -1,0 +1,18 @@
+:host { display: block; }
+.edit-map { width: 100%; height: 26rem; background: #1b1e24; border-radius: 4px; }
+.empty, .handle-note { color: #9aa0ab; font-size: 0.8rem; margin: 0.5rem 0; }
+
+/* Layers are created by Leaflet outside Angular's template, so these must be global to the host. */
+:host ::ng-deep .leaflet-control-attribution { background: rgba(15, 17, 20, 0.75); color: #9aa0ab; font-size: 0.62rem; }
+:host ::ng-deep .edit-marker span {
+  display: block; width: 22px; height: 22px; box-sizing: border-box;
+  border-radius: 50%; background: #2f7fd4; border: 2px solid #fff; cursor: grab;
+}
+:host ::ng-deep .edit-marker.selected span { background: #e8b04b; }
+:host ::ng-deep .rotation-handle span {
+  display: block; width: 18px; height: 18px; box-sizing: border-box;
+  background: #fff; border: 3px solid #e8825b; border-radius: 3px; transform: rotate(45deg); cursor: grab;
+}
+:host ::ng-deep .pano-dot { width: 14px; height: 14px; border-radius: 50%; background: #5bc98a; border: 2px solid #0f1114; }
+:host ::ng-deep path.view-wedge { fill: #5bc98a; fill-opacity: 0.18; stroke: #5bc98a; stroke-width: 1; }
+:host ::ng-deep path.footprint { stroke: #e8b04b; stroke-width: 4; }

@@ -327,6 +327,24 @@ export function deriveOverlayHeading(
 }
 
 /**
+ * Set an inWorld overlay's heading by hand (the map's rotation handle).
+ *
+ * A deliberate manual override, but it passes through the same gate as
+ * derivation: refused (same reference) unless `fix` is the position of THIS
+ * stop's panorama. The value itself comes from the author's drag, never from
+ * stop.location. Gating it means a manual heading always has a way back
+ * (deriveOverlayHeading needs the same fix) and is only ever set while the
+ * author can see where the camera really stood.
+ */
+export function setOverlayHeadingManual(
+  tour: Tour, overlayId: string, headingDeg: number, fix: PanoramaFix | null,
+): Tour {
+  const found = findOverlay(tour, overlayId);
+  if (!found || !panoramaFixForStop(found.stop, fix)) return tour;
+  return setInWorldField(tour, overlayId, { headingDeg });
+}
+
+/**
  * Kinds an author may switch this overlay to. Image and audio need uploaded
  * media (backend rejects them without a mediaId), and media upload is not
  * built yet, so they are offered only when media is already attached. The

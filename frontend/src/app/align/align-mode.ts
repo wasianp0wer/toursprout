@@ -19,8 +19,8 @@ const METRES_PER_DEGREE_LAT = 111_320;
 const SCALE_FACTOR = 1.05;
 const MIN_SIZE_M = 0.5;
 
-const metresToLat = (m: number) => m / METRES_PER_DEGREE_LAT;
-const metresToLng = (m: number, lat: number) =>
+export const metresToLat = (m: number) => m / METRES_PER_DEGREE_LAT;
+export const metresToLng = (m: number, lat: number) =>
   m / (METRES_PER_DEGREE_LAT * Math.cos((lat * Math.PI) / 180));
 
 /** Pure reducer: an anchor and a key in, a new anchor out. */

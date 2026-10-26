@@ -115,4 +115,17 @@ describe('EditorStore', () => {
     expect(store.dirty()).toBe(false);
     expect(store.draft()).toBe(draft);
   });
+
+  it('tracks manually oriented headings, clears them on load, and keeps them out of the document', () => {
+    store.load(tour());
+    expect(store.manualHeadings().has('o1')).toBe(false);
+    store.markHeadingManual('o1', true);
+    expect(store.manualHeadings().has('o1')).toBe(true);
+    expect(JSON.stringify(store.draft())).not.toMatch(/manual/i);
+    store.markHeadingManual('o1', false);
+    expect(store.manualHeadings().has('o1')).toBe(false);
+    store.markHeadingManual('o1', true);
+    store.load(tour());
+    expect(store.manualHeadings().size).toBe(0);
+  });
 });
