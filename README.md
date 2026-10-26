@@ -80,7 +80,7 @@ further alignment needs someone at a browser. The old `?align=1` mode is gone.
 ## Tests
 
 ```sh
-make check      # lint + 197 backend tests + 397 frontend tests + production build
+make check      # lint + 197 backend tests + 426 frontend tests + production build
 ```
 
 Browser end-to-end tests exist in `frontend/tests/e2e/` but **cannot run inside

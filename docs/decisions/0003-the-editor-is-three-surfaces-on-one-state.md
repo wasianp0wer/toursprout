@@ -224,7 +224,12 @@ Other costs:
 - **New operations** go in `document-ops.ts` as pure functions that return
   the same reference when refused, and are applied through
   `EditorStore.apply`. Because `dirty` is derived and `apply` ignores a same-reference result,
-  undo, dirty tracking and autosave then work without further change. Any operation that needs a heading must pass through
+  undo, dirty tracking and autosave then work without further change. One cost of deriving `dirty`:
+  it is false whenever the draft is the last-saved document, even while a PUT of a different document
+  is in flight (undo back to it mid-save). `Autosave` covers that in its save-completion path rather
+  than with a stored flag: when a save lands and the draft is no longer what was written, it queues a
+  follow-up, and the status stays off "saved" until that lands. In that window `dirty` alone is not
+  the truth about disk. Any operation that needs a heading must pass through
   `panoramaFixForStop`.
 - **Retiring `content/source/stops.json`** (HANDOFF, outstanding item 2)
   becomes possible now that the document can be edited in place; this record
