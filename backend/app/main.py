@@ -141,6 +141,15 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     def get_session() -> dict:
         return app.state.session.summary()
 
+    @app.delete("/api/session", dependencies=[Depends(_reject_cross_site)])
+    def close_session() -> dict:
+        session = app.state.session
+        try:
+            session.close()
+        except SessionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return session.summary()
+
     @app.post("/api/session/new", dependencies=[Depends(_reject_cross_site)])
     def new_session(body: dict) -> dict:
         title = (body.get("title") or "Untitled tour").strip() or "Untitled tour"

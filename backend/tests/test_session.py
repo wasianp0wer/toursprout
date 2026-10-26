@@ -164,3 +164,16 @@ def test_a_tour_id_is_a_safe_slug_of_the_title(title, slug):
     authors now type the title."""
     from app.session import skeleton
     assert skeleton(title)["id"] == slug
+
+
+def test_close_removes_the_working_directory(tmp_path):
+    session = Session(tmp_path / "work")
+    session.new("A tour")
+    session.close()
+    assert not session.is_open
+    assert session.summary() == {"open": False}
+
+
+def test_close_refuses_when_nothing_is_open(tmp_path):
+    with pytest.raises(SessionConflict):
+        Session(tmp_path / "work").close()

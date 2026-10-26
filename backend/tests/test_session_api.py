@@ -563,3 +563,20 @@ def test_tour_data_is_served_with_nosniff(client):
     r = client.get("/tour-data/tour.json")
     assert r.status_code == 200
     assert r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_delete_session_closes_the_open_tour(client):
+    client.post("/api/session/new", json={"title": "A tour"})
+    res = client.delete("/api/session")
+    assert res.status_code == 200
+    assert res.json() == {"open": False}
+    assert client.get("/api/session").json() == {"open": False}
+
+
+def test_delete_session_409s_when_nothing_is_open(client):
+    assert client.delete("/api/session").status_code == 409
+
+
+def test_delete_session_refuses_cross_site(client):
+    res = client.delete("/api/session", headers={"Sec-Fetch-Site": "cross-site"})
+    assert res.status_code == 403

@@ -114,11 +114,28 @@ class Session:
                 "to discard it"
             )
         doc = skeleton(title)
-        if self.path.exists():
-            shutil.rmtree(self.path)
+        self._discard()
         (self.path / "media").mkdir(parents=True)
         self._write_bundle_json(doc["id"])
         return self.write_tour(doc)
+
+    def close(self) -> None:
+        """Stop working on the open tour, discarding the working directory.
+
+        Like `new`, this is the one place an open document can be thrown
+        away on purpose, so it shares `_discard` rather than growing a
+        second way to delete. Closing when nothing is open is a conflict,
+        not a no-op: the caller's idea of the session is out of date, and
+        saying so beats silently agreeing with it.
+        """
+        if not self.is_open:
+            raise SessionConflict("nothing is open")
+        self._discard()
+
+    def _discard(self) -> None:
+        """Remove the working directory if there is one; the only remover."""
+        if self.path.exists():
+            shutil.rmtree(self.path)
 
     def write_tour(self, doc: dict) -> Tour:
         """Validate, then persist atomically.
