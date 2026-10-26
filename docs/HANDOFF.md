@@ -135,37 +135,49 @@ curl -X POST localhost:8000/api/session/new \
 curl -X PUT localhost:8000/api/session/tour \
   -H 'Content-Type: application/json' -d @content/tours/fairfax-old-town.json
 
-cp content/media/* content/work/media/   # the step nothing else documents
+# Copy the media, but not manifest.json. *.jpg and *.m4a are the three
+# archival photographs and the six narration clips; pano/ is the cached
+# panoramas the stops' cachedPath fields point at.
+cp content/media/*.jpg content/media/*.m4a content/work/media/
+cp -R content/media/pano content/work/media/
 
 curl localhost:8000/api/session/export -o fairfax-old-town.zip
 ```
 
-**Step 3 is not optional and nothing else performs it.** Without it,
+**The copy step is not optional and nothing else performs it.** Without it,
 `GET /api/session` reports `"mediaCount": 0`, every photograph and narration
 clip the viewer tries to load 404s, and the bundle `export` produces is one
 `import` later refuses — the document references media the archive doesn't
 have.
 
-This was run end to end against a live session (`TestClient` against a copy
-of this repo's real `content/`, not by memory) to write this section, not
-assumed from reading the code:
+**Do not copy `content/media/manifest.json`, and do not use
+`cp content/media/*`.** That glob sweeps the manifest in, and import refuses
+it: `media/` may hold only the image and audio types uploads accept, because
+the published site serves `tour-data/` from the author's own origin and
+anything else there (an `.html`, say) would run as executable content.
+Import holds bundled media to the same allowlist uploads face. The refusal is
+correct; the earlier version of this procedure was wrong. The glob also
+skips `pano/` (a directory), which is why `pano/` is copied separately.
 
-- After step 2, `GET /api/session` already reports `"stopCount": 6` but
+This was run end to end against a live backend with `curl` (not
+`TestClient`, not from memory) to write this section:
+
+- After the `PUT`, `GET /api/session` reports `"stopCount": 6` and
   `"mediaCount": 0` — the document is in, the media is not.
-- `cp content/media/* content/work/media/` prints one harmless line to
-  stderr, `cp: content/media/pano is a directory (not copied)`, and exits
-  non-zero for that reason alone; every file the six stops actually
-  reference (`court-1863.jpg`, `court-1918.jpg`, `courthouse-photo.jpg`, and
-  the six `narration-*.m4a` clips) is copied regardless, because `cp *`
-  simply skips the one subdirectory and continues. `mediaCount` reads back
-  as `10` (the nine media files plus `content/media/manifest.json`, which
-  gets swept in by the same glob and is harmless — it is not referenced by
-  any overlay, so it rides along as an unused file, not an error).
-- `GET /api/session/export` then returns a 2.6&nbsp;MB zip.
-- Re-importing that zip into a fresh session (`POST /api/session/import`)
-  succeeds with one warning, `media/manifest.json is not referenced by any
-  overlay` — confirming the exported bundle is one the importer actually
-  accepts, which is the whole point of exporting it in the first place.
+- After the two `cp` commands (both exit 0), it reports `"mediaCount": 15`
+  (three photographs, six narration clips, six panoramas) and
+  `"orphanCount": 6`.
+- `GET /api/session/export` returns a 4.5&nbsp;MB zip (4,536,271 bytes).
+- Re-importing that zip (`curl -X POST localhost:8000/api/session/import -F
+  file=@fairfax-old-town.zip`) returns 200, `"stopCount": 6`,
+  `"mediaCount": 15`, and six warnings, one per panorama: `media/pano/
+  pano-<stop>.jpg is not referenced by any overlay`. These are informational.
+  The panoramas are cached copies named by `cachedPath`, not overlay images,
+  and the importer keeps them.
+- For contrast, the old `cp content/media/*` sequence reported
+  `"mediaCount": 10` and exported 2.6&nbsp;MB, and re-importing it failed with
+  400 `bundle contains a file that is not an allowed image or audio type:
+  media/manifest.json`.
 
 `?diag=1` exposes `window.__tour` and `window.__inWorld` and logs renderer
 boundaries.
