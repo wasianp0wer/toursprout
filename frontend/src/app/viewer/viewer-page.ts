@@ -1,5 +1,4 @@
 import { Component, inject, signal } from '@angular/core';
-import { AlignMode, alignModeEnabled } from '../align/align-mode';
 import { ConfigStore } from '../core/config-store';
 import { TourApi } from '../core/tour-api';
 import { TourStore } from '../core/tour-store';
@@ -9,7 +8,7 @@ import { StopPanel } from '../stop/stop-panel';
 
 @Component({
   selector: 'app-viewer-page',
-  imports: [AlignMode, MapPane, PanoramaPane, StopPanel],
+  imports: [MapPane, PanoramaPane, StopPanel],
   templateUrl: './viewer-page.html',
   styleUrl: './viewer-page.css',
 })
@@ -19,9 +18,6 @@ export class ViewerPage {
   protected readonly store = inject(TourStore);
   protected readonly ready = signal(false);
   protected readonly error = signal<string | null>(null);
-  protected readonly aligning = alignModeEnabled(
-    typeof location === 'undefined' ? '' : location.search,
-  );
 
   constructor() {
     if (typeof window !== 'undefined' && location.search.includes('diag=1')) {

@@ -1,7 +1,6 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { detectArrival } from './arrival';
 import { bearingBetween, type LngLatLike } from './geo';
-import type { InWorldPlacementLike } from '../editor/nudge';
 import type { Overlay, Stop, Tour } from './tour.models';
 
 /**
@@ -15,8 +14,6 @@ export class TourStore {
   private readonly _selectedOverlayId = signal<string | null>(null);
   private readonly _viewerPosition = signal<LngLatLike | null>(null);
   private readonly _overlayOpacity = signal<Record<string, number>>({});
-  private readonly _alignmentOverride =
-    signal<{ id: string; anchor: InWorldPlacementLike } | null>(null);
   private _latched: ReadonlySet<string> = new Set();
 
   readonly tour = this._tour.asReadonly();
@@ -43,7 +40,6 @@ export class TourStore {
   readonly hasPrevious = computed(() => this._index() > 0);
 
   readonly viewerPosition = this._viewerPosition.asReadonly();
-  readonly alignmentOverride = this._alignmentOverride.asReadonly();
   /** Opacity per draped overlay id, so each photograph can be viewed on its own. */
   readonly overlayOpacities = this._overlayOpacity.asReadonly();
 
@@ -103,11 +99,6 @@ export class TourStore {
   /** Move because the viewer walked here, as opposed to skipping with goTo. */
   arriveAt(index: number): void {
     this.goTo(index);
-  }
-
-  /** Alignment mode only: live-replace the current stop's inWorld anchor. */
-  setAlignmentOverride(override: { id: string; anchor: InWorldPlacementLike } | null): void {
-    this._alignmentOverride.set(override);
   }
 
   setOverlayOpacity(id: string, value: number): void {

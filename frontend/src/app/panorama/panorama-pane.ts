@@ -108,15 +108,7 @@ export class PanoramaPane {
 
       this.viewer.setMarkers(markers);
 
-      // Alignment mode nudges one photograph live, so the author sees the
-      // effect of each keypress without a reload. Match by id: matching by
-      // position meant only the first photograph could ever be aligned.
-      const override = this.store.alignmentOverride();
-      this.viewer.setInWorldPlacements(
-        override
-          ? placements.map((r) => (r.id === override.id ? { ...r, ...override.anchor } : r))
-          : placements,
-      );
+      this.viewer.setInWorldPlacements(placements);
     });
 
     effect(() => this.viewer.setInWorldOpacity(this.store.overlayOpacities()));

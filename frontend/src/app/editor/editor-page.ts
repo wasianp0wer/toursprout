@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { Autosave } from './autosave';
 import { EditMapPane } from './edit-map-pane';
+import { EditPanoramaPane } from './edit-panorama-pane';
 import { EditorStore } from './editor-store';
 import { InspectorPane } from './inspector-pane';
 import { OutlinePane } from './outline-pane';
@@ -13,13 +14,11 @@ import { TourApi } from '../core/tour-api';
  *
  * Nothing being open is a normal state here, not an error — a fresh
  * checkout has an empty working directory, and that is not a failure the
- * author needs an actionable message about. The outline, inspector, map and
- * panorama panes that actually edit the draft arrive in tasks 3-5; until
- * then this page only proves the document round-trips.
+ * author needs an actionable message about.
  */
 @Component({
   selector: 'app-editor-page',
-  imports: [OutlinePane, InspectorPane, EditMapPane],
+  imports: [OutlinePane, InspectorPane, EditMapPane, EditPanoramaPane],
   templateUrl: './editor-page.html',
   styleUrl: './editor-page.css',
 })

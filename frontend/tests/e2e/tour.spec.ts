@@ -96,7 +96,3 @@ test('the comparison slider is absent on a stop with no in-world overlay', async
   await page.locator('[data-next]').click();
   await expect(page.locator('[data-in-world-opacity]')).toHaveCount(0);
 });
-
-test('alignment mode stays off unless asked for', async ({ page }) => {
-  await expect(page.locator('[data-align-panel]')).toHaveCount(0);
-});

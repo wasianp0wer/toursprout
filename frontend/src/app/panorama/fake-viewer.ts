@@ -9,6 +9,13 @@ export class FakeViewer implements PanoramaViewer {
   opacity: Record<string, number> | null = null;
   destinationBearing: number | null = null;
   destroyed = false;
+  /**
+   * How many redraws the viewer was asked for. mapillary-js renders on demand,
+   * so MapillaryViewer requests one after every placement or opacity change
+   * (see its requestRedraw); this models that so a pane test can assert a scene
+   * mutation was not left stale.
+   */
+  rerenders = 0;
   failNextLoad = false;
   attachedTo: HTMLElement | null = null;
 
@@ -43,10 +50,12 @@ export class FakeViewer implements PanoramaViewer {
 
   setInWorldPlacements(placements: InWorldPlacement[]): void {
     this.inWorldPlacements.push(placements);
+    this.rerenders++;
   }
 
   setInWorldOpacity(opacities: Record<string, number>): void {
     this.opacity = opacities;
+    this.rerenders++;
   }
 
   setDestinationBearing(bearingDeg: number | null): void {

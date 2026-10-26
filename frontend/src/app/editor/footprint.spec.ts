@@ -60,7 +60,7 @@ describe('footprintCorners', () => {
   it('keeps true metres at 60 degrees north, where a degree of longitude is half as long', () => {
     const hi = { lng: 10, lat: 60 };
     const [a, b] = footprintCorners(hi, 0, 10);
-    // 111,320 m/deg (align-mode) vs the haversine sphere differ by ~0.1%.
+    // 111,320 m/deg (nudge.ts) vs the haversine sphere differ by ~0.1%.
     expect(distanceBetween(a, b)).toBeCloseTo(10, 1);
   });
 
