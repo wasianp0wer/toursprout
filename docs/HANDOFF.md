@@ -9,8 +9,9 @@ A digital-humanities prototype: a virtual historical walking tour of Old Town
 Fairfax, Virginia, told over real street-level panoramas with text, archival
 photography and narration anchored to points in the world.
 
-It is a proof of concept. No editor interface, no multi-tour authoring, one
-hand-authored tour. The **schema** is the part meant to survive into the real
+It is a proof of concept. (As of this session: no editor interface, no
+multi-tour authoring, one hand-authored tour; the editor has since landed, see
+below.) The **schema** is the part meant to survive into the real
 framework.
 
 ## Current state
@@ -57,6 +58,22 @@ over one draft, with undo and debounced autosave through the session API.
 `docs/decisions/0003-the-editor-is-three-surfaces-on-one-state.md` for why it
 is built this way, including the heading-derivation gate. None of the editor
 has been seen in a browser.
+
+Since then, sub-project 3b added media and acquisition: uploads and
+microphone recording into the open tour (`backend/app/media_store.py`), and
+four tools (panoramas, places, archive search/fetch, narration) in
+`backend/app/tools.py`, wired into the editor. Current figures, from
+`make check`: **302 backend (pytest), 521 frontend (Vitest)**. The tools were
+then run once against the live Mapillary, Overpass and loc.gov services, which
+found that the loc.gov parser read `creator` and `rights` fields that do not
+exist at the top level of a result; fixed. See
+`docs/decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md`.
+Still unverified: recorded audio against the sniffer in a real browser
+(Safari's MP4 brand is the risk), a real loc.gov redirect through
+`archive-fetch`, and Overpass mirrors other than `overpass-api.de`, which
+answered in 34-42 s from this machine against a 15 s client timeout. The
+frontend `IMAGE_EXTS`/`AUDIO_EXTS` lists mirror the backend allowlist by hand
+with no test tying them together.
 
 ## Running it
 

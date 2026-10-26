@@ -6,7 +6,7 @@ of Old Town Fairfax, Virginia, with text, archival photography and narration
 anchored to points in the world and overlaid on 360° panoramas.
 
 It is a prototype: there is an authoring editor at `/edit`, but it has never been
-seen in a browser, and there is one hand-authored tour. The **schema** is the
+seen in a browser (nor have its microphone recording and acquisition tools used from one), and there is one hand-authored tour. The **schema** is the
 part meant to survive.
 
 ## What it is made of
@@ -30,7 +30,7 @@ before any content was written — see `content/scripts/probe_coverage.py` and
 - **Node 24** — Angular 22 rejects Node 25. The Makefile pins the path.
 - **uv** with `UV_CACHE_DIR` set (the Makefile does this).
 - **A Mapillary token** in `backend/.env` as `MAPILLARY_TOKEN=MLY|...`.
-  Needed only to regenerate content; the committed tour runs without it.
+  Needed to regenerate content and for the editor's panorama tool; the committed tour runs without it.
 
 Read `docs/ENVIRONMENT.md` before debugging anything. It records several
 non-obvious constraints that each cost real time to find.
@@ -77,10 +77,20 @@ refuses to derive one until the panorama has loaded. **The committed anchors
 are estimates, improved by hand in commit `de48b0d` but not finished** —
 further alignment needs someone at a browser. The old `?align=1` mode is gone.
 
+**Bringing media in.** The editor uploads images and audio into the open tour,
+records narration from the microphone, and has four acquisition tools backed by
+`backend/app/tools.py`: nearby Mapillary panoramas, OSM historic places, Library
+of Congress photograph search (with download into the tour), and synthesized
+narration. The Mapillary tool needs the token in `backend/.env`. The client
+never names a stored file, and recordings keep the browser's own format
+(WebM/Opus in Chromium and Firefox, MP4 where supported); see
+`docs/decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md`,
+including what was and was not checked against the live services.
+
 ## Tests
 
 ```sh
-make check      # lint + 197 backend tests + 426 frontend tests + production build
+make check      # lint + 302 backend tests + 521 frontend tests + production build
 ```
 
 Browser end-to-end tests exist in `frontend/tests/e2e/` but **cannot run inside

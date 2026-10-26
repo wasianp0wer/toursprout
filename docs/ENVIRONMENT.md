@@ -241,3 +241,16 @@ development and made fixes look like they had not been applied — twice leading
 to wrong conclusions about where a bug was. The backend now sends
 `Cache-Control: no-cache, must-revalidate` for HTML while leaving hashed assets
 cacheable.
+
+## Live services, as observed on 2026-10-25
+
+One authorised run against the real services (see
+`docs/decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md`):
+
+- `overpass-api.de` answered in 34-42 s per request from here, even for a
+  trivial query, and returned 502 "at capacity" once. It rejects the default
+  `curl` User-Agent with 406; send a descriptive one.
+- `www.loc.gov` over HTTP/2 with `curl` truncated bodies twice (curl exit 92,
+  stream reset), and one `httpx` read timed out mid-body. A full 25-result
+  response is about 700 KB.
+- Mapillary ignores unknown `fields` rather than failing the call.
