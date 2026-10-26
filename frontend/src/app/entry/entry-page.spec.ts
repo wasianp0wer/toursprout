@@ -89,6 +89,14 @@ describe('EntryPage', () => {
     expect(decisionOf(fixture)).toBe('published');
     expect(viewerWrapper(fixture)?.hidden).toBe(false);
     expect(navigate).not.toHaveBeenCalled();
+    // And makes no further `/api` call: the published site is the anti-goal
+    // this whole page exists to protect, and one failed probe is the entire
+    // price a public visitor pays for it. A retry — the obvious, well-meant
+    // "the connection might have blipped" change — would charge every
+    // visitor to a backend-free host a second round trip to learn the same
+    // thing. Matched by predicate rather than by `http.verify()`, because
+    // the two `tour-data/` requests are deliberately left unflushed.
+    http.expectNone((r) => r.url.startsWith('/api'));
   });
 
   it('treats a 200 of HTML as no backend', async () => {
