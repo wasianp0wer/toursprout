@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LastStopError, addMediaOverlay, hasDefaults, mediaKindOf, setTourDefaults, addStop, addTextOverlay, defaultCreditFor, deleteOverlay,
+  LastStopError, addMediaOverlay, defaultsAnswerValid, hasDefaults, mediaKindOf, setTourDefaults, addStop, addTextOverlay, defaultCreditFor, deleteOverlay,
   deleteStop, deriveHeading, legalModesFor, moveStop, renumberStops,
   setOverlayKind, slugify, uniqueId, updateOverlay,
   creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
@@ -476,5 +476,31 @@ describe('media overlays and tour defaults', () => {
     const ids = t.stops[0].overlays.map((o) => o.id);
     expect(new Set(ids).size).toBe(2);
     expect(addMediaOverlay(tour(), 's1', 'image', 'm-1.jpg', '  ').stops[0].overlays[0].title).toBe('New image');
+  });
+});
+
+describe('text overlays and the defaults invariant', () => {
+  const noDefaults = (): Tour => ({ ...tour(), defaults: null });
+
+  it('defaultsAnswerValid needs a non-blank creator and licence', () => {
+    expect(defaultsAnswerValid('Ada', 'CC0')).toBe(true);
+    expect(defaultsAnswerValid(' ', 'CC0')).toBe(false);
+    expect(defaultsAnswerValid('Ada', '')).toBe(false);
+  });
+
+  it('addTextOverlay refuses (same reference) with no defaults and no answer', () => {
+    const t = noDefaults();
+    expect(addTextOverlay(t, 's1', 'A note')).toBe(t);
+  });
+
+  it('addTextOverlay writes a supplied answer onto the tour with the overlay', () => {
+    const out = addTextOverlay(noDefaults(), 's1', 'A note', { creator: 'Ada', license: 'CC0' });
+    expect(out.defaults).toEqual({ creator: 'Ada', license: 'CC0' });
+    expect(out.stops[0].overlays[0].credit).toEqual({ type: 'original', creator: 'Ada', license: 'CC0' });
+  });
+
+  it('addTextOverlay with defaults ignores a supplied answer', () => {
+    const out = addTextOverlay(tour(), 's1', 'A note', { creator: 'X', license: 'Y' });
+    expect(out.defaults).toEqual({ creator: 'M. Harrington', license: 'CC-BY-4.0' });
   });
 });

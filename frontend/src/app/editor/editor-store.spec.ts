@@ -160,4 +160,12 @@ describe('EditorStore', () => {
     store.load(tour());
     expect(store.manualHeadings().size).toBe(0);
   });
+
+  it('forgets a pending defaults answer when another tour is loaded', () => {
+    store.load(tour());
+    store.setPendingDefaults({ creator: 'Ada', license: 'CC0' });
+    expect(store.pendingDefaults()).toEqual({ creator: 'Ada', license: 'CC0' });
+    store.load(tour());
+    expect(store.pendingDefaults()).toBeNull();
+  });
 });

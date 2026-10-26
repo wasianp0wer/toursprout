@@ -1,12 +1,12 @@
 import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { EditorStore } from './editor-store';
 import {
-  addMediaOverlay, addStop, addTextOverlay, deleteOverlay, deleteStop, hasDefaults, mediaKindOf, moveStop,
-  setTourDefaults,
+  addMediaOverlay, addStop, addTextOverlay, deleteOverlay, deleteStop, defaultsAnswerValid, hasDefaults, mediaKindOf, moveStop,
 } from './document-ops';
 import { SessionApi } from '../core/session-api';
 
 type MediaKind = 'image' | 'audio';
+type PromptKind = MediaKind | 'text';
 
 /** The tour as a list: stops in order, each with its overlays. Thin over EditorStore. */
 @Component({
@@ -28,16 +28,10 @@ export class OutlinePane {
   protected readonly error = computed(() => this.mediaError() ?? this.store.lastError());
 
   /** Set while the one-time creator/licence prompt is showing. */
-  protected readonly promptKind = signal<MediaKind | null>(null);
+  protected readonly promptKind = signal<PromptKind | null>(null);
   protected readonly promptError = signal<string | null>(null);
   protected readonly creator = signal('');
   protected readonly license = signal('');
-  /**
-   * The author's answer, held here and NOT in the document until an upload
-   * succeeds: writing it first would edit the document on a path that can
-   * still be refused. It rides into the document inside addMediaOverlay.
-   */
-  private answered: { creator: string; license: string } | null = null;
   /** The stop chosen when the button was pressed; selection may move during an upload. */
   private targetStopId: string | null = null;
 
@@ -53,12 +47,38 @@ export class OutlinePane {
 
   protected addOverlay(): void {
     const stop = this.store.currentStop();
-    if (!stop) return;
-    const before = new Set(stop.overlays.map((o) => o.id));
-    this.store.apply((t) => addTextOverlay(t, stop.id, 'New note'));
-    const after = this.store.draft()!.stops.find((s) => s.id === stop.id);
+    const doc = this.store.draft();
+    if (!stop || !doc) return;
+    this.mediaError.set(null);
+    if (!hasDefaults(doc) && !this.store.pendingDefaults()) {
+      this.targetStopId = stop.id;
+      this.promptError.set(null);
+      this.promptKind.set('text');
+      return;
+    }
+    this.addText(stop.id);
+  }
+
+  private addText(stopId: string): void {
+    const before = new Set(
+      this.store.draft()?.stops.find((s) => s.id === stopId)?.overlays.map((o) => o.id) ?? []);
+    this.store.apply((t) => addTextOverlay(t, stopId, 'New note', this.store.pendingDefaults() ?? undefined));
+    const after = this.store.draft()?.stops.find((s) => s.id === stopId);
     const added = after?.overlays.find((o) => !before.has(o.id));
     if (added) this.store.select(added.id);
+    else if (!this.store.lastError()) this.mediaError.set(this.refusalMessage(stopId));
+  }
+
+  /** Why addTextOverlay / addMediaOverlay returned the tour unchanged, from what we can see. */
+  private refusalMessage(stopId: string): string {
+    const doc = this.store.draft();
+    if (!doc?.stops.some((s) => s.id === stopId)) {
+      return 'That stop no longer exists, so nothing was added.';
+    }
+    if (!hasDefaults(doc) && !this.store.pendingDefaults()) {
+      return 'This tour needs a creator and licence before anything can be added.';
+    }
+    return 'That could not be added.';
   }
 
   protected addMedia(kind: MediaKind): void {
@@ -67,7 +87,7 @@ export class OutlinePane {
     if (!stop || !doc || this.busy()) return;
     this.mediaError.set(null);
     this.targetStopId = stop.id;
-    if (!hasDefaults(doc) && !this.answered) {
+    if (!hasDefaults(doc) && !this.store.pendingDefaults()) {
       this.promptError.set(null);
       this.promptKind.set(kind);
       return;
@@ -80,14 +100,19 @@ export class OutlinePane {
     if (!kind) return;
     const creator = this.creator().trim();
     const license = this.license().trim();
-    // Same gate setTourDefaults applies; checked here only to explain it.
-    if (!setTourDefaults({ ...this.store.draft()! }, creator, license).defaults) {
+    if (!defaultsAnswerValid(creator, license)) {
       this.promptError.set('Enter both a creator and a licence.');
       return;
     }
-    this.answered = { creator, license };
+    this.store.setPendingDefaults({ creator, license });
     this.promptKind.set(null);
-    this.chooseFile(kind);
+    if (kind === 'text') {
+      const stopId = this.targetStopId ?? this.store.currentStop()?.id;
+      this.targetStopId = null;
+      if (stopId) this.addText(stopId);
+    } else {
+      this.chooseFile(kind);
+    }
   }
 
   protected cancelDefaults(): void {
@@ -127,10 +152,10 @@ export class OutlinePane {
       return;
     }
     const before = this.store.draft();
-    this.store.apply((t) => addMediaOverlay(t, stopId, kind, mediaId, file.name, this.answered ?? undefined));
+    this.store.apply((t) => addMediaOverlay(t, stopId, kind, mediaId, file.name, this.store.pendingDefaults() ?? undefined));
     const after = this.store.draft();
     if (after === before) {
-      this.mediaError.set('That stop no longer exists, so the file was uploaded but not added.');
+      this.mediaError.set(`${this.refusalMessage(stopId)} The file was uploaded but not added.`);
       return;
     }
     const added = after!.stops.find((s) => s.id === stopId)?.overlays.at(-1);

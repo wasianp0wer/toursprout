@@ -38,6 +38,19 @@ export class EditorStore {
     this._panoramaPosition.set(pos);
   }
 
+  private readonly _pendingDefaults = signal<{ creator: string; license: string } | null>(null);
+
+  /**
+   * The author's answer to the one-time creator/licence prompt, held until
+   * the first successful add writes it onto the tour. Lives here, not in a
+   * pane, so `load` can clear it: an answer given for one tour must never be
+   * written onto another without asking. Never part of the document.
+   */
+  readonly pendingDefaults = this._pendingDefaults.asReadonly();
+  setPendingDefaults(v: { creator: string; license: string } | null): void {
+    this._pendingDefaults.set(v);
+  }
+
   private readonly _manualHeadings = signal<ReadonlySet<string>>(new Set());
 
   /**
@@ -100,6 +113,7 @@ export class EditorStore {
     this._lastError.set(null);
     this._undoStack.set([]);
     this._manualHeadings.set(new Set());
+    this._pendingDefaults.set(null);
   }
 
   select(id: string | null): void {

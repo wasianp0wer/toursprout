@@ -162,6 +162,16 @@ describe('OutlinePane', () => {
       expect(q('[data-outline-error]')?.textContent?.length).toBeGreaterThan(0);
     });
 
+    it('says the stop is gone when it was deleted during the upload', async () => {
+      let resolve!: (id: string) => void;
+      upload.mockReturnValue(new Promise<string>((r) => { resolve = r; }));
+      const done = choose('[data-file-image]', file('p.jpg'));
+      store.apply((t) => ({ ...t, stops: t.stops.filter((s) => s.id !== 'a') }));
+      resolve('p-abc123.jpg');
+      await done;
+      expect(q('[data-outline-error]')?.textContent).toMatch(/no longer exists/i);
+    });
+
     describe('when the tour has no defaults', () => {
       beforeEach(() => {
         store.load({ ...tour([stop('a', 1)]), defaults: null });
@@ -202,6 +212,47 @@ describe('OutlinePane', () => {
         expect(store.draft()!.defaults).toEqual({ creator: 'Ada', license: 'CC0' });
         expect(overlaysOf('a')[0].credit).toEqual({ type: 'original', creator: 'Ada', license: 'CC0' });
         expect(q('[data-defaults-form]')).toBeNull();
+      });
+
+      it('a text overlay asks first and then carries the answer onto the tour', () => {
+        click('[data-add-overlay]');
+        expect(q('[data-defaults-form]')).toBeTruthy();
+        expect(overlaysOf('a').length).toBe(0);
+        expect(store.draft()!.defaults).toBeNull();
+        fill('Ada', 'CC0');
+        click('[data-defaults-submit]');
+        expect(store.draft()!.defaults).toEqual({ creator: 'Ada', license: 'CC0' });
+        expect(overlaysOf('a')[0]).toMatchObject({ kind: 'text', credit: { creator: 'Ada', license: 'CC0' } });
+        expect(q('[data-defaults-form]')).toBeNull();
+      });
+
+      it('an answer given for one tour is not applied to another tour without asking', () => {
+        click('[data-add-image]');
+        fill('Ada', 'CC0');
+        click('[data-defaults-submit]');
+        store.load({ ...tour([stop('a', 1)]), id: 'other', defaults: null });
+        store.select('a');
+        fixture.detectChanges();
+        click('[data-add-overlay]');
+        expect(q('[data-defaults-form]')).toBeTruthy();
+        expect(store.draft()!.defaults).toBeNull();
+        expect(overlaysOf('a').length).toBe(0);
+      });
+
+      it('says defaults are missing, not that the stop is gone, when the tour changed mid-upload', async () => {
+        let resolve!: (id: string) => void;
+        upload.mockReturnValue(new Promise<string>((r) => { resolve = r; }));
+        click('[data-add-image]');
+        fill('Ada', 'CC0');
+        click('[data-defaults-submit]');
+        const done = choose('[data-file-image]', file('p.jpg'));
+        store.load({ ...tour([stop('a', 1)]), id: 'other', defaults: null });
+        resolve('p-abc123.jpg');
+        await done;
+        expect(overlaysOf('a').length).toBe(0);
+        const msg = q('[data-outline-error]')?.textContent ?? '';
+        expect(msg).toMatch(/creator and licen[cs]e/i);
+        expect(msg).not.toMatch(/no longer exists/i);
       });
 
       it('a refused upload writes no defaults, and the answer is not asked for again', async () => {

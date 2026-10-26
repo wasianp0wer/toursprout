@@ -114,10 +114,17 @@ export function defaultCreditFor(tour: Tour): Credit {
   };
 }
 
-export function addTextOverlay(tour: Tour, stopId: string, title: string): Tour {
-  const id = uniqueId(slugify(title), allIds(tour));
+export function addTextOverlay(
+  tour: Tour, stopId: string, title: string,
+  supplied?: { creator: string; license: string },
+): Tour {
   const stop = tour.stops.find((s) => s.id === stopId);
   if (!stop) return tour;
+  // Same invariant as addMediaOverlay: the author's own writing is never
+  // credited to "Unknown". No defaults and no answer: refuse, same reference.
+  const base = withDefaults(tour, supplied);
+  if (!base) return tour;
+  const id = uniqueId(slugify(title), allIds(base));
   const overlay: Overlay = {
     id, kind: 'text',
     anchor: { type: 'geo', lng: stop.location.lng, lat: stop.location.lat, altitudeM: 2 },
@@ -127,9 +134,9 @@ export function addTextOverlay(tour: Tour, stopId: string, title: string): Tour 
     // validate, and an invalid draft cannot be saved.
     body: 'Write something about this.',
     mediaId: null,
-    credit: defaultCreditFor(tour),
+    credit: defaultCreditFor(base),
   };
-  return mapStop(tour, stopId, (s) => ({ ...s, overlays: [...s.overlays, overlay] }));
+  return mapStop(base, stopId, (s) => ({ ...s, overlays: [...s.overlays, overlay] }));
 }
 
 export function deleteOverlay(tour: Tour, overlayId: string): Tour {
@@ -401,6 +408,19 @@ export function hasDefaults(tour: Tour): boolean {
   return !!tour.defaults?.creator?.trim() && !!tour.defaults?.license?.trim();
 }
 
+/** The one rule for an answer to the creator/licence prompt. */
+export function defaultsAnswerValid(creator: string, license: string): boolean {
+  return !!creator.trim() && !!license.trim();
+}
+
+/** The tour with usable defaults: itself, or with `supplied` written on; null if neither. */
+function withDefaults(tour: Tour, supplied?: { creator: string; license: string }): Tour | null {
+  if (hasDefaults(tour)) return tour;
+  if (!supplied) return null;
+  const out = setTourDefaults(tour, supplied.creator, supplied.license);
+  return hasDefaults(out) ? out : null;
+}
+
 /** Write the tour's default creator and licence. Same reference for a blank. */
 export function setTourDefaults(tour: Tour, creator: string, license: string): Tour {
   const c = creator.trim();
@@ -428,10 +448,8 @@ export function addMediaOverlay(
 ): Tour {
   const stop = tour.stops.find((s) => s.id === stopId);
   if (!stop || mediaKindOf(mediaId) !== kind) return tour;
-  const base = hasDefaults(tour)
-    ? tour
-    : supplied ? setTourDefaults(tour, supplied.creator, supplied.license) : tour;
-  if (!hasDefaults(base)) return tour;
+  const base = withDefaults(tour, supplied);
+  if (!base) return tour;
   const text = title.trim() || (kind === 'image' ? 'New image' : 'New audio');
   const overlay: Overlay = {
     id: uniqueId(slugify(text), allIds(base)), kind,
