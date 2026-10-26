@@ -21,7 +21,9 @@ import shutil
 import stat
 import tempfile
 import zipfile
+from collections.abc import Iterable
 from pathlib import Path
+from typing import IO
 
 from pydantic import ValidationError
 
@@ -70,6 +72,66 @@ def write_bundle(work: Path, zip_path: Path) -> None:
             if rel.as_posix() == "config.json":
                 continue
             zf.write(path, rel.as_posix())
+
+
+def stage_bundle_root(
+    root: Path, document: dict, media: Iterable[tuple[str, IO[bytes]]]
+) -> None:
+    """Lay out a bundle's three members under `root`, ready for `write_bundle`.
+
+    This exists so that the ways of getting a document plus some media INTO
+    the application — opening a shipped example, dropping loose files on the
+    editor — can all go through `read_bundle` instead of writing into the
+    working directory themselves. That is the whole point: whoever stages a
+    root here gets validation, the media allow-list, the bundle-version check,
+    schema migration, the orphan warnings and the atomic swap for free, and
+    none of them is reimplemented per entry point.
+
+    `media` yields `(relative path under media/, open binary stream)`. Streams,
+    not paths, because the loose-file caller already holds the upload's spooled
+    file and copying it to disk first only to copy it again here would be
+    pointless; a caller reading from disk opens each file itself. The stream is
+    read to EOF and left open: its lifetime belongs to the caller, so a
+    disk-backed caller can yield from inside a `with` block and have each file
+    closed as the generator advances.
+
+    Names are checked, not trusted. A loose-file caller's names come from the
+    browser, and this writes them to the filesystem before `read_bundle`'s own
+    entry-name checks ever see them.
+    """
+    root = Path(root)
+    (root / "media").mkdir(parents=True, exist_ok=True)
+    (root / "tour.json").write_text(json.dumps(document, indent=2) + "\n")
+    # `tourId` is informational — `_check_bundle_version` reads only
+    # `bundleVersion` — so a document with no `id` writes None here and is
+    # then refused by `tour.json`'s own validation with a message about the
+    # document, which is the one the author can act on.
+    (root / "bundle.json").write_text(
+        json.dumps(
+            {"bundleVersion": BUNDLE_VERSION, "tourId": document.get("id")}, indent=2
+        )
+        + "\n"
+    )
+    for name, stream in media:
+        target = root / "media" / _safe_media_name(name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "wb") as dst:
+            shutil.copyfileobj(stream, dst)
+
+
+def _safe_media_name(name: str) -> Path:
+    """Reduce a caller's media name to a relative path under `media/`, or
+    refuse it. Backslashes and bare `.`/`..` components are rejected rather
+    than normalised away, for the same reason `_check_safe` rejects them in
+    archive entries: a name that tried to escape is a name to refuse, not to
+    quietly rewrite into something that did not.
+    """
+    rel = Path(name)
+    if not name or name.endswith("/") or rel.is_absolute() or "\\" in name:
+        raise BundleError(f"unsafe media name: {name}")
+    if any(part in ("..", ".") for part in rel.parts):
+        raise BundleError(f"unsafe media name (escapes media/): {name}")
+    return rel
 
 
 def read_bundle(zip_path: Path, dest: Path) -> list[str]:
@@ -266,7 +328,7 @@ _ALLOWED_ROOT_FILES = {"bundle.json", "tour.json", "config.json"}
 # plus the common spelling of JPEG. The sniff alone is not enough, because a
 # static server types by extension, and valid JPEG bytes named `.html` are
 # served as text/html.
-_MEDIA_EXTENSIONS = set(ALLOWED_TYPES.values()) | {".jpeg"}
+MEDIA_EXTENSIONS = set(ALLOWED_TYPES.values()) | {".jpeg"}
 
 
 def _check_media_file(path: Path, rel: Path) -> None:
@@ -280,7 +342,7 @@ def _check_media_file(path: Path, rel: Path) -> None:
     """
     with open(path, "rb") as fh:
         head = fh.read(16)
-    if _sniff_type(head) is None or path.suffix.lower() not in _MEDIA_EXTENSIONS:
+    if _sniff_type(head) is None or path.suffix.lower() not in MEDIA_EXTENSIONS:
         raise BundleError(
             f"bundle contains a file that is not an allowed image or audio "
             f"type: {rel.as_posix()}"

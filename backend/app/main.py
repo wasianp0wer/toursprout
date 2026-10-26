@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
@@ -16,6 +17,7 @@ from . import media_store, tools
 from .bundle import BundleError, missing_media, write_bundle
 from .config import Settings
 from .config import settings as default_settings
+from .examples import ExampleError, list_examples, open_example
 from .media_store import MediaError, store_media
 from .publish import PublishError, build_site
 from .session import Session, SessionConflict
@@ -161,6 +163,43 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         session.write_config(_viewer_config(app.state.cfg))
         return session.summary()
+
+    @app.get("/api/session/examples")
+    def get_examples() -> dict:
+        try:
+            return {"examples": [asdict(e) for e in list_examples(app.state.cfg)]}
+        except ExampleError as exc:
+            # 5xx on purpose: the examples are shipped with the application, so
+            # a malformed one is this installation's fault, not the request's.
+            # Mapped rather than left to surface as an unhandled exception only
+            # so the message says WHICH example and what is wrong with it.
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post("/api/session/examples/{example_id}",
+              dependencies=[Depends(_reject_cross_site)])
+    def import_example(example_id: str) -> dict:
+        session = app.state.session
+        # Guarded before anything is staged, for the same reason `Session.new`
+        # refuses: opening an example replaces the working directory, and the
+        # author's only copy of an unexported tour is in it.
+        if session.is_open:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "a tour is already open; export it first, or close it "
+                    "before opening an example"
+                ),
+            )
+        try:
+            warnings = open_example(session, app.state.cfg, example_id)
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail=f"there is no example {example_id!r}"
+            ) from exc
+        except (ExampleError, BundleError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        session.write_config(_viewer_config(app.state.cfg))
+        return {**session.summary(), "warnings": warnings}
 
     @app.put("/api/session/tour", dependencies=[Depends(_reject_cross_site)])
     def put_tour(doc: dict) -> dict:

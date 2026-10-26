@@ -10,7 +10,14 @@ from pathlib import Path
 import pytest
 
 import app.bundle as bundle_module
-from app.bundle import BUNDLE_VERSION, BundleError, missing_media, read_bundle, write_bundle
+from app.bundle import (
+    BUNDLE_VERSION,
+    BundleError,
+    missing_media,
+    read_bundle,
+    stage_bundle_root,
+    write_bundle,
+)
 from app.models import Tour
 
 # Import sniffs everything under media/, so fixtures need real signatures.
@@ -529,3 +536,45 @@ def test_legitimate_media_still_imports(tmp_path):
     dest = tmp_path / "dest"
     read_bundle(zip_path, dest)
     assert (dest / "media" / "pano" / "voice.m4a").read_bytes() == M4A
+
+
+# --- stage_bundle_root ------------------------------------------------------
+# The staging side of the same contract: `stage_bundle_root` is what the
+# example opener and loose-file import use to turn "a document plus some
+# media" into something `read_bundle` can validate, so the two must meet.
+
+
+def test_a_staged_root_round_trips_through_read_bundle(tmp_path):
+    root = tmp_path / "root"
+    doc = _minimal_doc("photo.jpg")
+    stage_bundle_root(root, doc, [
+        ("photo.jpg", io.BytesIO(JPEG)),
+        ("pano/voice.m4a", io.BytesIO(M4A)),
+    ])
+    zip_path = tmp_path / "staged.zip"
+    write_bundle(root, zip_path)
+
+    dest = tmp_path / "dest"
+    warnings = read_bundle(zip_path, dest)
+
+    assert json.loads((dest / "tour.json").read_text()) == doc
+    assert json.loads((dest / "bundle.json").read_text()) == {
+        "bundleVersion": BUNDLE_VERSION, "tourId": "t",
+    }
+    assert (dest / "media" / "photo.jpg").read_bytes() == JPEG
+    assert (dest / "media" / "pano" / "voice.m4a").read_bytes() == M4A
+    assert warnings == ["media/pano/voice.m4a is not referenced by any overlay"]
+
+
+@pytest.mark.parametrize("name", [
+    "../escaped.jpg", "a/../../escaped.jpg", "/absolute.jpg", "", "sub/",
+    "..\\windows.jpg",
+])
+def test_staging_refuses_a_media_name_that_escapes(tmp_path, name):
+    """These names come from the browser on the loose-file import path, and
+    they are written to disk here, before `read_bundle`'s own entry-name
+    checks ever see them."""
+    root = tmp_path / "root"
+    with pytest.raises(BundleError):
+        stage_bundle_root(root, _minimal_doc(), [(name, io.BytesIO(JPEG))])
+    assert not (tmp_path / "escaped.jpg").exists()
