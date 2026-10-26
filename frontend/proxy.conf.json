@@ -1,3 +1,4 @@
 {
-  "/api": { "target": "http://localhost:8000", "secure": false }
+  "/api": { "target": "http://localhost:8000", "secure": false },
+  "/tour-data": { "target": "http://localhost:8000", "secure": false }
 }

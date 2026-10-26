@@ -35,6 +35,23 @@ describe('ViewerPage', () => {
     expect(el.querySelector('[data-error]')?.textContent).toContain('backend');
   });
 
+  it('distinguishes no-tour-open from an unreachable backend', async () => {
+    const fixture = TestBed.createComponent(ViewerPage);
+    fixture.detectChanges();
+    // The backend is up and serving; the working directory simply has no
+    // tour in it, so tour-data/ 404s. Telling the reader to start a server
+    // would send them to the wrong fix.
+    http.expectOne('tour-data/config.json').flush(null, { status: 404, statusText: 'Not Found' });
+    http.expectOne('tour-data/tour.json').flush(null, { status: 404, statusText: 'Not Found' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const text = el.querySelector('[data-error]')?.textContent ?? '';
+    expect(text).toContain('No tour is open');
+    expect(text).not.toContain('backend');
+  });
+
   it('shows the loading state before the tour arrives', () => {
     const fixture = TestBed.createComponent(ViewerPage);
     fixture.detectChanges();

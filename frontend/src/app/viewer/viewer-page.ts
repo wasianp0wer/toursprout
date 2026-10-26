@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { ConfigStore } from '../core/config-store';
 import { TourApi } from '../core/tour-api';
@@ -36,8 +37,8 @@ export class ViewerPage {
       this.config.set(config);
       this.store.load(tour);
       this.ready.set(true);
-    } catch {
-      this.error.set('Could not reach the tour service. Is the backend running on port 8000?');
+    } catch (err) {
+      this.error.set(bootstrapFailureMessage(err));
     }
   }
 
@@ -48,4 +49,18 @@ export class ViewerPage {
   protected tourTitle() {
     return this.store.tour()?.title ?? '';
   }
+}
+
+/**
+ * A 404 and a dead connection need opposite fixes, and the viewer used to
+ * report both as "is the backend running". A 404 means the backend answered:
+ * it is up, but the working directory holds no tour, so `tour-data/` has
+ * nothing to serve. Pointing that reader at a server they have already
+ * started costs them the whole search.
+ */
+function bootstrapFailureMessage(err: unknown): string {
+  if (err instanceof HttpErrorResponse && err.status === 404) {
+    return 'No tour is open. Open or import one in the editor, or follow "Opening the existing six-stop tour" in docs/HANDOFF.md.';
+  }
+  return 'Could not reach the tour service. Is the backend running on port 8000?';
 }

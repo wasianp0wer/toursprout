@@ -86,7 +86,9 @@ token and does travel with a published site.
 
 Run the whole thing with `make serve` (FastAPI serves the API, `/tour-data`
 and the built app on :8000). `ng serve`'s proxy (`frontend/proxy.conf.json`)
-forwards only `/api`, so under it `tour-data/` is not reachable.
+forwards both `/api` and `/tour-data`, so the dev server reaches the open
+tour as well. It forwarded only `/api` until the viewer was first run by
+hand, which made every `tour-data/` fetch 404 under `ng serve` alone.
 
 ### 2. An edit reaches disk
 
