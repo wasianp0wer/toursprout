@@ -45,6 +45,16 @@ const GUIDE_TITLES = [
   selector: 'app-welcome-page',
   templateUrl: './welcome-page.html',
   styleUrl: './welcome-page.css',
+  // A drag released anywhere but the drop zone is the browser's to handle,
+  // and what it does is navigate to the file — on the one screen whose job
+  // is a first impression, the app would simply vanish and be replaced by a
+  // `.zip` download or a page of raw JSON. The window hears every drag that
+  // misses, so the refusal belongs here rather than on the zone. The zone's
+  // own handler runs first and does the importing; see `blockStrayDrag`.
+  host: {
+    '(window:dragover)': 'blockStrayDrag($event)',
+    '(window:drop)': 'blockStrayDrag($event)',
+  },
 })
 export class WelcomePage {
   private readonly api = inject(SessionApi);
@@ -94,6 +104,18 @@ export class WelcomePage {
 
   protected onDragLeave(): void {
     this.over.set(false);
+  }
+
+  /**
+   * Keep a drag that missed the drop zone from navigating the app away.
+   *
+   * Only `preventDefault`: a near miss does nothing, and the author tries
+   * again on the dashed area, which is the largest element on the screen.
+   * Importing from wherever the file happened to land would mean the whole
+   * page were a drop target, which is not what the dashed border promises.
+   */
+  protected blockStrayDrag(event: DragEvent): void {
+    event.preventDefault();
   }
 
   protected async onDrop(event: DragEvent): Promise<void> {
@@ -152,12 +174,14 @@ export class WelcomePage {
       await this.open(() => this.api.importBundle(dropped[0].file));
       return;
     }
-    const { parts, skipped } = sortDrop(dropped);
+    const { parts, skipped, problem } = sortDrop(dropped);
     this.skipped.set(skipped);
-    if (parts.length === 0) {
-      // Posting an empty multipart would come back as "the drop has no
-      // tour.json", which is true and sounds like the server lost it.
-      this.error.set('Nothing in that drop can be part of a tour. A tour needs a tour.json, and its media folder may hold only images and audio.');
+    if (problem) {
+      // Something `loose_import` would refuse the whole drop over, which this
+      // screen could see coming. Posting it anyway would cost the author a
+      // round trip to be told, in the server's terms, about a multipart body
+      // they never saw.
+      this.error.set(problem);
       return;
     }
     await this.open(() => this.api.importFiles(parts));

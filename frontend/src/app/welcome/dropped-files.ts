@@ -26,11 +26,13 @@ export interface DroppedFile {
   file: File;
 }
 
-/** A drop sorted into what can go to the server and what cannot, the latter
- * named by the path the author would recognise. */
+/** A drop sorted into what can go to the server, what cannot (named by the
+ * path the author would recognise), and why the drop cannot go at all. */
 export interface SortedDrop {
   parts: LoosePart[];
   skipped: string[];
+  /** A reason to post nothing, in words an author can act on, or null. */
+  problem: string | null;
 }
 
 /**
@@ -44,19 +46,90 @@ export interface SortedDrop {
  * in and a drag of that folder would carry it along. Posting it means the
  * author loses the drop and reads a refusal; filtering it means they keep the
  * drop and read a notice naming the one file left out.
+ *
+ * Every check below is a thing `loose_import` refuses the WHOLE drop over, so
+ * every one of them has to be answered here or the author pays a round trip
+ * to be told something this screen already knew.
  */
 export function sortDrop(dropped: DroppedFile[]): SortedDrop {
   const parts: LoosePart[] = [];
   const skipped: string[] = [];
+  const taken = new Set<string>();
+  let duplicate: string | null = null;
+
   for (const { rel, file } of dropped) {
     const path = bundlePathFor(rel);
-    if (path === 'tour.json' || DROPPABLE_MEDIA_EXTS.includes(extensionOf(path))) {
-      parts.push({ path, file });
-    } else {
+    if (!belongsInATour(path)) {
       skipped.push(rel);
+      continue;
     }
+    // Two files that would be the same file in the bundle. `stage_loose_bundle`
+    // refuses the drop over it ("the drop contains … more than once", "more
+    // than one tour.json"), and it is easy to do by accident: dragging
+    // `media/` along with the folder that contains it sends every photograph
+    // twice, and a folder holding two tours sends two documents.
+    if (taken.has(path)) {
+      duplicate ??= path;
+      continue;
+    }
+    taken.add(path);
+    parts.push({ path, file });
   }
-  return { parts, skipped };
+  return { parts, skipped, problem: problemWith(parts, skipped, duplicate) };
+}
+
+/**
+ * Whether a file at this bundle path can be part of a tour at all.
+ *
+ * Two rules, and the second is not decoration. `loose_import._media_name`
+ * raises "a hidden file cannot be part of a tour" for a dot-prefixed
+ * component anywhere in the path, and refuses the whole drop with it. macOS
+ * writes an AppleDouble `._court.jpg` beside the real file whenever the media
+ * has been on exFAT, FAT or SMB — which is exactly how photographs travel
+ * between a scanner, a laptop and an archive — and that sidecar carries the
+ * real file's `.jpg`, so an extension test alone waves it through. Spotlight,
+ * thumbnail and version-control directories are the same story one level up.
+ */
+function belongsInATour(path: string): boolean {
+  const segments = path.split('/');
+  if (segments.some((segment) => segment.startsWith('.'))) return false;
+  return path === 'tour.json' || DROPPABLE_MEDIA_EXTS.includes(extensionOf(path));
+}
+
+/**
+ * Why this drop cannot be posted, or null. These are the refusals this screen
+ * can see coming, answered in the author's terms rather than fetched from the
+ * server: the backend's wording for them is about the multipart body it
+ * received, which is not a thing the author did.
+ */
+function problemWith(
+  parts: LoosePart[], skipped: string[], duplicate: string | null,
+): string | null {
+  if (parts.length === 0) {
+    return 'Nothing in that drop can be part of a tour. A tour needs a tour.json, and its media folder may hold only images and audio.';
+  }
+  if (duplicate) {
+    return duplicate === 'tour.json'
+      ? 'That drop has more than one tour.json in it. A tour is one document and one media folder, so drop just the one tour.'
+      : `That drop has ${duplicate} in it twice — probably a media folder dropped along with the folder that contains it. Drop one or the other.`;
+  }
+  if (!parts.some((part) => part.path === 'tour.json')) {
+    // The author's own first use: HANDOFF.md tells them to rename
+    // `fairfax-old-town.json` to `tour.json`, and dropping the folder
+    // un-renamed sends the media on its own. Naming the file they almost
+    // certainly meant saves them reading "the drop has no tour.json" from a
+    // server that sounds as though it lost their files.
+    // Not any .json: one from inside a `media` directory is the content
+    // pipeline's `manifest.json`, never the tour's document, and telling the
+    // author to rename that would send them to make the drop worse. The
+    // document sits beside `media/`, not in it.
+    const document = skipped.find((rel) => extensionOf(rel) === '.json'
+      && !rel.split('/').includes('media'));
+    return document
+      ? `That drop has no tour.json in it. A tour's document has to be named exactly tour.json — rename ${document} and drop it again.`
+      : 'That drop has no tour.json in it. A tour needs its document, named tour.json, beside its media folder.';
+  }
+  return null;
 }
 
 /**
@@ -102,9 +175,21 @@ export async function readDroppedFiles(transfer: DataTransfer | null): Promise<D
   if (entries.length === 0) return filesWithPaths(transfer.files);
 
   const found: DroppedFile[] = [];
-  for (const entry of entries) await walk(entry, '', found);
+  for (const entry of entries) await walk(entry, '', found, 0);
   return found;
 }
+
+/**
+ * Budgets for the walk. A symlink or junction inside a dropped folder that
+ * points at one of its own ancestors descends for ever, and the symptom is
+ * the worst one available: the tab wedges with the drop handler still
+ * pending and the screen doing nothing at all, with no message and nothing
+ * to click. Neither limit can be reached by a real tour — the deepest path
+ * in the repository's own media is `media/pano/x.jpg`, two levels — so
+ * hitting one means something is wrong with the folder, not with the tour.
+ */
+const MAX_DEPTH = 16;
+const MAX_FILES = 2000;
 
 /** A picker's `FileList` as dropped files. `webkitRelativePath` is set only
  * by a directory picker; for a plain multi-select it is empty and the name is
@@ -116,7 +201,11 @@ export function filesWithPaths(files: FileList | File[] | null): DroppedFile[] {
   }));
 }
 
-async function walk(entry: FileSystemEntry, prefix: string, found: DroppedFile[]): Promise<void> {
+async function walk(
+  entry: FileSystemEntry, prefix: string, found: DroppedFile[], depth: number,
+): Promise<void> {
+  if (depth > MAX_DEPTH) throw new Error('that folder is nested deeper than a tour can be');
+  if (found.length >= MAX_FILES) throw new Error('that folder holds more files than a tour can');
   const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
   if (entry.isFile) {
     found.push({ rel, file: await fileOf(entry as FileSystemFileEntry) });
@@ -126,7 +215,7 @@ async function walk(entry: FileSystemEntry, prefix: string, found: DroppedFile[]
   // all (a URL, a chunk of text). Nothing to read, and not an error.
   if (!entry.isDirectory) return;
   for (const child of await readAllEntries(entry as FileSystemDirectoryEntry)) {
-    await walk(child, rel, found);
+    await walk(child, rel, found, depth + 1);
   }
 }
 

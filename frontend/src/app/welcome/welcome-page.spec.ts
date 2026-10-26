@@ -28,20 +28,27 @@ function fileEntry(name: string, file = new File(['x'], name)): unknown {
   };
 }
 
-/** A dropped directory entry. A real `readEntries` yields its children in
- * batches and signals the end with an empty one, so this fake does too. */
+/**
+ * A dropped directory entry.
+ *
+ * This fake hands its children back ONE PER BATCH, and only then an empty
+ * batch. That is the quirk of the real `readEntries`: it yields a page at a
+ * time (Chrome caps a page at 100) and signals the end with an empty array,
+ * so a reader that calls it once silently sees only the first page. A fake
+ * that returned everything in the first batch would pass a one-call
+ * implementation just as happily, and the pagination loop is the part of this
+ * module most likely to be rewritten by someone who does not know the quirk.
+ */
 function dirEntry(name: string, children: unknown[]): unknown {
   return {
     isFile: false,
     isDirectory: true,
     name,
     createReader: () => {
-      let done = false;
+      let next = 0;
       return {
         readEntries: (ok: (entries: unknown[]) => void) => {
-          const batch = done ? [] : children;
-          done = true;
-          ok(batch);
+          ok(next < children.length ? [children[next++]] : []);
         },
       };
     },
@@ -314,6 +321,142 @@ describe('WelcomePage', () => {
     expect((q('[data-new-tour]') as HTMLButtonElement).disabled).toBe(true);
     expect((q('[data-browse]') as HTMLButtonElement).disabled).toBe(true);
     expect(q('[data-working]')).toBeNull();
+  });
+
+  it('skips a dot-prefixed sidecar instead of posting it', async () => {
+    // macOS writes an AppleDouble `._court.jpg` beside the real one whenever
+    // the media has been on exFAT, FAT or SMB — which is how a historian
+    // moves photographs between machines. It has a .jpg extension, so an
+    // extension-only filter posts it, and `loose_import._media_name` then
+    // refuses THE WHOLE DROP with "a hidden file cannot be part of a tour".
+    // Same failure as manifest.json, different filename.
+    await mount([]);
+
+    await drop(fileTransfer([
+      filed('tour.json'), filed('media/court.jpg'), filed('media/._court.jpg'),
+    ]));
+
+    const req = http.expectOne('/api/session/import-files');
+    const names = (req.request.body as FormData).getAll('files').map((f) => (f as File).name);
+    expect(names).toEqual(['tour.json', 'media/court.jpg']);
+    expect(q('[data-skipped]')?.textContent).toContain('media/._court.jpg');
+    expect(q('[data-error]')).toBeNull();
+    req.flush({ open: true, title: 'Old Town Fairfax' });
+    await settle();
+    expect(navigate).toHaveBeenCalledWith(['/edit']);
+  });
+
+  it('skips a file inside a dot-prefixed directory', async () => {
+    await mount([]);
+
+    await drop(fileTransfer([
+      filed('tour.json'), filed('media/court.jpg'), filed('media/.thumbs/court.jpg'),
+    ]));
+
+    const req = http.expectOne('/api/session/import-files');
+    const names = (req.request.body as FormData).getAll('files').map((f) => (f as File).name);
+    expect(names).toEqual(['tour.json', 'media/court.jpg']);
+    expect(q('[data-skipped]')?.textContent).toContain('media/.thumbs/court.jpg');
+  });
+
+  it('refuses a drop holding two tours rather than letting the server refuse it', async () => {
+    await mount([]);
+
+    await drop(fileTransfer([
+      filed('clifton/tour.json'), filed('fairfax/tour.json'), filed('fairfax/media/court.jpg'),
+    ]));
+
+    http.expectNone('/api/session/import-files');
+    expect(q('[data-error]')?.textContent).toMatch(/more than one tour\.json/i);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('refuses a drop in which two files would be the same media file', async () => {
+    // `media/` dragged along with its parent: both halves map to the same
+    // place in the bundle, and `stage_loose_bundle` refuses the lot.
+    await mount([]);
+
+    await drop(fileTransfer([
+      filed('tour.json'), filed('media/court.jpg'), filed('fairfax/media/court.jpg'),
+    ]));
+
+    http.expectNone('/api/session/import-files');
+    expect(q('[data-error]')?.textContent).toContain('media/court.jpg');
+    expect(q('[data-error]')?.textContent).toMatch(/twice/i);
+  });
+
+  it('names the document to rename when a drop has no tour.json', async () => {
+    // This author's own first use: HANDOFF.md has them rename
+    // fairfax-old-town.json to tour.json. Dropped un-renamed, the media
+    // alone would post and the server would answer "the drop has no
+    // tour.json" — which reads as though it lost the files.
+    await mount([]);
+
+    await drop(fileTransfer([
+      filed('fairfax-old-town.json'), filed('media/court.jpg'),
+    ]));
+
+    http.expectNone('/api/session/import-files');
+    expect(q('[data-error]')?.textContent).toContain('fairfax-old-town.json');
+    expect(q('[data-error]')?.textContent).toContain('tour.json');
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('does not offer manifest.json as the document to rename', async () => {
+    // The media folder dropped on its own. The only .json in it is the
+    // pipeline's manifest, which lives INSIDE media/ and is never the tour's
+    // document, so telling the author to rename it would send them to make
+    // the drop worse.
+    await mount([]);
+
+    await drop(fileTransfer([filed('media/court.jpg'), filed('media/manifest.json')]));
+
+    http.expectNone('/api/session/import-files');
+    const message = q('[data-error]')?.textContent ?? '';
+    expect(message).toMatch(/no tour\.json/i);
+    expect(message).not.toContain('manifest.json');
+  });
+
+  it('gives up on a folder that contains itself', async () => {
+    // A symlink or junction pointing at an ancestor. Without a budget the
+    // walk never returns: the tab wedges with the handler pending and the
+    // screen simply doing nothing, which is the worst failure on offer.
+    await mount([]);
+    const loop: Record<string, unknown> = {
+      isFile: false, isDirectory: true, name: 'media',
+    };
+    loop['createReader'] = () => {
+      let next = 0;
+      return {
+        readEntries: (ok: (entries: unknown[]) => void) => {
+          ok(next++ === 0 ? [loop] : []);
+        },
+      };
+    };
+
+    await drop(entryTransfer([loop]));
+
+    http.expectNone('/api/session/import-files');
+    expect(q('[data-error]')?.textContent).toMatch(/could not be read/i);
+  });
+
+  it('stops a drop that misses the drop zone from navigating away', async () => {
+    // Released a few pixels outside the dashed border, Chrome opens the file
+    // in place of the app — on the one screen whose job is the first
+    // impression. The guard is on the window, so the app survives a near miss.
+    await mount([]);
+
+    for (const type of ['dragover', 'drop']) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', { value: fileTransfer([]) });
+      window.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    await settle();
+
+    // Blocked, not silently imported from wherever it landed.
+    http.expectNone('/api/session/import-files');
+    http.expectNone('/api/session/import');
   });
 
   it('shows the backend message when opening an example conflicts', async () => {
