@@ -54,7 +54,7 @@ export class SessionApi {
   /** Starts a brand-new skeleton tour. Only valid while nothing is open —
    * the editor page's empty state is the only caller today. */
   newTour(title: string): Promise<SessionSummary> {
-    return firstValueFrom(this.http.post<SessionSummary>('/api/session/new', { title }));
+    return this.send(this.http.post<SessionSummary>('/api/session/new', { title }));
   }
 
   /**
@@ -155,14 +155,20 @@ async function readBlobError(err: unknown): Promise<unknown> {
 }
 
 /** The one place a backend refusal becomes a message an author can read:
- * FastAPI's `detail` when there is one, else something sensible for the status. */
+ * FastAPI's `detail` when there is one, else something sensible for the status.
+ * The wording must be true for any session request, not just uploads.
+ *
+ * `get()` and `putTour()` deliberately do not use it: the entry page has to
+ * tell a dead connection, a non-JSON 200 from a static host and a timeout
+ * apart by the shape of the failure, which a flattened string would destroy,
+ * and autosave has its own `messageFrom` for putTour. */
 function sessionMessage(err: unknown): string {
   if (err instanceof HttpErrorResponse) {
-    if (err.status === 0) return 'could not reach the server to upload that file';
+    if (err.status === 0) return 'could not reach the server';
     const detail = (err.error as { detail?: unknown } | null)?.detail;
     if (typeof detail === 'string' && detail) return detail;
-    if (err.status === 413) return 'that file is too large to upload';
-    return `the upload failed (${err.status})`;
+    if (err.status === 413) return 'that file is too large for the server to accept';
+    return `the request failed (${err.status})`;
   }
-  return 'the upload failed';
+  return 'the request failed';
 }

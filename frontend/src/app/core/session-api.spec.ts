@@ -51,6 +51,13 @@ describe('SessionApi', () => {
     expect((await promise).title).toBe('Untitled tour');
   });
 
+  it('surfaces the backend detail when a new tour conflicts with an open one', async () => {
+    const p = api.newTour('x');
+    http.expectOne('/api/session/new')
+        .flush({ detail: 'a tour is already open' }, { status: 409, statusText: 'Conflict' });
+    await expect(p).rejects.toThrow('a tour is already open');
+  });
+
   it('uploads a file as multipart and returns the server-chosen mediaId', async () => {
     const file = new File([new Uint8Array([1, 2, 3])], 'pic.jpg', { type: 'image/jpeg' });
     const promise = api.uploadMedia(file);
@@ -74,6 +81,7 @@ describe('SessionApi', () => {
     const a = api.uploadMedia(new File(['x'], 'a.jpg'));
     http.expectOne('/api/session/media').flush('', { status: 413, statusText: 'Payload Too Large' });
     await expect(a).rejects.toThrow(/too large/i);
+    expect(await a.catch(e => e.message)).not.toMatch(/upload/i);
     const b = api.uploadMedia(new File(['x'], 'a.jpg'));
     http.expectOne('/api/session/media').error(new ProgressEvent('error'));
     await expect(b).rejects.toThrow(/could not reach/i);
