@@ -145,6 +145,14 @@ describe('SessionApi', () => {
     const req = http.expectOne('/api/session/import');
     expect(req.request.method).toBe('POST');
     expect((req.request.body as FormData).get('file')).toBeInstanceOf(File);
+    // And deliberately WITHOUT `force`. The route takes that flag to let a
+    // caller discard an open tour on purpose, and the welcome screen is the
+    // one caller that must never send it: it is shown only when nothing is
+    // open, so a 409 from here means its view of the session is stale — a
+    // second tab opened something — and refusing is the whole point.
+    // Sending `force` to quieten that 409 would delete the other tab's only
+    // copy of an unexported tour.
+    expect((req.request.body as FormData).get('force')).toBeNull();
     req.flush({ open: true, title: 'Imported' });
     expect((await promise).title).toBe('Imported');
   });

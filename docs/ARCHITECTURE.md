@@ -247,6 +247,16 @@ migration or the swap. That is why adding a fifth way in means producing a
 bundle zip and handing it over, and not writing to the working directory —
 see entry 9 in [`CHANGING-THINGS.md`](CHANGING-THINGS.md).
 
+**All four refuse with 409 while a tour is already open**, and that is one
+guarantee rather than four coincidences: each of them replaces
+`content/work/`, which holds the author's only copy of an unexported tour.
+`new` and `import` accept `force` to say the discard is deliberate (a JSON
+field and a multipart field respectively); the examples and loose-file routes
+accept nothing and must be preceded by a close. A fifth way in needs the same
+guard, and the welcome screen must not send `force` from any of them: it is
+shown only when nothing is open, so a 409 there means its view of the session
+is stale and refusing is the point.
+
 Out again is `DELETE /api/session` → `Session.close` → `_discard`, which is
 the only code that removes the working directory (`Session.new(force=True)`
 shares it). It refuses with 409 when nothing is open rather than agreeing with

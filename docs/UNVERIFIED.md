@@ -266,7 +266,9 @@ and what was entry 9 (a published site) is now entry 19.
   *Close and delete* now live. Keep the file — entry 13 needs it. Then finish
   entry 11, and afterwards re-import the bundle
   (`curl -X POST localhost:8000/api/session/import -F file=@tour.zip`) to
-  check it comes back with 6 stops and 15 media files. Fail: a saved file of 0
+  check it comes back with 6 stops and 15 media files. No `force` needed:
+  finishing entry 11 closed the tour, and `import` now refuses while one is
+  open. Fail: a saved file of 0
   bytes or a truncated archive means the object URL was revoked too early —
   `REVOKE_DELAY_MS` in `close-dialog.ts`.
 
@@ -274,7 +276,8 @@ and what was entry 9 (a published site) is now entry 19.
 
 - **Unproven:** that dragging a bundle onto the dashed area imports it. The
   drop handler reads a single `.zip` straight out of `DataTransfer` and posts
-  it to `/api/session/import`.
+  it to `/api/session/import` — without `force`, deliberately, so a drop onto
+  a stale welcome screen is refused rather than replacing another tab's tour.
 - **Why not here:** no browser, so no drag. jsdom specs build a `DataTransfer`
   by hand, which proves the sorting and the posting, not the gesture.
 - **Close it:** entries 11 and 12 together leave you with a `tour.zip` and

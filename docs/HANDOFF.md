@@ -22,7 +22,7 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 410 backend (pytest), 605 frontend (Vitest); lint and production
+**Tests:** 412 backend (pytest), 605 frontend (Vitest); lint and production
 build clean via `make check`. Eager bundle 2.15 MB raw / 371.80 kB transferred;
 the editor is a lazy chunk, 102.13 kB raw / 23.78 kB transferred, and the
 welcome screen is another, 11.84 kB raw / 3.92 kB transferred.
@@ -116,7 +116,8 @@ The checklist for the first browser session, in the order to do it, is
                                            open, unless {"force": true}
   GET    /api/session/examples             {"examples": [{id, title, description}]}
   POST   /api/session/examples/{id}        409 if open, 404 unknown, 400 malformed
-  POST   /api/session/import               form field `file`, one .zip
+  POST   /api/session/import               form field `file`, one .zip; 409 if a tour
+                                           is already open, unless -F force=true
   POST   /api/session/import-files         form field `files`; each part's FILENAME is
                                            its bundle-relative path (media/pano/x.jpg);
                                            409 if a tour is already open
@@ -170,7 +171,8 @@ bytes and pydantic refuses with a 422 (`{"type":"dict_type",...}`):
 ```sh
 curl -X POST localhost:8000/api/session/new \
   -H 'Content-Type: application/json' -d '{"title": "A tour"}'      # start empty
-curl -X POST localhost:8000/api/session/import -F file=@tour.zip    # open a bundle
+curl -X POST localhost:8000/api/session/import -F file=@tour.zip \
+  -F force=true                                                     # open a bundle
 curl localhost:8000/api/session/examples                            # what examples exist
 curl -X POST localhost:8000/api/session/examples/fairfax-old-town   # open one, media and all
 curl -X PUT localhost:8000/api/session/tour \
@@ -179,6 +181,14 @@ curl localhost:8000/api/session/export -o tour.zip                  # save it ou
 curl localhost:8000/api/session/publish -o site.zip                 # a backend-free static site
 curl -X DELETE localhost:8000/api/session                           # discard the working copy
 ```
+
+Every route that replaces `content/work/` refuses while a tour is already
+open, because the working directory is the author's only copy of an
+unexported tour: `new` and `import` take `force` to say the discard is
+deliberate (`-F force=true` on `import`, since its body is already
+multipart), and `import-files` and the examples route take nothing — close
+the tour first. The `force=true` above is there because the line before it
+opens an empty tour; drop it when nothing is open.
 
 `DELETE /api/session` is what the editor's *Close tour* calls. It deletes
 `content/work/` and there is no undo: export first. It refuses with 409 when
@@ -302,9 +312,12 @@ This was run end to end against a live backend with `curl` (not
   `"orphanCount": 6`.
 - `GET /api/session/export` returns a 4.5&nbsp;MB zip (4,536,271 bytes).
 - Re-importing that zip (`curl -X POST localhost:8000/api/session/import -F
-  file=@fairfax-old-town.zip`) returns 200, `"stopCount": 6`,
+  file=@fairfax-old-town.zip -F force=true`) returns 200, `"stopCount": 6`,
   `"mediaCount": 15`, and six warnings, one per panorama: `media/pano/
   pano-<stop>.jpg is not referenced by any overlay`. These are informational.
+  (`force=true` was added to that line afterwards, when `import` gained the
+  conflict guard: the recorded run did it with the exported tour still open,
+  which now needs saying out loud. The figures are the live ones.)
   The panoramas are cached copies named by `cachedPath`, not overlay images,
   and the importer keeps them.
 - For contrast, the old `cp content/media/*` sequence reported
@@ -627,9 +640,17 @@ not keep in another.
   `content/work/` throws away the author's only copy of an unexported tour.
   `POST /api/session/import-files` did not, so a drop onto a *stale* welcome
   screen — a second tab left showing the front door — replaced the first
-  tab's tour silently. It now refuses in the same words. The `.zip` route has
-  the same hole and predates this branch; it is left for a follow-up rather
-  than widened into a review fix, and a `force` flag is the suggested shape.
+  tab's tour silently. It now refuses in the same words.
+- **So does `POST /api/session/import`, and that one nearly got away.** It was
+  scoped out of the review as inherited and predating this branch, which was
+  the wrong test of whether it mattered: `ingest` sends every single-`.zip`
+  drop to it, and a packaged bundle is the first thing the drop zone's own
+  text offers, so the stale-second-tab scenario still worked in full, through
+  the most prominent control on the screen this branch added. It now takes
+  `force` — `Session.new`'s flag and its bargain, that the remaining ways to
+  lose an open document all require saying so on purpose — as a multipart
+  field beside the file. The welcome screen never sends it, and
+  `session-api.spec.ts` asserts that it does not.
 - **That route also wrote a big drop to disk twice before refusing it**, on
   the event loop: staging copied every part into a temp tree, `write_bundle`
   deflated the lot, and only `read_bundle` then applied the 5000-entry /
@@ -650,4 +671,4 @@ longer takes `preventDefault` from a text field or claims the whole page for
 a drag carrying no files; and `editor-page.ts` records why the close dialog
 shuts before the DELETE rather than after it.
 
-Figures after: 410 backend, 605 frontend.
+Figures after: 412 backend, 605 frontend.

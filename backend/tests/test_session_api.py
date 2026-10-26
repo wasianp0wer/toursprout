@@ -187,9 +187,58 @@ def test_export_then_import_round_trips(client):
     assert blob.headers["content-type"] == "application/zip"
 
     # Already exported, so discarding what's open now is safe; force says so.
+    # Twice over now: `new` takes it, and so does `import`, which refuses an
+    # open tour for the same reason and in the same words.
     client.post("/api/session/new", json={"title": "Something Else", "force": True})
     r = client.post("/api/session/import",
+                    files={"file": ("t.zip", blob.content, "application/zip")},
+                    data={"force": "true"})
+    assert r.status_code == 200
+    assert client.get("/api/session").json()["title"] == "Exported"
+
+
+def test_import_refuses_a_bundle_while_a_tour_is_open(client):
+    """The last hole in the one-tour guarantee, and the only one reachable
+    through the welcome screen's most prominent control.
+
+    `new`, the examples route and the loose-file route all refuse while a
+    tour is open, because replacing the working directory throws away the
+    author's only copy of an unexported tour. The `.zip` route did not — and
+    `WelcomePage.ingest` sends every single-`.zip` drop to it, which is the
+    first thing the drop zone's own text offers. So a stale welcome screen in
+    a second tab destroyed the first tab's tour, in full, without a word.
+
+    The bundle posted here is a VALID one, exported a moment ago: a bundle
+    with something wrong with it is refused by `read_bundle` anyway, so a
+    test built on one would have passed with or without this guard.
+    """
+    client.post("/api/session/new", json={"title": "Exported"})
+    blob = client.get("/api/session/export")
+    client.post("/api/session/new", json={"title": "Keep Me", "force": True})
+
+    r = client.post("/api/session/import",
                     files={"file": ("t.zip", blob.content, "application/zip")})
+
+    assert r.status_code == 409
+    assert "already open" in r.json()["detail"]
+    assert client.get("/api/session").json()["title"] == "Keep Me"
+
+
+def test_import_with_force_discards_what_was_open(client):
+    """The deliberate way through, in this repository's established
+    vocabulary: the same `force` that `Session.new` takes, and the same
+    bargain — the one remaining way to lose an open document requires saying
+    so on purpose. Carried as a form field, because the body is already
+    multipart for the file.
+    """
+    client.post("/api/session/new", json={"title": "Exported"})
+    blob = client.get("/api/session/export")
+    client.post("/api/session/new", json={"title": "Keep Me", "force": True})
+
+    r = client.post("/api/session/import",
+                    files={"file": ("t.zip", blob.content, "application/zip")},
+                    data={"force": "true"})
+
     assert r.status_code == 200
     assert client.get("/api/session").json()["title"] == "Exported"
 
@@ -218,9 +267,14 @@ def test_export_refuses_with_409_when_referenced_media_is_missing(client):
 
 
 def test_importing_rubbish_is_a_400_and_keeps_the_open_tour(client):
+    # `force` so that the conflict guard lets the request through to the
+    # thing under test: that even a deliberate discard cannot lose the open
+    # tour to a BAD archive, because `read_bundle` validates into staging
+    # and only then swaps.
     client.post("/api/session/new", json={"title": "Keep Me"})
     r = client.post("/api/session/import",
-                    files={"file": ("x.zip", b"not a zip", "application/zip")})
+                    files={"file": ("x.zip", b"not a zip", "application/zip")},
+                    data={"force": "true"})
     assert r.status_code == 400
     assert client.get("/api/session").json()["title"] == "Keep Me"
 
@@ -232,7 +286,8 @@ def test_importing_a_traversal_archive_is_refused(client):
         zf.writestr("tour.json", json.dumps({"id": "x"}))
         zf.writestr("../escape.txt", "pwned")
     r = client.post("/api/session/import",
-                    files={"file": ("e.zip", buf.getvalue(), "application/zip")})
+                    files={"file": ("e.zip", buf.getvalue(), "application/zip")},
+                    data={"force": "true"})
     assert r.status_code == 400
     assert "unsafe" in r.json()["detail"]
     # (No assertion about where "escape.txt" might have landed: extraction
@@ -267,7 +322,8 @@ def test_import_spool_failure_is_a_400_and_leaves_no_temp_file(client, monkeypat
     monkeypatch.setattr(main_module.shutil, "copyfileobj", boom)
 
     r = client.post("/api/session/import",
-                    files={"file": ("t.zip", b"anything", "application/zip")})
+                    files={"file": ("t.zip", b"anything", "application/zip")},
+                    data={"force": "true"})
 
     assert r.status_code == 400
     assert "detail" in r.json()

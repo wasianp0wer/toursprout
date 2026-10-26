@@ -7,8 +7,17 @@ import tempfile
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -240,8 +249,39 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         return session.summary()
 
     @app.post("/api/session/import", dependencies=[Depends(_reject_cross_site)])
-    async def import_bundle(file: UploadFile) -> dict:
+    async def import_bundle(
+        file: UploadFile, force: Annotated[bool, Form()] = False
+    ) -> dict:
         session = app.state.session
+        # Guarded before the upload is spooled, and the last of the four ways
+        # in to be: replacing the working directory throws away the author's
+        # only copy of an unexported tour, which is why `Session.new`, the
+        # examples route and the loose-file route all refuse here.
+        #
+        # This one was left for longest because it is inherited, which was
+        # the wrong test of whether it mattered: `WelcomePage.ingest` sends
+        # every single-`.zip` drop to this route, and a packaged bundle is
+        # the first thing the drop zone's own text offers. A stale welcome
+        # screen in a second tab therefore destroyed the first tab's tour
+        # through the most prominent control on the screen.
+        #
+        # `force` is `Session.new`'s flag and its bargain: the remaining ways
+        # to lose an open document all require saying so on purpose. It
+        # travels as a form field rather than a query parameter because the
+        # body is already multipart for the file, so it costs the caller
+        # nothing but one more `-F`, and because that keeps the intent inside
+        # the request body with the thing it applies to. The welcome screen
+        # deliberately never sends it: that screen is shown only when nothing
+        # is open, so a conflict there means its view of the session is stale
+        # and refusing is the whole point.
+        if session.is_open and not force:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "a tour is already open; export it first, or pass force "
+                    "to discard it"
+                ),
+            )
         # Spool to disk with a genuine streaming copy: `UploadFile.file` is
         # the underlying spooled file FastAPI already parsed the upload into,
         # and `copyfileobj` moves it to our own temp file in chunks rather

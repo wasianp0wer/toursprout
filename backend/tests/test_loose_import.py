@@ -205,8 +205,12 @@ def test_a_non_bundle_zip_is_refused_and_leaves_the_open_tour(client, tmp_path):
     with zipfile.ZipFile(junk, "w") as zf:
         zf.writestr("readme.txt", "not a tour")
     with junk.open("rb") as fh:
+        # `force`, so the conflict guard does not answer first: what is under
+        # test is that a BAD archive cannot lose the open tour even when the
+        # caller has said to discard it.
         res = client.post("/api/session/import",
-                          files={"file": ("junk.zip", fh, "application/zip")})
+                          files={"file": ("junk.zip", fh, "application/zip")},
+                          data={"force": "true"})
     assert res.status_code == 400
     assert client.get("/api/session").json()["title"] == "Keep me"
 
@@ -263,7 +267,10 @@ def test_warnings_match_the_equivalent_zip(client, tmp_path):
         zf.writestr("media/photo.jpg", JPEG)
         zf.writestr("media/unused.jpg", JPEG)
     with zpath.open("rb") as fh:
+        # The loose import above left a tour open, so this one says to
+        # discard it; the point of the test is the warnings, not the guard.
         via_zip = client.post("/api/session/import",
-                              files={"file": ("eq.zip", fh, "application/zip")}).json()
+                              files={"file": ("eq.zip", fh, "application/zip")},
+                              data={"force": "true"}).json()
     assert loose["warnings"] and any("unused.jpg" in w for w in loose["warnings"])
     assert loose["warnings"] == via_zip["warnings"]
