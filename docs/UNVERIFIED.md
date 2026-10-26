@@ -17,7 +17,8 @@ recorded in the ADRs and `HANDOFF.md`, not here.
 
 ## How to use this
 
-Start at 1 and work down; stop at the first failure. The order is by how much
+Start at 1 and work down; stop at the first failure. (Entries 1 and 2 are
+interchangeable starting points: do whichever page you open first.) The order is by how much
 work a failure would invalidate: if the editor does not load, nothing below it
 can be tried, and if the viewer does not render, the editor's panorama pane
 will not either. Entries 1 to 3 take about ten minutes and decide whether the
@@ -126,8 +127,10 @@ end to end against a live backend with `curl`; the browser half of it was not.
 
 - **Unproven:** that what `MediaRecorder` produces passes the upload sniffer
   (`_sniff_type` in `backend/app/media_store.py`). Believed, not known.
-  Chromium's EBML header and Firefox's `OggS` pass. **Safari's MP4 brand is the
-  risk:** `isom`, `iso5`, `mp42` and `M4A ` pass; `dash` and `cmfc` would be
+  Firefox's `OggS` passes. Chromium's EBML (WebM) header also passes, but
+  the recorder prefers MP4 wherever the browser supports it, so a recent
+  Chromium most likely records MP4 and never produces the EBML path; see
+  entry 8. **Safari's MP4 brand is the risk, and Chromium's may be too:** `isom`, `iso5`, `mp42` and `M4A ` pass; `dash` and `cmfc` would be
   refused as "not an allowed type". ADR 0004, Costs.
 - **Why not here:** no browser to record in.
 - **Close it:** in each of Chromium, Firefox and Safari, record one short clip
@@ -140,14 +143,14 @@ end to end against a live backend with `curl`; the browser half of it was not.
 
 ## 8. What brand does Chromium's own MP4 recording write?
 
-*Not listed in any other document as a question; it follows from entry 7.*
+*Not listed in any other document as a question; it follows from entry 7, and the two are best checked in the same recording.*
 
 - **Unproven:** the recorder prefers `audio/mp4` whenever
   `MediaRecorder.isTypeSupported('audio/mp4')` is true (`recorder.ts`; ADR
   0004), so a recent Chromium will take that branch rather than WebM. The
-  Entry 7 expects Chromium's EBML (WebM); this is the MP4 branch, and no
-  record says which brand it writes. If the MP4
-  muxer there writes a fragmented-MP4 brand such as `dash` or `cmfc`, the
+  ADR 0004 only vouches for Chromium's WebM (EBML) header, which this
+  preference makes the less likely path, and no record says which brand
+  Chromium's MP4 writes. If its MP4 muxer writes a fragmented-MP4 brand such as `dash` or `cmfc`, the
   recorder's preferred path is the one the sniffer refuses.
 - **Why not here:** same as 7; no record of this brand exists anywhere.
 - **Close it:** record in Chromium; if the clip's extension is `.m4a`, look at
@@ -195,7 +198,9 @@ end to end against a live backend with `curl`; the browser half of it was not.
   exercised here, since it needs no network; the audio has never been played
   back from a page.
 - **Close it:** use the narration tool on a stop, then play the resulting
-  overlay in the editor and in the viewer.
+  overlay in the editor and in the viewer. Pass: it plays and is audible in
+  both the editor and the published viewer from entry 9. Silence in either is
+  a failure; check the file's extension and the Network tab's response type.
 
 ## 12. Media upload through the real file picker
 
