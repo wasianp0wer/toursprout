@@ -50,4 +50,32 @@ describe('SessionApi', () => {
     req.flush({ open: true, title: 'Untitled tour' });
     expect((await promise).title).toBe('Untitled tour');
   });
+
+  it('uploads a file as multipart and returns the server-chosen mediaId', async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], 'pic.jpg', { type: 'image/jpeg' });
+    const promise = api.uploadMedia(file);
+    const req = http.expectOne('/api/session/media');
+    expect(req.request.method).toBe('POST');
+    const body = req.request.body as FormData;
+    expect(body.get('file')).toBeInstanceOf(File);
+    expect((body.get('file') as File).name).toBe('pic.jpg');
+    req.flush({ open: true, mediaId: 'pic-abc123.jpg' });
+    expect(await promise).toBe('pic-abc123.jpg');
+  });
+
+  it('turns a refusal into an Error carrying the backend message', async () => {
+    const promise = api.uploadMedia(new File(['x'], 'a.exe'));
+    http.expectOne('/api/session/media').flush(
+      { detail: 'that file type is not allowed' }, { status: 400, statusText: 'Bad Request' });
+    await expect(promise).rejects.toThrow('that file type is not allowed');
+  });
+
+  it('gives a useful message for a 413 and for an unreachable server', async () => {
+    const a = api.uploadMedia(new File(['x'], 'a.jpg'));
+    http.expectOne('/api/session/media').flush('', { status: 413, statusText: 'Payload Too Large' });
+    await expect(a).rejects.toThrow(/too large/i);
+    const b = api.uploadMedia(new File(['x'], 'a.jpg'));
+    http.expectOne('/api/session/media').error(new ProgressEvent('error'));
+    await expect(b).rejects.toThrow(/could not reach/i);
+  });
 });

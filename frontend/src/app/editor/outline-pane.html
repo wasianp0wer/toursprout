@@ -2,14 +2,26 @@
   <div class="toolbar">
     <button type="button" data-add-stop (click)="addStop()">Add stop</button>
     <button type="button" data-add-overlay [disabled]="!store.currentStop()" (click)="addOverlay()">Add text overlay</button>
-    <button type="button" data-add-image disabled>Add image</button>
-    <button type="button" data-add-audio disabled>Add audio</button>
+    <button type="button" data-add-image [disabled]="!store.currentStop() || busy()" (click)="addMedia('image')">Add image</button>
+    <button type="button" data-add-audio [disabled]="!store.currentStop() || busy()" (click)="addMedia('audio')">Add audio</button>
+    <input #imageInput type="file" hidden data-file-image accept="image/jpeg,image/png,image/webp" (change)="onFile('image', $event)" />
+    <input #audioInput type="file" hidden data-file-audio accept="audio/*,.webm,.m4a,.mp3,.ogg,.wav" (change)="onFile('audio', $event)" />
     <button type="button" data-move-up [disabled]="!store.selectedStop()" (click)="move(-1)" aria-label="Move stop up">Up</button>
     <button type="button" data-move-down [disabled]="!store.selectedStop()" (click)="move(1)" aria-label="Move stop down">Down</button>
     <button type="button" data-delete [disabled]="!store.selectedId()" (click)="remove()">Delete</button>
   </div>
-  <p class="note" data-media-note>Image and audio overlays arrive with media upload.</p>
-  @if (store.lastError(); as err) {
+  @if (promptKind()) {
+    <form class="defaults" data-defaults-form (submit)="$event.preventDefault(); submitDefaults()">
+      <p>Who made this work, and under what licence? This is asked once and used for every credit you add.</p>
+      <label>Creator <input type="text" data-defaults-creator [value]="creator()" (input)="creator.set($any($event.target).value)" /></label>
+      <label>Licence <input type="text" data-defaults-license [value]="license()" (input)="license.set($any($event.target).value)" /></label>
+      @if (promptError(); as pe) { <p class="error" data-defaults-error role="alert">{{ pe }}</p> }
+      <button type="submit" data-defaults-submit>Continue</button>
+      <button type="button" data-defaults-cancel (click)="cancelDefaults()">Cancel</button>
+    </form>
+  }
+  @if (busy()) { <p class="note" data-uploading>Uploading…</p> }
+  @if (error(); as err) {
     <p class="error" data-outline-error role="alert">{{ err }}</p>
   }
   <ol class="stops">

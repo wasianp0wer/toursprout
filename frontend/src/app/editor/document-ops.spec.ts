@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LastStopError, addStop, addTextOverlay, defaultCreditFor, deleteOverlay,
+  LastStopError, addMediaOverlay, hasDefaults, mediaKindOf, setTourDefaults, addStop, addTextOverlay, defaultCreditFor, deleteOverlay,
   deleteStop, deriveHeading, legalModesFor, moveStop, renumberStops,
   setOverlayKind, slugify, uniqueId, updateOverlay,
   creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
+import type { Tour } from '../core/tour.models';
 
 describe('slugify and uniqueId', () => {
   it('makes a readable slug', () => {
@@ -292,7 +293,9 @@ describe('inspector helpers', () => {
 
   it('legalKindsFor offers image and audio only when media is attached', () => {
     expect(legalKindsFor(overlay('a'))).toEqual(['text']);
-    expect(legalKindsFor(overlay('a', { mediaId: 'm.jpg' }))).toEqual(['text', 'image', 'audio']);
+    expect(legalKindsFor(overlay('a', { mediaId: 'm.jpg' }))).toEqual(['text', 'image']);
+    expect(legalKindsFor(overlay('a', { mediaId: 'm.mp3' }))).toEqual(['text', 'audio']);
+    expect(legalKindsFor(overlay('a', { mediaId: 'm.xyz' }))).toEqual(['text', 'image', 'audio']);
     // the current kind stays listed even if the data is odd
     expect(legalKindsFor(overlay('a', { kind: 'image', mediaId: null }))).toEqual(['text', 'image']);
   });
@@ -396,5 +399,82 @@ describe('setOverlayHeadingManual (the map rotation handle)', () => {
     expect(setOverlayHeadingManual(t, 'o1', NaN, PANO)).toBe(t);
     const m = tour([stop('s1', 1, [overlay('o1')])]);
     expect(setOverlayHeadingManual(m, 'o1', 5, PANO)).toBe(m);
+  });
+});
+
+describe('media overlays and tour defaults', () => {
+  const noDefaults = (): Tour => ({ ...tour(), defaults: null });
+
+  it('mediaKindOf reads the kind from the stored extension', () => {
+    expect(mediaKindOf('map-ab12.jpg')).toBe('image');
+    expect(mediaKindOf('x-ab12.webp')).toBe('image');
+    expect(mediaKindOf('x-ab12.m4a')).toBe('audio');
+    expect(mediaKindOf('x-ab12.webm')).toBe('audio');
+    expect(mediaKindOf('x-ab12.exe')).toBeNull();
+  });
+
+  it('hasDefaults needs both a creator and a licence', () => {
+    expect(hasDefaults(tour())).toBe(true);
+    expect(hasDefaults(noDefaults())).toBe(false);
+    expect(hasDefaults({ ...tour(), defaults: { creator: ' ', license: 'CC0' } })).toBe(false);
+  });
+
+  it('setTourDefaults writes trimmed defaults and refuses blanks', () => {
+    const t = noDefaults();
+    const out = setTourDefaults(t, ' Ada ', ' CC0 ');
+    expect(out.defaults).toEqual({ creator: 'Ada', license: 'CC0' });
+    expect(t.defaults).toBeNull();
+    expect(setTourDefaults(t, '', 'CC0')).toBe(t);
+    expect(setTourDefaults(t, 'Ada', '  ')).toBe(t);
+  });
+
+  it('addMediaOverlay anchors at the stop with an original credit from defaults', () => {
+    const t = tour();
+    const out = addMediaOverlay(t, 's1', 'image', 'map-ab12.jpg', 'map.jpg');
+    const o = out.stops[0].overlays[0];
+    expect(o).toMatchObject({
+      kind: 'image', mediaId: 'map-ab12.jpg', title: 'map.jpg',
+      display: { mode: 'marker', icon: 'photo' },
+      anchor: { type: 'geo', lng: t.stops[0].location.lng, lat: t.stops[0].location.lat },
+      credit: { type: 'original', creator: 'M. Harrington', license: 'CC-BY-4.0' },
+    });
+    expect(t.stops[0].overlays.length).toBe(0);
+  });
+
+  it('addMediaOverlay produces an audio marker for audio', () => {
+    const o = addMediaOverlay(tour(), 's1', 'audio', 'a-1.mp3', 'a.mp3').stops[0].overlays[0];
+    expect(o.display).toEqual({ mode: 'marker', icon: 'audio' });
+  });
+
+  it('with no defaults it refuses, rather than writing Unknown', () => {
+    const t = noDefaults();
+    expect(addMediaOverlay(t, 's1', 'image', 'm-1.jpg', 'm.jpg')).toBe(t);
+  });
+
+  it('with no defaults, supplied defaults are written with the overlay in one document', () => {
+    const out = addMediaOverlay(noDefaults(), 's1', 'image', 'm-1.jpg', 'm.jpg',
+      { creator: 'Ada', license: 'CC0' });
+    expect(out.defaults).toEqual({ creator: 'Ada', license: 'CC0' });
+    expect(out.stops[0].overlays[0].credit).toEqual({ type: 'original', creator: 'Ada', license: 'CC0' });
+  });
+
+  it('existing defaults win over supplied ones', () => {
+    const out = addMediaOverlay(tour(), 's1', 'image', 'm-1.jpg', 'm.jpg', { creator: 'X', license: 'Y' });
+    expect(out.defaults).toEqual({ creator: 'M. Harrington', license: 'CC-BY-4.0' });
+  });
+
+  it('refuses a mediaId whose type does not match the kind, or an unknown stop', () => {
+    const t = tour();
+    expect(addMediaOverlay(t, 's1', 'image', 'a-1.mp3', 'a')).toBe(t);
+    expect(addMediaOverlay(t, 's1', 'audio', 'a-1.jpg', 'a')).toBe(t);
+    expect(addMediaOverlay(t, 'nope', 'image', 'a-1.jpg', 'a')).toBe(t);
+  });
+
+  it('gives a unique id and a title fallback', () => {
+    let t = addMediaOverlay(tour(), 's1', 'image', 'm-1.jpg', 'm.jpg');
+    t = addMediaOverlay(t, 's1', 'image', 'm-1.jpg', 'm.jpg');
+    const ids = t.stops[0].overlays.map((o) => o.id);
+    expect(new Set(ids).size).toBe(2);
+    expect(addMediaOverlay(tour(), 's1', 'image', 'm-1.jpg', '  ').stops[0].overlays[0].title).toBe('New image');
   });
 });

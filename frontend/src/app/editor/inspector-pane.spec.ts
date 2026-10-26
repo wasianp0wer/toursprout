@@ -100,7 +100,8 @@ describe('InspectorPane', () => {
   });
 
   it('changes kind through setOverlayKind, coercing an illegal mode', async () => {
-    await start(inWorld());
+    // audio is only offered when the attached media is audio
+    await start({ ...inWorld(), mediaId: 'p.mp3' });
     const kind = q('[data-field="kind"]') as HTMLSelectElement;
     kind.value = 'audio'; kind.dispatchEvent(new Event('change')); await settle();
     expect(ov().kind).toBe('audio');
@@ -174,7 +175,7 @@ describe('InspectorPane', () => {
     expect((q('[data-field="mode"] option[value="inWorld"]') as HTMLOptionElement).disabled).toBe(false);
   });
 
-  it('offers image and audio kinds only when media is attached', async () => {
+  it('offers only the kind the attached media type allows', async () => {
     const kinds = () => Array.from(el.querySelectorAll('[data-field="kind"] option')).map((o) => (o as HTMLOptionElement).value);
     await start(overlay('o1'));
     expect(kinds()).toEqual(['text']);
@@ -182,7 +183,7 @@ describe('InspectorPane', () => {
     TestBed.configureTestingModule({ imports: [InspectorPane] });
     store = TestBed.inject(EditorStore);
     await start(overlay('o1', { mediaId: 'm.jpg' }));
-    expect(kinds()).toEqual(['text', 'image', 'audio']);
+    expect(kinds()).toEqual(['text', 'image']);
   });
 
   it('typing a heading is marked as an override, with a way back, and never enters the document', async () => {

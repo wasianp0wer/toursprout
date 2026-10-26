@@ -362,17 +362,85 @@ export function setOverlayHeadingManual(
   return setInWorldField(tour, overlayId, { headingDeg });
 }
 
+const IMAGE_EXTS = ['.jpg', '.png', '.webp'];
+const AUDIO_EXTS = ['.wav', '.m4a', '.mp3', '.ogg', '.webm'];
+
 /**
- * Kinds an author may switch this overlay to. Image and audio need uploaded
- * media (backend rejects them without a mediaId), and media upload is not
- * built yet, so they are offered only when media is already attached. The
- * overlay's current kind always stays listed so the selector can show it.
+ * What kind of media a stored id is. The backend picks the extension by
+ * sniffing the bytes (see ALLOWED_TYPES in backend/app/media_store.py), so the
+ * extension is the server's verdict, not the author's claim. Null when the
+ * extension is not one the server stores.
+ */
+export function mediaKindOf(mediaId: string): 'image' | 'audio' | null {
+  const dot = mediaId.lastIndexOf('.');
+  const ext = dot < 0 ? '' : mediaId.slice(dot).toLowerCase();
+  if (IMAGE_EXTS.includes(ext)) return 'image';
+  if (AUDIO_EXTS.includes(ext)) return 'audio';
+  return null;
+}
+
+/**
+ * Kinds an author may switch this overlay to. Image and audio need media
+ * (the backend rejects them without a mediaId), and media now comes from
+ * upload, so an attached mediaId offers the kind its stored type allows. A
+ * stored type we do not recognise offers both rather than strand the author.
+ * The overlay's current kind always stays listed so the selector can show it.
  */
 export function legalKindsFor(overlay: Overlay): OverlayKind[] {
   const kinds: OverlayKind[] = ['text'];
-  if (overlay.mediaId) kinds.push('image', 'audio');
+  if (overlay.mediaId) {
+    const media = mediaKindOf(overlay.mediaId);
+    if (media) kinds.push(media); else kinds.push('image', 'audio');
+  }
   if (!kinds.includes(overlay.kind)) kinds.push(overlay.kind);
   return kinds;
+}
+
+/** True when the tour carries a usable creator AND licence. */
+export function hasDefaults(tour: Tour): boolean {
+  return !!tour.defaults?.creator?.trim() && !!tour.defaults?.license?.trim();
+}
+
+/** Write the tour's default creator and licence. Same reference for a blank. */
+export function setTourDefaults(tour: Tour, creator: string, license: string): Tour {
+  const c = creator.trim();
+  const l = license.trim();
+  if (!c || !l) return tour;
+  return { ...tour, defaults: { creator: c, license: l } };
+}
+
+/**
+ * Add an image or audio overlay for media that is ALREADY uploaded: callers
+ * upload first and call this only with the server's `mediaId`, so a refused
+ * upload never reaches the document.
+ *
+ * Credit comes from the tour's defaults. If the tour has none, `supplied`
+ * (the author's answer to the one-time prompt) is written onto the tour in
+ * the same document as the overlay, so it is one undo step. With neither, the
+ * tour is returned unchanged (same reference): a silent `Unknown` credit on
+ * the author's own work is exactly what this refuses to do. The media's
+ * stored type must match `kind`, and the stop must exist. No heading is
+ * produced: the display is a marker.
+ */
+export function addMediaOverlay(
+  tour: Tour, stopId: string, kind: 'image' | 'audio', mediaId: string, title: string,
+  supplied?: { creator: string; license: string },
+): Tour {
+  const stop = tour.stops.find((s) => s.id === stopId);
+  if (!stop || mediaKindOf(mediaId) !== kind) return tour;
+  const base = hasDefaults(tour)
+    ? tour
+    : supplied ? setTourDefaults(tour, supplied.creator, supplied.license) : tour;
+  if (!hasDefaults(base)) return tour;
+  const text = title.trim() || (kind === 'image' ? 'New image' : 'New audio');
+  const overlay: Overlay = {
+    id: uniqueId(slugify(text), allIds(base)), kind,
+    anchor: { type: 'geo', lng: stop.location.lng, lat: stop.location.lat, altitudeM: 2 },
+    display: { mode: 'marker', icon: kind === 'image' ? 'photo' : 'audio' },
+    title: text, body: null, mediaId,
+    credit: defaultCreditFor(base),
+  };
+  return mapStop(base, stopId, (s) => ({ ...s, overlays: [...s.overlays, overlay] }));
 }
 
 /** The credit's human-facing text: creator for original, source for sourced. */
