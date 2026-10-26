@@ -1,79 +1,68 @@
-# Session handoff
+# Handoff
 
-State as of 2026-10-13, commit `e44633c`. Verified by running `make check`,
-not from memory.
+Last consolidated 2026-10-26, on branch `feature/authoring-app`. Figures below
+were taken from running `make check`, not from memory. The first half of this
+file is the present; everything from "History" down is dated and kept because
+its landmines still bite.
 
 ## What this is
 
-A digital-humanities prototype: a virtual historical walking tour of Old Town
-Fairfax, Virginia, told over real street-level panoramas with text, archival
-photography and narration anchored to points in the world.
+A digital-humanities prototype turned authoring application: a virtual
+historical walking tour of Old Town Fairfax, Virginia, told over real
+street-level Mapillary panoramas, with archival photography draped into the
+scene (three.js), a Leaflet minimap, and narration. The tour is a portable
+document (`tour.json` plus `media/`), authored in an editor at `/edit` and
+publishable as a backend-free static site. The **schema** is the part meant
+to survive into a real framework.
 
-It is a proof of concept. (As of this session: no editor interface, no
-multi-tour authoring, one hand-authored tour; the editor has since landed, see
-below.) The **schema** is the part meant to survive into the real
-framework.
+For how the parts fit, read [`ARCHITECTURE.md`](ARCHITECTURE.md). For where a
+given change goes, read [`CHANGING-THINGS.md`](CHANGING-THINGS.md). For why the
+non-obvious calls were made, see the records in `docs/decisions/`
+(start at its `README.md`). This file does not repeat them.
 
 ## Current state
 
-Six stops, all working: Historic Courthouse, Marr Monument, Old Town Hall,
-Ratcliffe-Allison-Pozer House, Fairfax Museum, City Hall.
+**Tests:** 320 backend (pytest), 528 frontend (Vitest); lint and production
+build clean via `make check`. Eager bundle 2.13 MB raw / 371.39 kB transferred;
+the editor is a lazy chunk, 102.69 kB raw / 23.88 kB transferred.
 
-- **Walkable.** Ground arrows navigate image by image. The arrow leading to the
-  next stop is highlighted via mapillary-js's `highlightId`. Arriving at a
-  stop's designated panorama moves the tour there; proximity (30 m) is the
-  fallback for street images belonging to no stop.
-- **Then/now.** The courthouse carries two Library of Congress photographs
-  (1863 with Union cavalry, c.1918 arcade) rendered as three.js planes standing
-  in the world. Each has its own opacity slider; a stop opens with the first
-  ghosted in and the rest hidden.
-- **Map.** Leaflet minimap with numbered pins and a route polyline. Current
-  stop is gold and drawn on top. Clicking a pin moves the tour.
-- **Alignment mode (since removed).** `?align=1` nudged the selected rephoto by
-  keyboard and emitted anchor JSON to paste into content. It was retired when
-  the editor landed; `/edit` replaces it. See
-  `docs/decisions/0003-the-editor-is-three-surfaces-on-one-state.md`.
+**Nothing here has been seen in a browser.** No browser can launch in the
+development sandbox. The editor, its microphone recording and its acquisition
+tools have *never* been seen running. The only by-eye work in the project's
+history is the author's hand alignment of the courthouse photographs in
+`de48b0d`, which this environment cannot reproduce or check. Verification is
+the jsdom suite plus the backend tests, which prove the logic, not the pixels.
 
-Tests (at that commit): **173 backend (pytest), 213 frontend (Vitest)**, lint
-and production build clean via `make check`. Bundle 2.04 MB raw / 348.40 kB
-transferred.
+**What exists:**
 
-Since the state above was written, sub-project 2 (tasks 1-4, this branch)
-turned the tour into a portable document: the open tour is now an unpacked
-working directory (`content/work/`) that the backend writes through to
-immediately, a session API opens, edits, exports and publishes it as a
-`.zip`, and the viewer loads everything from `tour-data/` with no `/api` call
-at all. The read-only API, the SQLite database behind it, and `media.py`'s
-hand-rolled Range handling (superseded by `StaticFiles`) are gone. See
-`docs/decisions/0002-the-tour-is-a-portable-document.md` for why, including
-the one place this departs from the agreed design.
-
-Since then, sub-project 3a (the editing core) added the editor at `/edit`:
-an outline, a numeric inspector, an editable map and an editable panorama
-over one draft, with undo and debounced autosave through the session API.
-`?align=1` and `frontend/src/app/align/` are gone. Current figures, from
-`make check`: **197 backend (pytest), 397 frontend (Vitest)**; eager bundle
-2.13 MB raw / 371.45 kB transferred; the editor is a lazy chunk, 75.99 kB raw
-/ 17.95 kB transferred. See
-`docs/decisions/0003-the-editor-is-three-surfaces-on-one-state.md` for why it
-is built this way, including the heading-derivation gate. None of the editor
-has been seen in a browser.
-
-Since then, sub-project 3b added media and acquisition: uploads and
-microphone recording into the open tour (`backend/app/media_store.py`), and
-four tools (panoramas, places, archive search/fetch, narration) in
-`backend/app/tools.py`, wired into the editor. Current figures, from
-`make check`: **302 backend (pytest), 521 frontend (Vitest)**. The tools were
-then run once against the live Mapillary, Overpass and loc.gov services, which
-found that the loc.gov parser read `creator` and `rights` fields that do not
-exist at the top level of a result; fixed. See
-`docs/decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md`.
-Still unverified: recorded audio against the sniffer in a real browser
-(Safari's MP4 brand is the risk), a real loc.gov redirect through
-`archive-fetch`, and Overpass mirrors other than `overpass-api.de`, which
-answered in 34-42 s from this machine against a 15 s client timeout. The
-frontend `IMAGE_EXTS`/`AUDIO_EXTS` lists mirror the backend allowlist by hand
-with no test tying them together.
+- **Viewer** (`/`). Six stops, all working: Historic Courthouse, Marr Monument,
+  Old Town Hall, Ratcliffe-Allison-Pozer House, Fairfax Museum, City Hall.
+  Ground arrows navigate image by image; the arrow toward the next stop is
+  highlighted (mapillary-js `highlightId`). Arriving at a stop's designated
+  panorama moves the tour there; proximity (30 m) is the fallback for street
+  images belonging to no stop. The courthouse carries two Library of Congress
+  photographs (1863 with Union cavalry, c.1918 arcade) as three.js planes in
+  the world, each with an opacity slider; a stop opens with the first ghosted
+  in and the rest hidden. The Leaflet minimap has numbered pins and a route
+  polyline; the current stop is gold and drawn on top; clicking a pin moves the
+  tour. The viewer loads everything from `tour-data/` beside the page, with no
+  `/api` call.
+- **Editor** (`/edit`). Four surfaces over one draft: outline, numeric
+  inspector, editable map, editable panorama; undo; debounced autosave through
+  the session API. It names the tour, writes stop text, places media, uploads
+  images and audio, records narration from the microphone, and has four
+  acquisition tools (panoramas, places, archive search/fetch, narration) backed
+  by `backend/app/tools.py`.
+- **Session API.** The open tour is an unpacked working directory
+  (`content/work/`, git-ignored) that every edit writes through to; there is no
+  explicit save. A session API opens, edits, exports and publishes it as a
+  `.zip`.
+- **Publish.** `GET /api/session/publish` returns a static site (built app plus
+  the working directory under `tour-data/`).
+- **Content pipeline.** `make content` still generates the seed tour
+  `content/tours/fairfax-old-town.json` from `content/source/stops.json`. It is
+  independent of the editor. It has **not** been retired; see Outstanding
+  item 2.
 
 ## Running it
 
@@ -81,18 +70,17 @@ with no test tying them together.
 make serve     # builds frontend, serves API + bundle on :8000
 make check     # lint + both suites + production build
 make content   # regenerate panoramas, images, narration, tour JSON
+make e2e       # Playwright; cannot run inside the sandbox
 ```
 
 The editor lives at <http://localhost:8000/edit> once `make serve` is running
-and a tour is open in the session (see the `curl` sequence below for opening
-the real one). Edits autosave to the working directory.
+and a tour is open in the session. Edits autosave to the working directory.
 
 `make content` only regenerates `content/tours/fairfax-old-town.json`; nothing
-reads that file into the open session automatically (that bridge is sub-project
-3's job), so there is no SQLite seeding left to restart the backend over. To
-open, save and ship the tour the editor will drive through the session API
-directly. `PUT` and `POST` bodies are JSON, so every command that sends one
-needs the content-type header — `curl -d` alone sends
+reads that file into the open session automatically, so there is no SQLite
+seeding left to restart the backend over. To open, save and ship a tour, drive
+the session API directly. `PUT` and `POST` bodies are JSON, so every command
+that sends one needs the content-type header: `curl -d` alone sends
 `application/x-www-form-urlencoded`, which FastAPI hands to pydantic as raw
 bytes and pydantic refuses with a 422 (`{"type":"dict_type",...}`):
 
@@ -106,17 +94,20 @@ curl localhost:8000/api/session/export -o tour.zip                  # save it ou
 curl localhost:8000/api/session/publish -o site.zip                 # a backend-free static site
 ```
 
-Every edit above writes straight through to `content/work/`; there is no
-explicit save. See `docs/decisions/0002-the-tour-is-a-portable-document.md`
-for why "save" works this way instead of writing back to an opened file.
+Every edit above writes straight through to `content/work/`. See
+`docs/decisions/0002-the-tour-is-a-portable-document.md` for why "save" works
+this way instead of writing back to an opened file.
 
-`POST /api/session/new` refuses with 409 if a tour is already open — export
-it first, or pass `{"force": true}` in the body to discard it on purpose.
-`PUT /api/session/tour` refuses with 409 if nothing is open yet. All three
-mutating routes (`new`, `tour`, `import`) also refuse a request whose
-`Sec-Fetch-Site` header is `cross-site`, as one more layer against another
-page quietly POSTing to this backend while it happens to be running; `curl`
-never sends that header, so none of this is visible from the command line.
+`POST /api/session/new` refuses with 409 if a tour is already open: export it
+first, or pass `{"force": true}` in the body to discard it on purpose.
+`PUT /api/session/tour` refuses with 409 if nothing is open yet. The mutating
+routes also refuse a request whose `Sec-Fetch-Site` header is `cross-site`, as
+one more layer against another page quietly POSTing to this backend while it
+happens to be running; `curl` never sends that header, so none of this is
+visible from the command line.
+
+`?diag=1` on the viewer exposes `window.__tour` and `window.__inWorld` and logs
+renderer boundaries.
 
 ### Opening the existing six-stop tour
 
@@ -179,10 +170,7 @@ This was run end to end against a live backend with `curl` (not
   400 `bundle contains a file that is not an allowed image or audio type:
   media/manifest.json`.
 
-`?diag=1` exposes `window.__tour` and `window.__inWorld` and logs renderer
-boundaries.
-
-## Architecture, and why
+## Architecture, at a glance
 
 | Layer | Choice | Why |
 | --- | --- | --- |
@@ -190,34 +178,17 @@ boundaries.
 | Street-level imagery | Mapillary, CC-BY-SA 4.0 | the only open 360 source with Fairfax coverage |
 | Panorama viewer | mapillary-js 4.1.2 | stale (2023) but the only viewer for its format; contained behind `PanoramaViewer` |
 | Rephoto rendering | three.js 0.134 via `addCustomRenderer` | tags cannot carry an image texture |
-| Minimap | **Leaflet 1.9** | see below |
+| Minimap | **Leaflet 1.9** | see Dead ends |
 | Backend | FastAPI, pydantic | pydantic models are the single source of truth for the schema |
 
-**MapLibre was removed.** Under Angular's esbuild build, maplibre-gl 6.10
-renders raster tiles but **no GeoJSON source ever finishes loading** — no error
-on the map's error channel or the worker's, reproducing on a fresh map with an
-empty style and one point. Ruled out: worker URL, glyph-less symbol layer,
-layer order, container sizing, projected positions. Leaflet suits this minimap
-better anyway (raster basemap, one polyline, six pins) and cut 850 kB.
-
-Stop bearings and rephoto headings are **derived** in `build_tour.py` from
-where each panorama actually stands. All six hand-authored bearings were wrong,
-one by 138°, which put the subject behind the viewer. Never reintroduce a
-guessed bearing.
-
-Schema v2 added `backend/app/migration.py`, which upgrades a v1 tour document
-to v2 on every read path so only v2 exists above the parsing boundary, and
-`backend/tests/fixtures/fairfax-old-town-v1.json`, a frozen v1 snapshot that
-must never be refreshed — it is what proves the migration is lossless. See
-`docs/decisions/0001-three-axes-for-overlays.md` for why the schema split this
-way.
+The full picture is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Environment landmines
 
 `docs/ENVIRONMENT.md` is the full list and is worth reading before debugging
 anything. The ones that cost the most time:
 
-- **Never use `urllib`** — it truncates through the egress proxy (~1 in 10).
+- **Never use `urllib`**: it truncates through the egress proxy (~1 in 10).
   `httpx` everywhere.
 - **`UV_CACHE_DIR`** must point inside the repo or every uv command fails.
 - **Node 24** at `/Users/maddiepersonal/.local/share/fnm/node-versions/v24.21.0/installation/bin`;
@@ -228,49 +199,67 @@ anything. The ones that cost the most time:
   run here; the jsdom integration suite carries the verification weight.
 - **mapillary-js renders on demand.** Changing custom content does nothing
   until `triggerRerender()`. A screenshot taken after mutating the scene shows
-  a **stale frame** — this produced two wrong root-cause conclusions.
+  a **stale frame**; this produced two wrong root-cause conclusions.
 - **`geodeticToEnu` altitude is absolute**, not height above ground.
 - **`setCenter` takes basic image coordinates**, not compass bearings.
+- **Never reintroduce a guessed bearing.** Stop bearings and rephoto headings
+  are **derived** in `build_tour.py` (and by the editor) from where each
+  panorama actually stands. All six hand-authored bearings were wrong, one by
+  138 degrees, which put the subject behind the viewer.
+- **The v1 fixture is frozen.** `backend/tests/fixtures/fairfax-old-town-v1.json`
+  must never be refreshed; it is what proves `backend/app/migration.py` is
+  lossless. Migration upgrades v1 to v2 on every read path so only v2 exists
+  above the parsing boundary (ADR 0001).
+
+## Dead ends
+
+**MapLibre was removed.** Under Angular's esbuild build, maplibre-gl 6.10
+renders raster tiles but **no GeoJSON source ever finishes loading**: no error
+on the map's error channel or the worker's, reproducing on a fresh map with an
+empty style and one point. Ruled out: worker URL, glyph-less symbol layer,
+layer order, container sizing, projected positions. Leaflet suits this minimap
+better anyway (raster basemap, one polyline, six pins) and cut 850 kB. Do not
+go back without a new idea.
 
 ## Outstanding
 
+Every item below is still true as of 2026-10-26. None has been closed.
+
 1. **Rephoto alignment is unfinished.** The anchors are estimates, improved by
-   hand in commit `de48b0d` but not finished. The tool for finishing it is now
-   the editor at `/edit` (`?align=1` is gone): select the photograph, drag it
-   on the map, then adjust height, size and opacity in the panorama pane and
-   inspector, with the heading derived from the panorama's real position.
-   What remains is the author's: someone has to do that in a browser and look
-   at the result. Nothing in the editor has been seen rendering, and this
-   cannot be closed from an environment where no browser runs.
+   hand in commit `de48b0d` but not finished. The tool for finishing it is the
+   editor at `/edit`: select the photograph, drag it on the map, then adjust
+   height, size and opacity in the panorama pane and inspector, with the
+   heading derived from the panorama's real position. What remains is the
+   author's: someone has to do that in a browser and look at the result.
+   Nothing in the editor has been seen rendering, and this cannot be closed
+   from an environment where no browser runs.
 2. **`content/source/stops.json` has silently drifted from the shipped
-   document, and nobody here can safely fix it.** Commit `de48b0d`
+   document. This is the author's decision, and it is open.** Commit `de48b0d`
    ("adjustment") hand-edited the rephoto anchors directly in
    `content/tours/fairfax-old-town.json` to improve the alignment of the two
-   courthouse photographs, but `stops.json` — what `build_tour.py` actually
-   reads — was never updated to match. The next `make content` silently
+   courthouse photographs, but `stops.json`, which is what `build_tour.py`
+   actually reads, was never updated to match. The next `make content` silently
    reverts that alignment work. Worse, a reviewer independently recomputed the
    derived heading from the hand-tuned anchor positions and got 105.0 and
    147.2 degrees, where the shipped document currently stores 113 for both, so
    the stored heading is already inconsistent with its own anchor position.
-   `build_tour.py` and the Makefile's `content:` target both warn about this,
-   but the underlying choice is still open: either sync `stops.json` to the
-   hand-tuned coordinates (which would also change the derived headings to
-   105.0/147.2), or let the editor take ownership of the document and retire
-   `stops.json` entirely. Sub-project 3 has landed — the editor can now name a
-   tour, write stop text, place media and publish — so retiring it is
-   technically possible, but the choice is still open and gated on the
-   author's explicit confirmation. Nobody has made that call —
-   the alignment was tuned by eye in a browser, and no browser can run in this
-   environment, so nobody here can see whether either change improves or
-   breaks it.
+   `build_tour.py` and the Makefile's `content:` target both warn about this.
+   The choice: either sync `stops.json` to the hand-tuned coordinates (which
+   would also change the derived headings to 105.0/147.2), or let the editor
+   take ownership of the document and retire `stops.json` entirely. The editor
+   is now able to take ownership whenever the author says so; until they do,
+   **the content pipeline stays**, and so does the drift. Nobody here can
+   judge either change by eye, because the alignment was tuned in a browser
+   and none can run in this environment.
 3. **Rephotography is demonstrated at one stop.** Targeted searching found
-   essentially no Old Town Fairfax imagery for the other five — only the
+   essentially no Old Town Fairfax imagery for the other five, only the
    courthouse and, possibly, Earp's Ordinary (HABS). Local collections (Fairfax
    Museum, Virginia Room) are the gap to fill. `fetch_rephotos.py` takes a date
    preference so one site can layer several eras.
 4. **The historical text is unreviewed.** Written for the prototype, not
    sourced. It lives in `content/source/stops.json` so it can be corrected
-   without touching code.
+   without touching code (and, if item 2 is resolved toward the editor, in the
+   document itself).
 5. **The Marr Monument editorial question is unresolved.** It stands 14.6 m
    from the courthouse, so one ground-arrow step moves the tour to it. It was
    folded into the courthouse stop and then restored to a stop of its own; the
@@ -287,14 +276,74 @@ anything. The ones that cost the most time:
    are arguably improvements; see the Costs section of
    `docs/decisions/0001-three-axes-for-overlays.md`. Current behaviour is
    pinned by tests in `stop-panel.spec.ts` so the choice stays explicit.
+8. **Unverified, from sub-project 3b (media and acquisition):**
+   - Recorded audio against the sniffer in a real browser. Safari's MP4 brand
+     is the risk.
+   - A real loc.gov redirect through `archive-fetch`.
+   - Overpass mirrors other than `overpass-api.de`, which answered in 34-42 s
+     from this machine against a 15 s client timeout.
+   - The frontend `IMAGE_EXTS`/`AUDIO_EXTS` lists mirror the backend allowlist
+     by hand, with no test tying them together.
+
+   The tools were run once against the live Mapillary, Overpass and loc.gov
+   services, which found that the loc.gov parser read `creator` and `rights`
+   fields that do not exist at the top level of a result; fixed. See
+   `docs/decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md`.
 
 ## Conventions used
 
 - **TDD throughout**: failing test first, watch it fail, then implement. Every
-  bug fixed this session landed with a test reproducing it.
+  bug fixed landed with a test reproducing it.
 - **Superpowers skills**: brainstorming before features, writing-plans for
   specs, systematic-debugging for bugs. Specs and plans are in
   `docs/superpowers/`.
 - **Commits**: let git use its own config. Do **not** pass
-  `-c user.email=...`; that overrode the user's identity earlier in the
-  session and had to be rebased.
+  `-c user.email=...`; that overrode the user's identity earlier and had to be
+  rebased.
+
+## History
+
+Dated, oldest first. Kept because it explains where the landmines came from.
+
+### 2026-10-13 (commit `e44633c`): the prototype
+
+A proof of concept: no editor interface, no multi-tour authoring, one
+hand-authored tour. Six stops, walkable, courthouse rephotos, minimap, and an
+alignment mode (`?align=1`) that nudged the selected rephoto by keyboard and
+emitted anchor JSON to paste into content. Tests then: 173 backend, 213
+frontend. Bundle 2.04 MB raw / 348.40 kB transferred. `?align=1` was retired
+when the editor landed; `/edit` replaces it (ADR 0003).
+
+### Sub-project 1: schema v2
+
+Added `backend/app/migration.py` and the frozen v1 fixture (see the landmine
+above). ADR 0001 explains why the schema split into three axes.
+
+### Sub-project 2: the tour as a portable document
+
+The open tour became an unpacked working directory (`content/work/`) the
+backend writes through to; a session API opens, edits, exports and publishes it
+as a `.zip`; the viewer loads everything from `tour-data/` with no `/api` call.
+The read-only API, the SQLite database behind it, and `media.py`'s hand-rolled
+Range handling (superseded by `StaticFiles`) were removed. ADR 0002, including
+the one place it departs from the agreed design.
+
+### Sub-project 3a: the editing core
+
+The editor at `/edit`; `?align=1` and `frontend/src/app/align/` removed.
+Figures then: 197 backend, 397 frontend; eager bundle 2.13 MB raw / 371.45 kB
+transferred; editor chunk 75.99 kB raw / 17.95 kB transferred. ADR 0003,
+including the heading-derivation gate.
+
+### Sub-project 3b: media and acquisition
+
+Uploads and microphone recording (`backend/app/media_store.py`) and four tools
+(`backend/app/tools.py`) wired into the editor. Figures then: 302 backend, 521
+frontend. Live-service findings are under Outstanding item 8. ADR 0004.
+
+### 2026-10-26: bootstrap procedure corrected
+
+The "Opening the existing six-stop tour" procedure under Running it was first
+written before the media allowlist existed. The allowlist (commit `54c39cd`)
+broke it; it was re-run against a live backend and corrected (commit
+`0978c57`). Its figures are observed, not estimated.

@@ -5,11 +5,13 @@ tours over real street-level imagery. This proof of concept is a six-stop tour
 of Old Town Fairfax, Virginia, with text, archival photography and narration
 anchored to points in the world and overlaid on 360° panoramas.
 
-It is a prototype. There is an authoring editor at `/edit` and one
-hand-authored tour. The editor, including its microphone recording and
-acquisition tools, has never been seen running in a browser, because none can
-launch in the development environment. The **schema** is the
-part meant to survive.
+It has grown from a one-tour prototype into an authoring application: the tour
+is a portable document (`tour.json` plus `media/`, exportable as a `.zip`),
+an editor at `/edit` changes it, and it can be published as a static site that
+needs no backend. There is still one hand-authored tour. The editor, including
+its microphone recording and acquisition tools, has never been seen running in
+a browser, because none can launch in the development environment. The
+**schema** is the part meant to survive.
 
 ## What it is made of
 
@@ -44,7 +46,11 @@ make serve      # builds the frontend, serves everything on :8000
 ```
 
 Then open <http://localhost:8000>. FastAPI serves both the API and the built
-Angular bundle, so there is one process and no proxy.
+Angular bundle, so there is one process and no proxy. The viewer reads the tour
+that is open in the session, so a fresh checkout shows nothing until one is
+opened: `docs/HANDOFF.md` has the tested procedure for opening the committed
+Old Town Fairfax tour, and for starting an empty one, importing a `.zip`,
+exporting, and publishing a static site.
 
 ## Walking and comparing
 
@@ -92,7 +98,7 @@ including what was and was not checked against the live services.
 ## Tests
 
 ```sh
-make check      # lint + 302 backend tests + 521 frontend tests + production build
+make check      # lint + 320 backend tests + 528 frontend tests + production build
 ```
 
 Browser end-to-end tests exist in `frontend/tests/e2e/` but **cannot run inside
@@ -112,7 +118,10 @@ make content
 This probes Mapillary coverage, caches a panorama per stop, fetches archival
 images with their rights metadata, synthesizes narration, and assembles
 `content/tours/fairfax-old-town.json` — validating it against the pydantic
-schema before writing.
+schema before writing. This pipeline is independent of the editor, and its
+input `content/source/stops.json` has drifted from the hand-tuned committed
+JSON, so running it overwrites that alignment work; see `docs/HANDOFF.md`
+(Outstanding, item 2) before running it.
 
 ## Provenance
 
@@ -132,5 +141,7 @@ without touching code.
 - `docs/superpowers/specs/2026-09-20-walking-tour-framework-design.md` — design
 - `docs/superpowers/plans/2026-09-20-walking-tour-prototype.md` — implementation plan
 - `docs/ENVIRONMENT.md` — verified environment constraints
-- `docs/HANDOFF.md` — state and open questions as of the last session
+- `docs/HANDOFF.md` — current state, how to run it, landmines, open questions
+- `docs/ARCHITECTURE.md` — how the parts fit and what each layer may not do
+- `docs/CHANGING-THINGS.md` — where a given change goes
 - `docs/decisions/` — decision records; start at `docs/decisions/README.md`
