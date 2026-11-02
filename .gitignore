@@ -20,3 +20,8 @@ content/work/
 
 # Visual brainstorming companion mockups
 .superpowers/
+
+# Worktrees created by Claude Code. Never part of the repository: a worktree
+# holds a whole second checkout, and an unignored one invites `git add .` to
+# commit the tree into itself.
+.claude/worktrees/
