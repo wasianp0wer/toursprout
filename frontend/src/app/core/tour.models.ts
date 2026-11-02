@@ -77,7 +77,13 @@ export interface Panorama {
   provider: 'mapillary';
   imageId: string;
   bearing: number;
-  cachedPath: string | null;
+  /**
+   * A media id relative to `media/`, like an overlay's `mediaId` — NOT a
+   * path. v2 called this `cachedPath` and stored `media/pano/x.jpg`, which
+   * put a cached panorama outside the one namespace the reference checks
+   * read, so six referenced panoramas were reported as orphans. ADR 0005.
+   */
+  cachedMediaId: string | null;
 }
 
 export interface Stop {
@@ -93,19 +99,25 @@ export interface Stop {
 
 export interface Attribution {
   text: string;
-  url: string;
+  /**
+   * Nullable for the same reason `OriginalCredit` exists: a line of credit
+   * with nothing to link to is ordinary, and a required URL is how v1's
+   * single credit shape became unsatisfiable (ADR 0001). Blank is not a
+   * third state — the backend refuses `""`.
+   */
+  url: string | null;
   license: string;
 }
 
 export interface Tour {
   id: string;
   /**
-   * Narrowed to the literal pydantic enforces (`Literal[2]` in
+   * Narrowed to the literal pydantic enforces (`Literal[3]` in
    * backend/app/models.py), not `number`: a file-backed viewer with no
    * Python in the path (the migration lives only in app.migration) must
-   * fail to compile against a v1 document rather than accept it silently.
+   * fail to compile against an older document rather than accept it silently.
    */
-  schemaVersion: 2;
+  schemaVersion: 3;
   title: string;
   description: string;
   /**

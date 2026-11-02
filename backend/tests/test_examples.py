@@ -271,7 +271,11 @@ def test_opening_the_fairfax_example_matches_the_recorded_figures(real_cfg, tmp_
     assert summary["tourId"] == "fairfax-old-town"
     assert summary["stopCount"] == 6
     assert summary["mediaCount"] == 15
-    assert summary["orphanCount"] == 6
+    # Zero, not six. Through v2 these six were the stops' cached panoramas,
+    # referenced by `cachedPath` — which no reference check read, so every
+    # one of them was reported as unreferenced. v3 makes them `cachedMediaId`
+    # and `models.referenced_media` counts them. ADR 0005.
+    assert summary["orphanCount"] == 0
 
     # Names and nested paths survive, which is what routing this through the
     # import allowlist rather than the upload one buys.
@@ -281,8 +285,9 @@ def test_opening_the_fairfax_example_matches_the_recorded_figures(real_cfg, tmp_
     assert (media / "pano" / "pano-historic-courthouse.jpg").is_file()
     assert not (media / "manifest.json").exists()
 
-    assert len(warnings) == 6
-    assert all("is not referenced by any overlay" in w for w in warnings)
+    # And so there is nothing left to warn about: the six warnings this used
+    # to emit, one per panorama, were the same accounting error.
+    assert warnings == []
 
 
 # --- routes ----------------------------------------------------------------

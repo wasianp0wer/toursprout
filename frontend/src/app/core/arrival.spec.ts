@@ -6,7 +6,7 @@ function stop(id: string, order: number, lng: number, lat: number): Stop {
   return {
     id, order, title: id, summary: '',
     location: { lng, lat }, osmRef: null,
-    panorama: { provider: 'mapillary', imageId: `img-${order}`, bearing: 0, cachedPath: null },
+    panorama: { provider: 'mapillary', imageId: `img-${order}`, bearing: 0, cachedMediaId: null },
     overlays: [],
   };
 }

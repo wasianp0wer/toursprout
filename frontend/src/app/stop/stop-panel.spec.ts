@@ -30,13 +30,13 @@ function overlay(over: Partial<Overlay> = {}): Overlay {
 
 function tour(overlays: Overlay[]): Tour {
   return {
-    id: 't', schemaVersion: 2, title: 'Old Town Fairfax', description: '',
+    id: 't', schemaVersion: 3, title: 'Old Town Fairfax', description: '',
     defaults: null, attribution: [],
     stops: [{
       id: 's1', order: 1, title: 'Historic Courthouse',
       summary: 'The county seat since 1800.',
       location: { lng: -77.3, lat: 38.84 }, osmRef: null,
-      panorama: { provider: 'mapillary', imageId: 'i', bearing: 0, cachedPath: null },
+      panorama: { provider: 'mapillary', imageId: 'i', bearing: 0, cachedMediaId: null },
       overlays,
     }],
   };

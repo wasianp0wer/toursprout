@@ -22,7 +22,7 @@ export function stop(
   return {
     id, order, title: `Stop ${order}`, summary: 'summary',
     location: { lng: -77.3, lat: 38.84 }, osmRef: null,
-    panorama: { provider: 'mapillary', imageId: `img-${order}`, bearing: 90, cachedPath: null },
+    panorama: { provider: 'mapillary', imageId: `img-${order}`, bearing: 90, cachedMediaId: null },
     overlays,
     ...over,
   };
@@ -30,7 +30,7 @@ export function stop(
 
 export function tour(stops: Stop[] = [stop('s1', 1)]): Tour {
   return {
-    id: 't', schemaVersion: 2, title: 'T', description: '',
+    id: 't', schemaVersion: 3, title: 'T', description: '',
     defaults: { creator: 'M. Harrington', license: 'CC-BY-4.0' },
     attribution: [], stops,
   };

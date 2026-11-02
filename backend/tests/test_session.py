@@ -6,6 +6,7 @@ import pytest
 
 import app.session as session_module
 from app.bundle import BundleError, write_bundle
+from app.models import SCHEMA_VERSION
 from app.session import Session, SessionConflict
 
 
@@ -25,7 +26,7 @@ def test_new_creates_a_valid_one_stop_skeleton(session):
     tour = session.tour()
     assert tour.title == "My Tour"
     assert len(tour.stops) == 1
-    assert tour.schema_version == 2
+    assert tour.schema_version == SCHEMA_VERSION
     assert (session.path / "media").is_dir()
 
 

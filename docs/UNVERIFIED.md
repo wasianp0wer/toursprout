@@ -97,6 +97,16 @@ and what was entry 9 (a published site) is now entry 19.
   should be ghosted into the street view and its slider should fade it. Click a
   minimap pin; the tour should move. Add `?diag=1` to see renderer boundaries
   in the console.
+- **Also close the pin hit test here**, which is the one thing on this list a
+  browser is strictly required for: jsdom has no layout, so no test in the
+  repo can see two pins overlap. On the courthouse stop, the Marr Monument's
+  pin centre sits 15 px from the gold pin's at zoom 17 (14.6 m, 0.93 m/px) —
+  the two circles visibly touch. Click the monument's pin **once, anywhere on
+  it, including the edge nearest the gold pin**. Pass: the tour moves to stop
+  2 on that first click. Fail (the bug fixed in this branch): the first click
+  does nothing and a second, further from the gold pin, works. Then do it in
+  reverse from stop 2 back to stop 1, and check the numbers sit centred in
+  their circles rather than 2 px down and right.
 
 ## 4. The two on-screen changes schema v2 made, which nobody has decided on
 
@@ -398,14 +408,18 @@ components at all.*
   pick the folder from entry 14, and confirm the same result: 6 stops, 15
   media files, `media/pano/` intact. The flat *choose files* half below needs
   nothing open again, so close once more between the two.
-- **The landmine here, and it does not announce itself.** A flat selection
-  does **not** get refused. Panoramas are referenced by each stop's
-  `cachedPath`, and `bundle.missing_media` only checks overlay `mediaId`s, so
-  `tour.json` plus the nine top-level files imports cleanly — verified live:
-  `200`, `"mediaCount": 9`, `"orphanCount": 0`, no warnings — and the six
-  panoramas are simply absent, 404ing in the viewer later. So the thing to
-  check after any browse or drag is the **number**: 15, not 9. If it says 9,
-  the nesting was lost and nothing told you.
+- **The landmine here is closed, and this is what it was.** A flat selection
+  used **not** to get refused. Panoramas were referenced by each stop's
+  `cachedPath`, and `bundle.missing_media` only checked overlay `mediaId`s,
+  so `tour.json` plus the nine top-level files imported cleanly — verified
+  live at the time: `200`, `"mediaCount": 9`, `"orphanCount": 0`, no
+  warnings — and the six panoramas were simply absent, 404ing in the viewer
+  later. Schema v3 renamed the field to `cachedMediaId` and gave both kinds
+  of reference one collector, so a flat selection is now refused by name:
+  `the bundle is missing media its tour references: pano/pano-<stop>.jpg`
+  (ADR 0005). **Still worth checking the number — 15, not 9 — because that
+  refusal has only been seen from the test suite, never from a browser's file
+  picker**, which is the half of this entry that remains unverified.
 
 ## 18. The stray-drop guard
 

@@ -531,8 +531,8 @@ describe('stop location and panorama selection', () => {
   });
 
   it('selectPanorama drops the cached file of the panorama it replaces', () => {
-    const t = tour([stop('s1', 1, [], { panorama: { provider: 'mapillary', imageId: 'old', bearing: 90, cachedPath: 'old.jpg' } })]);
-    expect(selectPanorama(t, 's1', CAND)!.tour.stops[0].panorama.cachedPath).toBeNull();
+    const t = tour([stop('s1', 1, [], { panorama: { provider: 'mapillary', imageId: 'old', bearing: 90, cachedMediaId: 'old.jpg' } })]);
+    expect(selectPanorama(t, 's1', CAND)!.tour.stops[0].panorama.cachedMediaId).toBeNull();
   });
 
   it('selectPanorama resets the bearing to the new camera heading, or north if unknown', () => {

@@ -279,7 +279,7 @@ curl -X PUT localhost:8000/api/session/tour \
 
 # Copy the media, but not manifest.json. *.jpg and *.m4a are the three
 # archival photographs and the six narration clips; pano/ is the cached
-# panoramas the stops' cachedPath fields point at.
+# panoramas the stops' cachedMediaId fields point at.
 cp content/media/*.jpg content/media/*.m4a content/work/media/
 cp -R content/media/pano content/work/media/
 
@@ -310,16 +310,24 @@ This was run end to end against a live backend with `curl` (not
 - After the two `cp` commands (both exit 0), it reports `"mediaCount": 15`
   (three photographs, six narration clips, six panoramas) and
   `"orphanCount": 6`.
+  **That orphan count is now 0, and the six warnings below are now none.**
+  The run above is kept as recorded, but schema v3 corrected the accounting:
+  those six were never orphans, they were the stops' cached panoramas, and
+  the reference check simply could not see them (ADR 0005). Everything else
+  in this transcript still holds; a rerun today differs only in those two
+  figures.
 - `GET /api/session/export` returns a 4.5&nbsp;MB zip (4,536,271 bytes).
 - Re-importing that zip (`curl -X POST localhost:8000/api/session/import -F
   file=@fairfax-old-town.zip -F force=true`) returns 200, `"stopCount": 6`,
   `"mediaCount": 15`, and six warnings, one per panorama: `media/pano/
-  pano-<stop>.jpg is not referenced by any overlay`. These are informational.
+  pano-<stop>.jpg is not referenced by any overlay`. These were
+  informational, and as of v3 they are not emitted at all — see the note
+  above.
   (`force=true` was added to that line afterwards, when `import` gained the
   conflict guard: the recorded run did it with the exported tour still open,
   which now needs saying out loud. The figures are the live ones.)
-  The panoramas are cached copies named by `cachedPath`, not overlay images,
-  and the importer keeps them.
+  The panoramas are cached copies named by `cachedMediaId` (`cachedPath`
+  when this was recorded), not overlay images, and the importer keeps them.
 - For contrast, the old `cp content/media/*` sequence reported
   `"mediaCount": 10` and exported 2.6&nbsp;MB, and re-importing it failed with
   400 `bundle contains a file that is not an allowed image or audio type:

@@ -39,8 +39,8 @@ describe('the real Fairfax tour', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  it('is schema v2', () => {
-    expect(TOUR.schemaVersion).toBe(2);
+  it('is schema v3', () => {
+    expect(TOUR.schemaVersion).toBe(3);
   });
 
   it('gives every one of the fifteen overlays a display', () => {
@@ -68,11 +68,23 @@ describe('the real Fairfax tour', () => {
     expect(render().textContent).toContain('1 of 6');
   });
 
+  it('gives every overlay an id that is unique across the whole tour', () => {
+    const ids = [
+      ...TOUR.stops.map((s) => s.id),
+      ...TOUR.stops.flatMap((s) => s.overlays.map((o) => o.id)),
+    ];
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('every stop has a Mapillary panorama id and a cached copy', () => {
     for (const stop of store.stops()) {
       expect(stop.panorama.provider).toBe('mapillary');
       expect(stop.panorama.imageId).toMatch(/^\d+$/);
-      expect(stop.panorama.cachedPath).toMatch(/^media\/pano\/.+\.jpg$/);
+      // A media id relative to `media/`, so it is in the same namespace as
+      // an overlay's mediaId and the reference checks can see it. The
+      // `media/` prefix v2 carried here is exactly what put it outside
+      // them. ADR 0005.
+      expect(stop.panorama.cachedMediaId).toMatch(/^pano\/.+\.jpg$/);
     }
   });
 

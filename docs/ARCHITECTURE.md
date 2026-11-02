@@ -38,10 +38,10 @@ the page, which is why a published tour needs no server.
 
 | Module | Owns |
 | --- | --- |
-| `models.py` | The schema, and the single source of truth for it: `Tour`, `Stop`, `Overlay` and its three axes (`kind`, `anchor`, `display`), the `Credit` union, `DISPLAY_MODES_BY_KIND`, `SCHEMA_VERSION`. See ADR 0001. |
-| `migration.py` | `migrate_v1_to_v2`: pure dict-in, dict-out. Stays in the tree because exported bundles in the wild are still v1. |
+| `models.py` | The schema, and the single source of truth for it: `Tour`, `Stop`, `Overlay` and its three axes (`kind`, `anchor`, `display`), the `Credit` union, `DISPLAY_MODES_BY_KIND`, `MediaRef`, `referenced_media`, `SCHEMA_VERSION`. Stop and overlay ids are one namespace, unique tour-wide. See ADR 0001 and ADR 0005. |
+| `migration.py` | `migrate`: one entry point over a `_MIGRATIONS` registry, one step per version behind. Pure dict-in, dict-out, and total — it refuses rather than dropping data. Stays in the tree because exported bundles in the wild are v1 and v2. ADR 0005. |
 | `session.py` | The open document: a working directory (`content/work/`, from `config.py`). `Session.write_tour` validates then swaps atomically; `Session.new`, `replace_from`, `write_config`, `summary`. |
-| `media_store.py` | The **upload** door into `media/`: sniffing, `ALLOWED_TYPES`, the content-hashed id, size caps, `orphan_ids`. It is not the only door — import has its own, and the two are not interchangeable. See "Media comes in by two doors" below. |
+| `media_store.py` | The **upload** door into `media/`: sniffing, `ALLOWED_TYPES`, the content-hashed id, size caps, `orphan_ids` (which asks `models.referenced_media` what counts as referenced). It is not the only door — import has its own, and the two are not interchangeable. See "Media comes in by two doors" below. |
 | `bundle.py` | The `.zip` form of the document: `write_bundle`, `read_bundle`, `stage_bundle_root`, and everything that makes importing an untrusted archive safe. `_check_media_file` is the import allowlist — see "Media comes in by two doors" below. `missing_media` is shared with export. |
 | `loose_import.py` | `stage_loose_bundle`: a loose `tour.json` plus its media parts, zipped into an ordinary bundle. It validates every path and then hands off, so a loose drop gets the same allowlist, migration, orphan warnings and atomic swap as a `.zip`. Nothing here writes to the working directory. |
 | `examples.py` | The tours that ship with the application: `list_examples`, `open_example`. An example is a directory under `content/examples/` holding `example.json` (id from the directory name, plus title, description, `document`, `mediaDir`) and a frozen `tour.json`. Opening one stages a bundle and hands it to `Session.replace_from`, so it is an import; it copies and never mutates the example. |
@@ -321,15 +321,18 @@ breaks a tour quietly.
 **Every path that brings a whole tour in uses the import door. Never
 `store_media`.** The repository's own tour is the case that proves why: it
 references media by exact name (`court-1863.jpg`) and six panoramas by nested
-path (`"cachedPath": "media/pano/pano-historic-courthouse.jpg"`). Routed
+path (`"cachedMediaId": "pano/pano-historic-courthouse.jpg"`). Routed
 through `store_media`, all nine of those `mediaId`s would be renamed and
 `pano/` flattened under six new names, and the document would point at files
 that no longer exist under the names it uses —
 so the session's figures would not match and export would 409 on missing
 media instead. `test_opening_the_fairfax_example_matches_the_recorded_figures`
 in `backend/tests/test_examples.py` pins `stopCount` 6, `mediaCount` 15,
-`orphanCount` 6 and the surviving names and paths precisely so that this
-refactor fails loudly. The two lists also differ in content: import allows
+`orphanCount` 0 and the surviving names and paths precisely so that this
+refactor fails loudly. (That orphan count was `6` through v2, and wrongly:
+those six were the cached panoramas, referenced by six stops but invisible to
+a reference check that read only overlay `mediaId`s. v3 renamed `cachedPath`
+to `cachedMediaId` and gave both references one collector — ADR 0005.) The two lists also differ in content: import allows
 `.jpeg`, `ALLOWED_TYPES` does not.
 
 **Nothing in `make content` writes to `content/examples/`.** The shipped
@@ -415,3 +418,4 @@ than rewritten (ADR 0004). Caution: `stops.json` has drifted from the hand-tuned
 | [0002](decisions/0002-the-tour-is-a-portable-document.md) | Why the tour is a bundle + working directory, why publishing is a copy, and the bundle's safety rules. |
 | [0003](decisions/0003-the-editor-is-three-surfaces-on-one-state.md) | Why pure ops over one store, whole-document undo and autosave. |
 | [0004](decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md) | Why the client never names a file, and why the scripts became endpoints. |
+| [0005](decisions/0005-schema-v3-locks-the-document.md) | Why v3 is three tightenings and a migration registry, and what AR, theming and Omeka still need to decide. |

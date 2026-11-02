@@ -67,9 +67,9 @@ def test_anchor_offsets_are_small_enough_to_stay_at_the_stop():
             assert 0 <= off["altitude"] <= 20
 
 
-def test_build_tour_emits_schema_version_two():
-    """A cheap source-text backstop against the v1 shapes this module used to
-    emit. That the OUTPUT is valid is already proven by the migration suite
+def test_build_tour_emits_the_current_schema_shapes():
+    """A cheap source-text backstop against the older shapes this module used
+    to emit. That the OUTPUT is valid is already proven by the migration suite
     against the real on-disk document; behavioural coverage of the one
     highest-stakes invariant (derived, not authored, heading) lives in
     test_rephoto_heading_is_derived_not_authored below."""
@@ -79,6 +79,11 @@ def test_build_tour_emits_schema_version_two():
     assert '"kind": "rephoto"' not in text
     assert '"type": "geoQuad"' not in text
     assert '"altitude":' not in text
+    # v3 shapes: a cached panorama is a media id relative to `media/`, not a
+    # path with the directory on the front. ADR 0005.
+    assert '"cachedMediaId"' in text
+    assert '"cachedPath"' not in text
+    assert 'f"media/' not in text
 
 
 def test_rephoto_heading_is_derived_not_authored():
