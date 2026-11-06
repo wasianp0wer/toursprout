@@ -9,6 +9,7 @@ import { EditorStore } from './editor-store';
 import { InspectorPane } from './inspector-pane';
 import { OutlinePane } from './outline-pane';
 import { setTourDescription, setTourTitle } from './document-ops';
+import { ConfigStore } from '../core/config-store';
 import { SessionApi } from '../core/session-api';
 import { TourApi } from '../core/tour-api';
 
@@ -30,6 +31,7 @@ import { TourApi } from '../core/tour-api';
 export class EditorPage {
   private readonly sessionApi = inject(SessionApi);
   private readonly tourApi = inject(TourApi);
+  private readonly config = inject(ConfigStore);
   private readonly router = inject(Router);
   protected readonly store = inject(EditorStore);
   protected readonly autosave = inject(Autosave);
@@ -90,7 +92,15 @@ export class EditorPage {
   }
 
   private async openDocument(): Promise<void> {
-    const tour = await this.tourApi.getTour();
+    // The editor is useful without a basemap, so a failed config request
+    // must not stop the document opening; the panes just see empty values.
+    const [config, tour] = await Promise.all([
+      this.tourApi.getConfig().catch(() => null),
+      this.tourApi.getTour(),
+    ]);
+    if (config) {
+      this.config.set(config);
+    }
     this.store.load(tour);
     this.autosave.start();
     this.open.set(true);
