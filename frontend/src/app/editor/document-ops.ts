@@ -473,8 +473,8 @@ export function addMediaOverlay(
 ): Tour {
   const stop = tour.stops.find((s) => s.id === stopId);
   if (!stop || mediaKindOf(mediaId) !== kind) return tour;
-  // A credit given by the caller (an archive's, or the narrator's) already
-  // names who made the work, so the tour's defaults are not needed for it.
+  // A credit given by the caller already names who made the work, so the
+  // tour's defaults are not needed for it.
   const base = credit ? tour : withDefaults(tour, supplied);
   if (!base) return tour;
   const text = title.trim() || (kind === 'image' ? 'New image' : 'New audio');
@@ -511,7 +511,7 @@ export function setTourDescription(tour: Tour, description: string): Tour {
   return { ...tour, description };
 }
 
-/** The stop's text: what the viewer's stop panel shows, and what narration reads. */
+/** The stop's text: what the viewer's stop panel shows. */
 export function setStopSummary(tour: Tour, stopId: string, summary: string): Tour {
   return mapStop(tour, stopId, (s) => ({ ...s, summary }));
 }
@@ -559,25 +559,4 @@ export function selectPanorama(
     ...s, panorama: { ...s.panorama, imageId, cachedMediaId: null, bearing },
   }));
   return { tour: next, fix: { imageId, lng, lat } };
-}
-
-/**
- * A sourced credit for an archive result. The licence is the archive's
- * stated rights; when it states none, only what the author typed is used,
- * and with neither this is null: nothing is invented. Null also when the
- * result has no url to cite.
- */
-export function archiveCredit(
-  result: {
-    creator: string | null; itemUrl: string | null; imageUrl: string | null; rights: string | null;
-  },
-  authorLicense?: string,
-): Credit | null {
-  const license = result.rights?.trim() || authorLicense?.trim() || '';
-  const url = result.itemUrl?.trim() || result.imageUrl?.trim() || '';
-  if (!license || !url) return null;
-  return {
-    type: 'sourced', source: 'Library of Congress', url, license,
-    creator: result.creator?.trim() || null,
-  };
 }

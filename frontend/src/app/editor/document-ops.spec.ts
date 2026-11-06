@@ -4,7 +4,7 @@ import {
   deleteStop, deriveHeading, legalModesFor, moveStop, renumberStops,
   setOverlayKind, slugify, uniqueId, updateOverlay,
   creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
-  setStopLocation, selectPanorama, archiveCredit,
+  setStopLocation, selectPanorama,
   PLACEHOLDER_SUMMARY, setStopSummary, setTourDescription, setTourTitle,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
@@ -572,36 +572,12 @@ describe('stop location and panorama selection', () => {
 });
 
 describe('sourced credits', () => {
-  const found = {
-    title: 'Courthouse, 1920', creator: 'A. Photographer',
-    itemUrl: 'https://loc.gov/item/1/', imageUrl: 'https://tile.loc.gov/1.jpg',
-  };
-
-  it('archiveCredit builds a sourced credit from the result and its stated rights', () => {
-    expect(archiveCredit({ ...found, rights: 'No known restrictions' })).toEqual({
-      type: 'sourced', source: 'Library of Congress', url: 'https://loc.gov/item/1/',
-      license: 'No known restrictions', creator: 'A. Photographer',
-    });
-  });
-
-  it('with null rights the author must supply the licence; none is invented', () => {
-    expect(archiveCredit({ ...found, rights: null })).toBeNull();
-    expect(archiveCredit({ ...found, rights: null }, '  ')).toBeNull();
-    expect(archiveCredit({ ...found, rights: null }, 'Public domain')!.license).toBe('Public domain');
-  });
-
-  it('stated rights win over a typed licence', () => {
-    expect(archiveCredit({ ...found, rights: 'Stated' }, 'Typed')!.license).toBe('Stated');
-  });
-
-  it('archiveCredit falls back to the image url, and refuses with no url at all', () => {
-    expect(archiveCredit({ ...found, itemUrl: null, rights: 'R' })!).toMatchObject({ url: found.imageUrl });
-    expect(archiveCredit({ ...found, itemUrl: null, imageUrl: null, rights: 'R' })).toBeNull();
-  });
-
   it('addMediaOverlay uses a given credit and needs no tour defaults for it', () => {
     const t: Tour = { ...tour(), defaults: null };
-    const credit = archiveCredit({ ...found, rights: 'R' })!;
+    const credit = {
+      type: 'sourced', source: 'Library of Congress', url: 'https://loc.gov/item/1/',
+      license: 'R', creator: 'A. Photographer',
+    } as const;
     const out = addMediaOverlay(t, 's1', 'image', 'm-1.jpg', 'Courthouse', undefined, credit);
     expect(out.stops[0].overlays[0].credit).toEqual(credit);
     expect(out.defaults).toBeNull();

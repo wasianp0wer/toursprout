@@ -3,7 +3,6 @@ import { TestBed } from '@angular/core/testing';
 import { OutlinePane } from './outline-pane';
 import { EditorStore } from './editor-store';
 import { SessionApi } from '../core/session-api';
-import { ToolsApi, type ArchiveResult } from '../core/tools-api';
 import { overlay, stop, tour } from './test-builders';
 import { installRecording, uninstallRecording } from './recording-fakes';
 
@@ -38,6 +37,10 @@ describe('OutlinePane', () => {
 
   it('offers no narrate button', () => {
     expect(q('[data-narrate]')).toBeNull();
+  });
+
+  it('offers no archive search', () => {
+    expect(q('[data-archive-open]')).toBeNull();
   });
 
   it('clicking selects a stop or an overlay', () => {
@@ -421,123 +424,6 @@ describe('OutlinePane', () => {
     it('is disabled with no current stop', () => {
       store.select(null); fixture.detectChanges();
       expect((q('[data-record]') as HTMLButtonElement).disabled).toBe(true);
-    });
-  });
-
-  describe('archive search', () => {
-    let upload: ReturnType<typeof vi.fn>;
-    let archiveSearch: ReturnType<typeof vi.fn>;
-    let archiveFetch: ReturnType<typeof vi.fn>;
-    const settle = async () => { await new Promise((r) => setTimeout(r, 5)); fixture.detectChanges(); };
-    const press = async (sel: string, i = 0) => {
-      (el.querySelectorAll(sel)[i] as HTMLElement).click(); await settle();
-    };
-    const typeInto = async (sel: string, value: string, i = 0) => {
-      const n = el.querySelectorAll(sel)[i] as HTMLInputElement;
-      n.value = value; n.dispatchEvent(new Event('input')); await settle();
-    };
-    const result = (over: Partial<ArchiveResult> = {}): ArchiveResult => ({
-      title: 'Courthouse, 1920', date: '1920', creator: 'A. Photographer',
-      thumbUrl: 'https://tile.loc.gov/t.jpg', imageUrl: 'https://tile.loc.gov/full.jpg',
-      itemUrl: 'https://www.loc.gov/item/123/', rights: 'No known restrictions', ...over,
-    });
-    const overlaysOf = () => store.draft()!.stops.find((s) => s.id === 'a')!.overlays;
-    const search = async (results: ArchiveResult[]) => {
-      archiveSearch.mockResolvedValue(results);
-      await press('[data-archive-open]');
-      await typeInto('[data-archive-query]', 'fairfax courthouse');
-      await press('[data-archive-search]');
-    };
-
-    beforeEach(() => {
-      upload = vi.fn();
-      archiveSearch = vi.fn();
-      archiveFetch = vi.fn().mockResolvedValue('pic-1.jpg');
-      TestBed.resetTestingModule();
-      TestBed.configureTestingModule({
-        imports: [OutlinePane],
-        providers: [
-          { provide: SessionApi, useValue: { uploadMedia: upload } },
-          { provide: ToolsApi, useValue: { archiveSearch, archiveFetch } },
-        ],
-      });
-      store = TestBed.inject(EditorStore);
-      store.load(tour([stop('a', 1, [overlay('o1', { body: 'Overlay words' })], { summary: 'Stop words' })]));
-      fixture = TestBed.createComponent(OutlinePane);
-      el = fixture.nativeElement;
-      store.select('a');
-      fixture.detectChanges();
-    });
-    it('never fetches a third-party host from the browser', async () => {
-      const spy = vi.fn();
-      vi.stubGlobal('fetch', spy);
-      await search([result()]);
-      await press('[data-archive-insert]');
-      vi.unstubAllGlobals();
-      expect(spy).not.toHaveBeenCalled();
-    });
-
-    it('lists results with their rights', async () => {
-      await search([result()]);
-      expect(q('[data-archive-result="0"]')?.textContent).toContain('Courthouse, 1920');
-      expect(q('[data-archive-result="0"]')?.textContent).toContain('No known restrictions');
-      expect(archiveSearch).toHaveBeenCalledWith('fairfax courthouse');
-    });
-
-    it('inserts a result: the server downloads it, then a sourced image overlay is added', async () => {
-      await search([result()]);
-      await press('[data-archive-insert]');
-      expect(archiveFetch).toHaveBeenCalledWith('https://tile.loc.gov/full.jpg', 'Courthouse, 1920');
-      expect(upload).not.toHaveBeenCalled();
-      const added = overlaysOf().at(-1)!;
-      expect(added.mediaId).toBe('pic-1.jpg');
-      expect(added.title).toBe('Courthouse, 1920');
-      expect(added.credit).toEqual({
-        type: 'sourced', source: 'Library of Congress', url: 'https://www.loc.gov/item/123/',
-        license: 'No known restrictions', creator: 'A. Photographer',
-      });
-      expect(store.selectedId()).toBe(added.id);
-    });
-
-    it('works on a tour with no defaults: the archive credit needs none', async () => {
-      store.load({ ...tour([stop('a', 1)]), defaults: null }); store.select('a');
-      await search([result()]);
-      await press('[data-archive-insert]');
-      expect(q('[data-defaults-form]')).toBeNull();
-      expect(overlaysOf().length).toBe(1);
-    });
-
-    it('null rights: refuses to insert until the author supplies a licence, then uses it', async () => {
-      await search([result({ rights: null })]);
-      expect(q('[data-archive-result="0"]')?.textContent).toMatch(/no rights/i);
-      const before = store.draft();
-      await press('[data-archive-insert]');
-      expect(q('[data-outline-error]')?.textContent).toMatch(/licence/i);
-      expect(archiveFetch).not.toHaveBeenCalled();
-      expect(store.draft()).toBe(before);
-      await typeInto('[data-archive-license]', 'Public domain (author-verified)');
-      await press('[data-archive-insert]');
-      expect(overlaysOf().at(-1)!.credit).toMatchObject({ type: 'sourced', license: 'Public domain (author-verified)' });
-    });
-
-    it('a refused or failed server download changes nothing and shows its message', async () => {
-      archiveFetch.mockRejectedValue(new Error('the archive has no image at that address (HTTP 404)'));
-      await search([result()]);
-      const before = store.draft();
-      await press('[data-archive-insert]');
-      expect(q('[data-outline-error]')?.textContent).toContain('HTTP 404');
-      expect(store.draft()).toBe(before);
-      expect(store.dirty()).toBe(false);
-    });
-
-    it('a failed search shows the message and keeps the document', async () => {
-      archiveSearch.mockRejectedValue(new Error('the Library of Congress timed out'));
-      const before = store.draft();
-      await press('[data-archive-open]');
-      await typeInto('[data-archive-query]', 'x');
-      await press('[data-archive-search]');
-      expect(q('[data-outline-error]')?.textContent).toContain('the Library of Congress timed out');
-      expect(store.draft()).toBe(before);
     });
   });
 });

@@ -22,17 +22,6 @@ export interface PlaceCandidate {
   lat: number;
 }
 
-export interface ArchiveResult {
-  title: string;
-  date: string | null;
-  creator: string | null;
-  thumbUrl: string | null;
-  imageUrl: string | null;
-  itemUrl: string | null;
-  /** Null when the archive states none: the author must supply a licence. */
-  rights: string | null;
-}
-
 /**
  * The acquisition tools. A sibling of SessionApi rather than part of it:
  * SessionApi is the open document (read, write, upload), while these are
@@ -51,15 +40,6 @@ export class ToolsApi {
   async places(lng: number, lat: number, name?: string): Promise<PlaceCandidate[]> {
     const body = name?.trim() ? { lng, lat, name: name.trim() } : { lng, lat };
     return (await this.post<{ places: PlaceCandidate[] }>('places', body)).places;
-  }
-
-  async archiveSearch(query: string): Promise<ArchiveResult[]> {
-    return (await this.post<{ results: ArchiveResult[] }>('archive-search', { query })).results;
-  }
-
-  /** Have the server download an archive image (loc.gov only) and store it. */
-  async archiveFetch(imageUrl: string, title: string): Promise<string> {
-    return (await this.post<{ mediaId: string }>('archive-fetch', { imageUrl, title })).mediaId;
   }
 
   private async post<T>(tool: string, body: object): Promise<T> {

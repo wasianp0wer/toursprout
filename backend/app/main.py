@@ -479,34 +479,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=exc.status, detail=exc.message) from exc
         return {"places": found}
 
-    @app.post("/api/tools/archive-search", dependencies=[Depends(_reject_cross_site)])
-    def tool_archive_search(body: tools.ArchiveRequest) -> dict:
-        try:
-            with _tool_client(tools.LOC_TIMEOUT) as c:
-                found = tools.search_archive(c, body.query, body.terms, body.excludePlaces)
-        except tools.ToolError as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
-        return {"results": found}
-
-    @app.post("/api/tools/archive-fetch", dependencies=[Depends(_reject_cross_site)])
-    def tool_archive_fetch(body: tools.ArchiveFetchRequest) -> dict:
-        session = app.state.session
-        if not session.is_open:
-            raise HTTPException(
-                status_code=409,
-                detail="no tour is open; call POST /api/session/new first",
-            )
-        try:
-            tools.check_archive_url(body.imageUrl)  # before any client is built
-            with _tool_client(tools.FETCH_TIMEOUT) as c:
-                data = tools.fetch_archive_image(c, body.imageUrl)
-            media_id = store_media(session.path, data, body.title or "archive")
-        except tools.ToolError as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
-        except MediaError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {**session.summary(), "mediaId": media_id}
-
     @app.get("/api/session/export")
     def export_bundle() -> Response:
         session = app.state.session
