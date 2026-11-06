@@ -18,8 +18,8 @@ from pydantic import ValidationError
 
 from .bundle import BUNDLE_VERSION, read_bundle
 from .media_store import orphan_ids
-from .migration import migrate_v1_to_v2
-from .models import Tour
+from .migration import migrate
+from .models import SCHEMA_VERSION, Tour
 
 
 class SessionConflict(Exception):
@@ -65,7 +65,7 @@ def skeleton(title: str) -> dict:
     slug = re.sub(r"[^a-z0-9]+", "-", title.lower().replace("'", "")).strip("-") or "untitled"
     return {
         "id": slug,
-        "schemaVersion": 2,
+        "schemaVersion": SCHEMA_VERSION,
         "title": title,
         "description": "",
         "attribution": [],
@@ -77,7 +77,7 @@ def skeleton(title: str) -> dict:
             "location": {"lng": 0.0, "lat": 0.0},
             "osmRef": None,
             "panorama": {"provider": "mapillary", "imageId": "0",
-                         "bearing": 0.0, "cachedPath": None},
+                         "bearing": 0.0, "cachedMediaId": None},
             "overlays": [],
         }],
     }
@@ -95,7 +95,7 @@ class Session:
 
     def tour(self) -> Tour:
         raw = json.loads((self.path / "tour.json").read_text())
-        return Tour.model_validate(migrate_v1_to_v2(raw))
+        return Tour.model_validate(migrate(raw))
 
     def new(self, title: str, *, force: bool = False) -> Tour:
         """Start a brand-new skeleton tour, discarding whatever is open now.

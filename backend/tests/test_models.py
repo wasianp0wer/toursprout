@@ -50,7 +50,7 @@ def _stop(**over):
             "provider": "mapillary",
             "imageId": "2116094392633820",
             "bearing": 270.0,
-            "cachedPath": "media/pano/historic-courthouse.jpg",
+            "cachedMediaId": "pano/historic-courthouse.jpg",
         },
         "overlays": [_overlay()],
     }
@@ -61,7 +61,7 @@ def _stop(**over):
 def _tour(**over):
     base = {
         "id": "fairfax-old-town",
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "title": "Old Town Fairfax",
         "description": "A walking tour of six historic sites.",
         "attribution": [
@@ -135,6 +135,125 @@ def test_duplicate_stop_ids_are_rejected():
 def test_stop_orders_must_be_contiguous_from_one():
     with pytest.raises(ValidationError):
         Tour.model_validate(_tour(stops=[_stop(id="a", order=1), _stop(id="b", order=3)]))
+
+
+def test_duplicate_overlay_ids_in_one_stop_are_rejected():
+    with pytest.raises(ValidationError, match="overlay ids"):
+        Tour.model_validate(
+            _tour(stops=[_stop(overlays=[_overlay(), _overlay()])])
+        )
+
+
+def test_duplicate_overlay_ids_across_stops_are_rejected():
+    """The editor looks overlays up by id across every stop
+    (`mapOverlay`/`deleteOverlay` in document-ops.ts), so two stops sharing an
+    overlay id means editing or deleting one edits or deletes both."""
+    with pytest.raises(ValidationError, match="overlay ids"):
+        Tour.model_validate(
+            _tour(stops=[
+                _stop(id="a", order=1, overlays=[_overlay(id="shared")]),
+                _stop(id="b", order=2, overlays=[_overlay(id="shared")]),
+            ])
+        )
+
+
+def test_an_overlay_id_may_not_collide_with_a_stop_id():
+    """One id namespace: `allIds()` in document-ops.ts allocates stop and
+    overlay ids from the same pool, so the schema says so too."""
+    with pytest.raises(ValidationError, match="ids"):
+        Tour.model_validate(
+            _tour(stops=[_stop(id="historic-courthouse",
+                               overlays=[_overlay(id="historic-courthouse")])])
+        )
+
+
+def test_an_attribution_may_have_no_url():
+    """The same lesson as the `Credit` split (ADR 0001): a line of
+    attribution with nothing to link to is ordinary, and a required `url`
+    is how v1's single credit shape became unsatisfiable."""
+    tour = Tour.model_validate(
+        _tour(attribution=[{"text": "Photographs by the author",
+                            "url": None, "license": "CC-BY-4.0"}])
+    )
+    assert tour.attribution[0].url is None
+
+
+def test_an_attribution_url_may_be_omitted_entirely():
+    tour = Tour.model_validate(
+        _tour(attribution=[{"text": "Photographs by the author",
+                            "license": "CC-BY-4.0"}])
+    )
+    assert tour.attribution[0].url is None
+
+
+def test_a_blank_attribution_url_is_rejected():
+    """Absent is `null`; `""` is a field someone failed to fill in."""
+    with pytest.raises(ValidationError):
+        Tour.model_validate(
+            _tour(attribution=[{"text": "t", "url": "  ", "license": "ODbL"}])
+        )
+
+
+def test_a_blank_attribution_license_is_rejected():
+    with pytest.raises(ValidationError):
+        Tour.model_validate(
+            _tour(attribution=[{"text": "t", "url": "https://e.org",
+                                "license": ""}])
+        )
+
+
+@pytest.mark.parametrize("ref", [
+    "court-1863.jpg",
+    "pano/pano-historic-courthouse.jpg",
+    "a/b/c/deep.jpg",
+])
+def test_a_media_reference_may_be_a_relative_path_inside_media(ref):
+    """Nesting is the point: the shipped tour keeps its panoramas in
+    `media/pano/`, and import preserves directories."""
+    assert Overlay.model_validate(
+        _overlay(kind="image", mediaId=ref, body=None)
+    ).media_id == ref
+
+
+@pytest.mark.parametrize("ref", [
+    "../escape.jpg",
+    "pano/../../escape.jpg",
+    "/etc/passwd",
+    "pano\\windows.jpg",
+    "./here.jpg",
+    "pano//double.jpg",
+    " leading.jpg",
+    "trailing.jpg ",
+    "media/pano/already-prefixed.jpg",
+])
+def test_a_media_reference_that_is_not_inside_media_is_rejected(ref):
+    """`mediaId` was unvalidated through v2, so `../../etc/passwd` was a valid
+    document. The last case is the one that is easy to get wrong by hand: a
+    reference is relative to `media/`, so repeating the prefix would resolve
+    to `media/media/...`."""
+    with pytest.raises(ValidationError):
+        Overlay.model_validate(_overlay(kind="image", mediaId=ref, body=None))
+
+
+def test_a_cached_panorama_is_held_to_the_same_rule(ref="../escape.jpg"):
+    """Both media references share one type, so neither can drift from the
+    other. ADR 0005."""
+    bad = _stop()
+    bad["panorama"] = {**bad["panorama"], "cachedMediaId": ref}
+    with pytest.raises(ValidationError):
+        Stop.model_validate(bad)
+
+
+def test_referenced_media_counts_overlays_and_cached_panoramas():
+    """The collector both the orphan check and the missing-media check use.
+    While it read overlays only, six referenced panoramas were reported as
+    orphans."""
+    tour = Tour.model_validate(_tour(stops=[_stop(
+        overlays=[_overlay(kind="image", mediaId="court-1863.jpg", body=None)],
+    )]))
+    assert models.referenced_media(tour) == {
+        "court-1863.jpg", "pano/historic-courthouse.jpg",
+    }
 
 
 def test_extra_fields_are_rejected():

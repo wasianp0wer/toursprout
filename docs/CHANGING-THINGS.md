@@ -116,14 +116,20 @@ the editor unmigrated cannot even be saved. Migration is the only door.
 
 1. `backend/app/models.py`: change the models; bump `SCHEMA_VERSION` and the
    `schema_version: Literal[N]` on `Tour` (they are two separate places).
-2. `backend/app/migration.py`: add the step. It is pure (dict in, dict out,
-   input never mutated) and must be total: refuse loudly rather than drop
-   data, as `_migrate_overlays` does for an unknown kind. Today's function is
-   named `migrate_v1_to_v2` and accepts only v1 and current; the call sites
-   are `Session.tour` (`session.py`), `_validate_tree` and `missing_media`
-   (`bundle.py`). A v3 means chaining steps behind one entry point.
-3. `backend/app/session.py`: `skeleton()` hard-codes `"schemaVersion": 2`
-   (it does not read `SCHEMA_VERSION`); update it.
+2. `backend/app/migration.py`: add a `_vN_to_vN+1` function and one entry in
+   `_MIGRATIONS`. **Nothing else.** `migrate` is the single entry point and
+   the registry chains the steps, so the call sites — `Session.tour`
+   (`session.py`), `_validate_tree` and `missing_media` (`bundle.py`) — do
+   not change. A step is pure (dict in, dict out, input never mutated), must
+   stamp its own target version rather than `SCHEMA_VERSION` (or it will
+   silently relabel the step before it), and must be total: refuse loudly
+   rather than drop data, as `_migrate_overlays` does for an unknown kind.
+   Where the new rule is a tightening, prefer repairing the document to
+   refusing it — `_rename_colliding_overlay_ids` is the pattern — and refuse
+   only where there is no honest value to invent, as with a blank licence.
+   ADR 0005.
+3. `backend/app/session.py`: `skeleton()` reads `SCHEMA_VERSION`, so the
+   version itself needs nothing; update the shapes in it if fields changed.
 4. `frontend/src/app/core/tour.models.ts`: mirror the change by hand, and the
    `schemaVersion` literal on `Tour`. Then fix the compile errors this causes
    in `editor/document-ops.ts` and `editor/test-builders.ts`.
@@ -136,14 +142,23 @@ the editor unmigrated cannot even be saved. Migration is the only door.
 6. Backend fixtures that build documents (`_minimal_doc` in
    `backend/tests/test_bundle.py`, helpers in `test_models.py`).
 
+**Freeze a fixture of the version you are leaving.** `backend/tests/fixtures/`
+holds `fairfax-old-town-v1.json` and `fairfax-old-town-v2.json`, each a
+snapshot of the repository's real tour at that version, never refreshed. They
+are what makes the chain testable against real content instead of comparing
+an already-current document to itself. Add `…-v3.json` before you bump.
+
 **Fails if incomplete:** `backend/tests/test_migration.py` (add cases for each
-migrated shape; `test_the_real_tour_migrates_and_validates` and
-`test_the_real_tour_loses_nothing` run the seed tour through it);
-`test_the_shipped_tour_is_valid_v2` and `test_build_tour_emits_schema_version_two`
+migrated shape; `test_the_real_tour_migrates_and_validates`,
+`test_the_real_v2_tour_migrates_and_validates` and
+`test_the_v1_fixture_migrates_through_both_steps_to_the_current_version` run
+real content through the chain);
+`test_the_shipped_tour_is_valid_at_the_current_version` and
+`test_build_tour_emits_the_current_schema_shapes`
 (the seed and the generator); `test_the_shipped_tour_round_trips_byte_identically`
 and `test_a_v1_bundle_is_migrated_on_import` in `backend/tests/test_bundle.py`;
-`test_schema_version_one_is_rejected_by_the_model` in `test_models.py` (rename
-and update it when the version moves). **Nothing fails** if `tour.models.ts`
+`test_a_version_newer_than_this_build_is_refused` and
+`test_unsupported_schema_version_is_refused` in `test_migration.py`. **Nothing fails** if `tour.models.ts`
 is left behind and no code uses the changed field; the schema's TypeScript
 mirror has no drift test (see "the third duplication" under entry 8). Also note
 that migration runs on **import**, not at startup: a stale `tour.json` already
@@ -386,7 +401,7 @@ belongs in that shape, not beside it.
 **Fails if incomplete:** `backend/tests/test_examples.py` and
 `test_loose_import.py` are the patterns to copy, and
 `test_opening_the_fairfax_example_matches_the_recorded_figures` is the one
-that catches step 2 — it pins `stopCount` 6, `mediaCount` 15, `orphanCount` 6
+that catches step 2 — it pins `stopCount` 6, `mediaCount` 15, `orphanCount` 0
 and the surviving `media/pano/` paths against the repository's real content.
 Step 4's dependency is covered by a per-route test and nothing more —
 `test_delete_session_refuses_cross_site` in `test_session_api.py`,

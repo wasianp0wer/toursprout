@@ -1,6 +1,6 @@
 {
   "id": "fairfax-old-town",
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "title": "Old Town Fairfax",
   "description": "Six historic sites in the City of Fairfax, Virginia, told through street-level panoramas.",
   "attribution": [
@@ -30,7 +30,7 @@
         "provider": "mapillary",
         "imageId": "2116094392633820",
         "bearing": 284.4,
-        "cachedPath": "media/pano/pano-historic-courthouse.jpg"
+        "cachedMediaId": "pano/pano-historic-courthouse.jpg"
       },
       "overlays": [
         {
@@ -175,7 +175,7 @@
         "provider": "mapillary",
         "imageId": "1430487015654811",
         "bearing": 287.9,
-        "cachedPath": "media/pano/pano-marr-monument.jpg"
+        "cachedMediaId": "pano/pano-marr-monument.jpg"
       },
       "overlays": [
         {
@@ -242,7 +242,7 @@
         "provider": "mapillary",
         "imageId": "1377390754539790",
         "bearing": 190.7,
-        "cachedPath": "media/pano/pano-old-town-hall.jpg"
+        "cachedMediaId": "pano/pano-old-town-hall.jpg"
       },
       "overlays": [
         {
@@ -309,7 +309,7 @@
         "provider": "mapillary",
         "imageId": "1623645942614169",
         "bearing": 17.5,
-        "cachedPath": "media/pano/pano-ratcliffe-allison-pozer-house.jpg"
+        "cachedMediaId": "pano/pano-ratcliffe-allison-pozer-house.jpg"
       },
       "overlays": [
         {
@@ -376,7 +376,7 @@
         "provider": "mapillary",
         "imageId": "1675017370851450",
         "bearing": 196.4,
-        "cachedPath": "media/pano/pano-fairfax-museum.jpg"
+        "cachedMediaId": "pano/pano-fairfax-museum.jpg"
       },
       "overlays": [
         {
@@ -443,7 +443,7 @@
         "provider": "mapillary",
         "imageId": "1047663651213936",
         "bearing": 200.9,
-        "cachedPath": "media/pano/pano-fairfax-city-hall.jpg"
+        "cachedMediaId": "pano/pano-fairfax-city-hall.jpg"
       },
       "overlays": [
         {

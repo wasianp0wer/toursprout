@@ -9,7 +9,7 @@ function stop(id: string, order: number): Stop {
     summary: 'summary',
     location: { lng: -77.3, lat: 38.84 },
     osmRef: null,
-    panorama: { provider: 'mapillary', imageId: `img-${order}`, bearing: 90, cachedPath: null },
+    panorama: { provider: 'mapillary', imageId: `img-${order}`, bearing: 90, cachedMediaId: null },
     overlays: [{
       id: `ov-${order}`, kind: 'text',
       anchor: { type: 'geo', lng: -77.3, lat: 38.84, altitudeM: 2 },
@@ -22,7 +22,7 @@ function stop(id: string, order: number): Stop {
 
 function tour(n = 3): Tour {
   return {
-    id: 'fairfax-old-town', schemaVersion: 2,
+    id: 'fairfax-old-town', schemaVersion: 3,
     title: 'Old Town Fairfax', description: 'desc',
     defaults: null,
     attribution: [],

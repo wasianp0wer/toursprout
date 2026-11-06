@@ -22,7 +22,7 @@ class LngLat(Strict):
     lat: Annotated[float, Field(ge=-90.0, le=90.0)]
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class GeoAnchor(Strict):
@@ -99,6 +99,42 @@ def _not_blank(v: str) -> str:
 NonBlank = Annotated[str, Field(min_length=1), AfterValidator(_not_blank)]
 
 
+def _safe_media_ref(v: str) -> str:
+    """A media reference is a relative POSIX path inside `media/`, nothing else.
+
+    The document points at a stored file in two places — an overlay's
+    `mediaId` and a stop's `cachedMediaId` — and through v2 neither was
+    checked at all, so `../../etc/passwd` was a valid document. Nothing joined
+    them to a path server-side, so this closed no live hole; it is here
+    because an unconstrained reference is the kind of thing an importer
+    (Omeka, an archive) supplies, and because tightening it later would
+    reject documents already written.
+
+    Note what this does NOT say: the file need not exist. `missing_media`
+    answers that, against a real directory; a schema cannot.
+    """
+    if v != v.strip():
+        raise ValueError("must not have leading or trailing whitespace")
+    if "\\" in v:
+        raise ValueError("must use / as its separator, not a backslash")
+    if v.startswith("/"):
+        raise ValueError("must be relative to media/, not absolute")
+    parts = v.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ValueError("must not contain an empty, '.' or '..' path segment")
+    if v.startswith("media/"):
+        raise ValueError(
+            "is already relative to media/, so it must not repeat the prefix"
+        )
+    return v
+
+
+# A reference to a file under a tour's `media/` directory.
+MediaRef = Annotated[
+    str, Field(min_length=1), AfterValidator(_not_blank), AfterValidator(_safe_media_ref)
+]
+
+
 class OriginalCredit(Strict):
     """The author's own work: a recording, a photograph they took.
 
@@ -151,7 +187,7 @@ class Overlay(Strict):
     display: Display
     title: str = Field(min_length=1)
     body: str | None = None
-    media_id: str | None = Field(default=None, alias="mediaId")
+    media_id: MediaRef | None = Field(default=None, alias="mediaId")
     credit: Credit
 
     @model_validator(mode="after")
@@ -181,10 +217,21 @@ class TourDefaults(Strict):
 
 
 class Panorama(Strict):
+    """The street-level image a stop is seen from.
+
+    `cached_media_id` is a `MediaRef` like an overlay's `media_id`, and was
+    v2's `cachedPath`. The rename is the point: v2 stored `media/pano/x.jpg`,
+    a path with the directory baked in, which put a cached panorama outside
+    the one namespace the reference checks look at. `orphan_ids` and
+    `missing_media` collected only overlay `media_id`s, so the shipped
+    example's six cached panoramas were reported as unreferenced orphans
+    forever while being, in fact, referenced by six stops.
+    """
+
     provider: Literal["mapillary"]
     image_id: str = Field(min_length=1, alias="imageId")
     bearing: Annotated[float, Field(ge=0.0, lt=360.0)]
-    cached_path: str | None = Field(default=None, alias="cachedPath")
+    cached_media_id: MediaRef | None = Field(default=None, alias="cachedMediaId")
 
 
 class Stop(Strict):
@@ -199,14 +246,23 @@ class Stop(Strict):
 
 
 class Attribution(Strict):
-    text: str = Field(min_length=1)
-    url: str
-    license: str
+    """A tour-level line of credit: map data, imagery, an institution.
+
+    `url` is nullable for the same reason `OriginalCredit` exists (ADR 0001):
+    a line with nothing to link to is ordinary, and making the URL required
+    is exactly how v1's single credit shape became unsatisfiable. Absent is
+    `None`; `""` is a field someone failed to fill in, and is refused. The
+    licence is never optional — provenance is the point of the field.
+    """
+
+    text: NonBlank
+    url: NonBlank | None = None
+    license: NonBlank
 
 
 class Tour(Strict):
     id: str = Field(min_length=1)
-    schema_version: Literal[2] = Field(alias="schemaVersion")
+    schema_version: Literal[3] = Field(alias="schemaVersion")
     title: str = Field(min_length=1)
     description: str
     defaults: TourDefaults | None = None
@@ -215,10 +271,63 @@ class Tour(Strict):
 
     @model_validator(mode="after")
     def _stops_are_well_ordered(self) -> Tour:
-        ids = [s.id for s in self.stops]
-        if len(ids) != len(set(ids)):
-            raise ValueError("stop ids must be unique")
         orders = sorted(s.order for s in self.stops)
         if orders != list(range(1, len(orders) + 1)):
             raise ValueError("stop orders must be contiguous starting at 1")
         return self
+
+    @model_validator(mode="after")
+    def _ids_are_unique(self) -> Tour:
+        """Stop ids and overlay ids are ONE namespace, unique tour-wide.
+
+        Overlay ids were unchecked through v2, and the editor was the only
+        thing keeping them apart: `allIds()` in `document-ops.ts` allocates
+        from the combined pool, and `mapOverlay`, `findOverlay` and
+        `deleteOverlay` all match an id across EVERY stop rather than within
+        one. So two stops sharing an overlay id meant editing or deleting one
+        of them silently hit both, and an imported bundle could carry that.
+
+        Enforced here rather than left to the editor because an importer is
+        the likely source: ids minted from someone else's identifiers (an
+        Omeka item, an archive accession) collide in ways hand-authoring does
+        not. v3 migration renames collisions rather than refusing them, so
+        a document that predates this rule still opens.
+        """
+        stop_ids = [s.id for s in self.stops]
+        if len(stop_ids) != len(set(stop_ids)):
+            raise ValueError("stop ids must be unique")
+        overlay_ids = [o.id for s in self.stops for o in s.overlays]
+        repeated = sorted({i for i in overlay_ids if overlay_ids.count(i) > 1})
+        if repeated:
+            raise ValueError(
+                "overlay ids must be unique across the whole tour, not only "
+                f"within a stop; repeated: {', '.join(repeated)}"
+            )
+        shared = sorted(set(stop_ids) & set(overlay_ids))
+        if shared:
+            raise ValueError(
+                "stop and overlay ids are one namespace; these name both a "
+                f"stop and an overlay: {', '.join(shared)}"
+            )
+        return self
+
+
+def referenced_media(tour: Tour) -> set[str]:
+    """Every file under `media/` the document points at.
+
+    Both ways a document can name a stored file, collected in one place,
+    because the bug this exists to prevent was two collectors that each knew
+    about only one of them: `media_store.orphan_ids` and
+    `bundle._media_sets` both read overlay `mediaId` and neither read a
+    stop's cached panorama. So the shipped example's six panoramas were
+    reported as unreferenced orphans while six stops referenced them, and a
+    bundle missing a panorama imported clean. A new `MediaRef` field belongs
+    here and nowhere else.
+    """
+    refs = {o.media_id for s in tour.stops for o in s.overlays if o.media_id}
+    refs |= {
+        s.panorama.cached_media_id
+        for s in tour.stops
+        if s.panorama.cached_media_id
+    }
+    return refs

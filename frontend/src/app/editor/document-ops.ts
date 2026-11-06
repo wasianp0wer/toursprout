@@ -91,7 +91,7 @@ export function addStop(tour: Tour, title: string): Tour {
     osmRef: null,
     panorama: last
       ? { ...last.panorama }
-      : { provider: 'mapillary', imageId: '0', bearing: 0, cachedPath: null },
+      : { provider: 'mapillary', imageId: '0', bearing: 0, cachedMediaId: null },
     overlays: [],
   };
   return { ...tour, stops: renumberStops([...tour.stops, stop]) };
@@ -556,9 +556,9 @@ export function selectPanorama(
   if (!isNum(lng) || !isNum(lat) || Math.abs(lng) > 180 || Math.abs(lat) > 90) return null;
   const bearing = isNum(candidate.compassAngle) ? ((candidate.compassAngle % 360) + 360) % 360 : 0;
   const next = mapStop(tour, stopId, (s) => ({
-    // bearing and cachedPath belonged to the image being replaced. The new
+    // bearing and cachedMediaId belonged to the image being replaced. The new
     // view starts where the camera faced, or north when that is unknown.
-    ...s, panorama: { ...s.panorama, imageId, cachedPath: null, bearing },
+    ...s, panorama: { ...s.panorama, imageId, cachedMediaId: null, bearing },
   }));
   return { tour: next, fix: { imageId, lng, lat } };
 }

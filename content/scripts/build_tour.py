@@ -184,7 +184,10 @@ def main() -> int:
                 "provider": "mapillary",
                 "imageId": pano_entry["imageId"],
                 "bearing": round(view_bearing, 1),
-                "cachedPath": f"media/{pano_entry['file']}",
+                # A media id relative to `media/`, not a path with the
+                # directory on the front: the same namespace an overlay's
+                # `mediaId` uses, so the reference checks see it. ADR 0005.
+                "cachedMediaId": pano_entry["file"],
             },
             "overlays": overlays,
         })

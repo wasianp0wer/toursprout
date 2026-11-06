@@ -28,8 +28,8 @@ from typing import IO
 from pydantic import ValidationError
 
 from .media_store import ALLOWED_TYPES, _sniff_type
-from .migration import migrate_v1_to_v2
-from .models import Tour
+from .migration import migrate
+from .models import Tour, referenced_media
 
 BUNDLE_VERSION = 1
 
@@ -397,16 +397,14 @@ def _media_sets(tour: Tour, media_dir: Path) -> tuple[set[str], set[str]]:
     nested layout like `media/pano/pano-historic-courthouse.jpg` (the
     spec's own example) is visible to both the referenced-media check below
     and `missing_media`, rather than only the top-level entry `pano` ever
-    being seen."""
+    being seen. The referenced side is `models.referenced_media`, which is
+    the only place that knows a cached panorama counts too."""
     present = (
         {p.relative_to(media_dir).as_posix() for p in media_dir.rglob("*") if p.is_file()}
         if media_dir.is_dir()
         else set()
     )
-    referenced = {
-        ov.media_id for stop in tour.stops for ov in stop.overlays if ov.media_id
-    }
-    return present, referenced
+    return present, referenced_media(tour)
 
 
 def missing_media(root: Path) -> list[str]:
@@ -419,7 +417,7 @@ def missing_media(root: Path) -> list[str]:
     """
     root = Path(root)
     raw = json.loads((root / "tour.json").read_text())
-    tour = Tour.model_validate(migrate_v1_to_v2(raw))
+    tour = Tour.model_validate(migrate(raw))
     present, referenced = _media_sets(tour, root / "media")
     return sorted(referenced - present)
 
@@ -438,7 +436,7 @@ def _validate_tree(root: Path) -> list[str]:
         raise BundleError(f"tour.json is not valid JSON: {exc}") from exc
 
     try:
-        doc = migrate_v1_to_v2(raw)
+        doc = migrate(raw)
     except ValueError as exc:
         raise BundleError(f"tour.json could not be migrated: {exc}") from exc
 

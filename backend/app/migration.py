@@ -1,21 +1,32 @@
-"""Upgrade v1 tour documents to v2.
+"""Upgrade older tour documents to the current schema version.
 
-v1 welded presentation to content type: `kind: "rephoto"` meant "an image, as
-a plane standing in the world", and every other kind meant "a clickable
-marker". v2 separates those, so the migration's whole job is to read the
-intent v1 encoded in `kind` and write it out explicitly in `display`.
+One entry point, `migrate`, and one step per version behind it. Callers ask
+for "current" and never for a hop: `migrate` looks the document's version up
+in `_MIGRATIONS` and applies steps until it arrives, so adding v4 means adding
+a function and one dictionary entry and touching no call site.
 
-Pure: dict in, dict out, input never mutated. This module stays in the tree
-after the repository's own tour is converted, because exported bundles in the
-wild will still be v1.
+Every step is pure (dict in, dict out, input never mutated) and total: it
+refuses loudly rather than dropping data, because a tour that comes back from
+migration quietly shorter is the worst failure this module can have.
+
+This module stays in the tree permanently. Exported bundles in the wild are
+v1 and v2, and `tour.json` inside a working directory persists between runs.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
 
 from .models import SCHEMA_VERSION
+
+# --- v1 -> v2 ---------------------------------------------------------------
+#
+# v1 welded presentation to content type: `kind: "rephoto"` meant "an image, as
+# a plane standing in the world", and every other kind meant "a clickable
+# marker". v2 separates those, so this step's whole job is to read the intent
+# v1 encoded in `kind` and write it out explicitly in `display`. ADR 0001.
 
 _ICON_BY_KIND = {"text": "note", "image": "photo", "audio": "audio"}
 
@@ -27,19 +38,9 @@ _FIRST_IN_WORLD_OPACITY = 0.7
 _LATER_IN_WORLD_OPACITY = 0.0
 
 
-def migrate_v1_to_v2(doc: dict[str, Any]) -> dict[str, Any]:
-    """Return a v2 copy of `doc`. A v2 document is returned unchanged."""
-    version = doc.get("schemaVersion")
-    if version == SCHEMA_VERSION:
-        return deepcopy(doc)
-    if version != 1:
-        raise ValueError(
-            f"unsupported schemaVersion {version!r}: this build understands "
-            f"1 and {SCHEMA_VERSION}"
-        )
-
+def _v1_to_v2(doc: dict[str, Any]) -> dict[str, Any]:
     out = deepcopy(doc)
-    out["schemaVersion"] = SCHEMA_VERSION
+    out["schemaVersion"] = 2
     for stop in out.get("stops", []):
         stop["overlays"] = _migrate_overlays(stop.get("overlays", []))
     return out
@@ -127,3 +128,153 @@ def _sourced(credit: dict[str, Any]) -> dict[str, Any]:
         "license": credit["license"],
         "creator": credit.get("creator"),
     }
+
+
+# --- v2 -> v3 ---------------------------------------------------------------
+#
+# v3 is three tightenings, none of which could be added later without
+# rejecting documents already in the wild. ADR 0005.
+#
+#   1. Overlay ids must be unique tour-wide. v2 never checked them, so
+#      collisions are renamed here rather than refused: a document in the
+#      wild must stay openable.
+#   2. A cached panorama is a media id, not a path. v2's `cachedPath` baked
+#      the directory in (`media/pano/x.jpg`), which put it outside the
+#      `mediaId` namespace and so outside the orphan and missing-media
+#      checks — which is why the shipped example reported six permanent
+#      orphans that were in fact its six panoramas.
+#   3. An `Attribution` may have no URL, but never a blank one and never a
+#      blank licence.
+
+_MEDIA_PREFIX = "media/"
+
+
+def _v2_to_v3(doc: dict[str, Any]) -> dict[str, Any]:
+    out = deepcopy(doc)
+    out["schemaVersion"] = 3
+    out["attribution"] = [
+        _attribution(a) for a in out.get("attribution", [])
+    ]
+    for stop in out.get("stops", []):
+        pano = stop.get("panorama")
+        if isinstance(pano, dict):
+            pano["cachedMediaId"] = _cached_media_id(pano.pop("cachedPath", None))
+    _rename_colliding_overlay_ids(out)
+    return out
+
+
+def _attribution(a: dict[str, Any]) -> dict[str, Any]:
+    out = dict(a)
+    text = out.get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError(
+            f"attribution {text!r} has no text; v3 requires a non-blank one"
+        )
+    url = out.get("url")
+    # Blank means "nobody filled this in", which v3 spells `null`. A real
+    # absence is not an error: see Attribution in models.py.
+    out["url"] = url.strip() if isinstance(url, str) and url.strip() else None
+    license_ = out.get("license")
+    if not isinstance(license_, str) or not license_.strip():
+        raise ValueError(
+            f"attribution {text!r} has no licence; v3 requires one, because "
+            "an unlicensed line of credit is the thing the field exists to "
+            "prevent"
+        )
+    return out
+
+
+def _cached_media_id(cached_path: Any) -> str | None:
+    """`media/pano/x.jpg` (a path) becomes `pano/x.jpg` (a media id).
+
+    Anything not under `media/` has no media id to become, and inventing one
+    would point the document at a file that is not in the bundle. Refuse and
+    name the old field, so the message tells the author which key to look at.
+    """
+    if cached_path is None:
+        return None
+    if not isinstance(cached_path, str) or not cached_path.strip():
+        raise ValueError(
+            f"cachedPath {cached_path!r} is neither a path nor absent"
+        )
+    path = cached_path.strip()
+    if not path.startswith(_MEDIA_PREFIX):
+        raise ValueError(
+            f"cachedPath {path!r} is not under {_MEDIA_PREFIX!r}, so it cannot "
+            "become a media id; a cached panorama has to be inside the bundle"
+        )
+    media_id = path[len(_MEDIA_PREFIX):]
+    if not media_id:
+        raise ValueError(f"cachedPath {path!r} names no file")
+    return media_id
+
+
+def _rename_colliding_overlay_ids(doc: dict[str, Any]) -> None:
+    """Make every overlay id unique tour-wide, in place.
+
+    Renaming, not refusing: v2 did not check these, so a document in the wild
+    may carry duplicates and must still open. Nothing inside the document
+    references an overlay id, so a rename loses nothing — only the editor's
+    own selection state names them, and that is never saved (ADR 0003).
+
+    Stop ids go into `taken` first, so an overlay is what moves when an
+    overlay and a stop share an id. Same `-2`, `-3` suffixing as `uniqueId`
+    in the editor's `document-ops.ts`, so a migrated id and an authored one
+    are indistinguishable.
+    """
+    stops = doc.get("stops", [])
+    taken = {s["id"] for s in stops if isinstance(s, dict) and "id" in s}
+    for stop in stops:
+        for ov in stop.get("overlays", []) if isinstance(stop, dict) else []:
+            current = ov.get("id")
+            if not isinstance(current, str):
+                continue
+            if current not in taken:
+                taken.add(current)
+                continue
+            n = 2
+            while f"{current}-{n}" in taken:
+                n += 1
+            ov["id"] = f"{current}-{n}"
+            taken.add(ov["id"])
+
+
+# --- the chain --------------------------------------------------------------
+
+_MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    1: _v1_to_v2,
+    2: _v2_to_v3,
+}
+
+
+def migrate(doc: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of `doc` at `SCHEMA_VERSION`. A current document is
+    returned unchanged. Anything this build has no step for is refused."""
+    version = doc.get("schemaVersion")
+    if version == SCHEMA_VERSION:
+        return deepcopy(doc)
+    # `isinstance(True, int)` is True, so booleans are excluded by hand.
+    if isinstance(version, bool) or version not in _MIGRATIONS:
+        known = ", ".join(str(v) for v in sorted(_MIGRATIONS))
+        raise ValueError(
+            f"unsupported schemaVersion {version!r}: this build understands "
+            f"{known} and {SCHEMA_VERSION}"
+        )
+
+    out = deepcopy(doc)
+    while out.get("schemaVersion") != SCHEMA_VERSION:
+        before = out.get("schemaVersion")
+        step = _MIGRATIONS.get(before)
+        if step is None:
+            raise ValueError(
+                f"no migration step from schemaVersion {before!r} to "
+                f"{SCHEMA_VERSION}"
+            )
+        out = step(out)
+        # A step that does not advance the version would loop here forever.
+        if out.get("schemaVersion") == before:
+            raise ValueError(
+                f"migration step from schemaVersion {before!r} did not "
+                "advance the version"
+            )
+    return out

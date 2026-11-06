@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from app.migration import migrate_v1_to_v2
-from app.models import Tour
+from app.migration import migrate
+from app.models import SCHEMA_VERSION, Tour
 
 REPO = Path(__file__).resolve().parents[2]
 REAL_TOUR = REPO / "content" / "tours" / "fairfax-old-town.json"
@@ -15,7 +15,7 @@ REAL_TOUR = REPO / "content" / "tours" / "fairfax-old-town.json"
 # A frozen v1 snapshot of the repository's real tour, taken before it was
 # migrated in place (git show fc7f758:content/tours/fairfax-old-town.json).
 # Do NOT refresh this file when the live tour changes: its whole purpose is
-# to stay v1 forever, so these tests keep exercising migrate_v1_to_v2 against
+# to stay v1 forever, so these tests keep exercising the migration against
 # real content instead of comparing an already-v2 document to itself.
 V1_FIXTURE = Path(__file__).parent / "fixtures" / "fairfax-old-town-v1.json"
 
@@ -57,7 +57,7 @@ def _v1_rephoto(oid, heading=284.4):
 
 
 def test_text_overlay_becomes_a_marker():
-    out = migrate_v1_to_v2(_v1_doc([_v1_text()]))
+    out = migrate(_v1_doc([_v1_text()]))
     ov = out["stops"][0]["overlays"][0]
     assert ov["kind"] == "text"
     assert ov["display"] == {"mode": "marker", "icon": "note"}
@@ -65,7 +65,7 @@ def test_text_overlay_becomes_a_marker():
 
 
 def test_rephoto_becomes_an_in_world_image():
-    out = migrate_v1_to_v2(_v1_doc([_v1_rephoto("r1")]))
+    out = migrate(_v1_doc([_v1_rephoto("r1")]))
     ov = out["stops"][0]["overlays"][0]
     assert ov["kind"] == "image"
     assert ov["anchor"] == {"type": "geo", "lng": -77.3, "lat": 38.84, "altitudeM": 4.0}
@@ -76,7 +76,7 @@ def test_rephoto_becomes_an_in_world_image():
 def test_first_in_world_photo_opens_visible_and_the_rest_hidden():
     """v1 hardcoded 0.7 for the first and 0 for the rest in the frontend store.
     v2 authors it, so the migrated tour must open looking identical."""
-    out = migrate_v1_to_v2(_v1_doc([_v1_rephoto("r1"), _v1_rephoto("r2")]))
+    out = migrate(_v1_doc([_v1_rephoto("r1"), _v1_rephoto("r2")]))
     opacities = [o["display"]["opacity"] for o in out["stops"][0]["overlays"]]
     assert opacities == [0.7, 0.0]
 
@@ -88,12 +88,12 @@ def test_audio_becomes_a_marker_not_ambient():
              "anchor": {"type": "geo", "lng": -77.3, "lat": 38.84, "altitude": 2.0},
              "title": "Narration", "body": None, "mediaId": "n.m4a",
              "credit": V1_CREDIT}
-    out = migrate_v1_to_v2(_v1_doc([audio]))
+    out = migrate(_v1_doc([audio]))
     assert out["stops"][0]["overlays"][0]["display"] == {"mode": "marker", "icon": "audio"}
 
 
 def test_credit_becomes_sourced():
-    out = migrate_v1_to_v2(_v1_doc([_v1_text()]))
+    out = migrate(_v1_doc([_v1_text()]))
     assert out["stops"][0]["overlays"][0]["credit"] == {
         "type": "sourced",
         "source": "Library of Congress",
@@ -106,14 +106,8 @@ def test_credit_becomes_sourced():
 def test_migration_does_not_mutate_its_input():
     doc = _v1_doc([_v1_rephoto("r1")])
     before = deepcopy(doc)
-    migrate_v1_to_v2(doc)
+    migrate(doc)
     assert doc == before
-
-
-def test_migrating_a_v2_document_is_a_no_op():
-    once = migrate_v1_to_v2(_v1_doc([_v1_rephoto("r1"), _v1_text()]))
-    twice = migrate_v1_to_v2(once)
-    assert twice == once
 
 
 def test_rephoto_with_a_plain_geo_anchor_is_refused_loudly():
@@ -125,7 +119,7 @@ def test_rephoto_with_a_plain_geo_anchor_is_refused_loudly():
            "anchor": {"type": "geo", "lng": -77.3, "lat": 38.84, "altitude": 4.0},
            "title": "Photo", "body": None, "mediaId": "r-bad.jpg", "credit": V1_CREDIT}
     with pytest.raises(ValueError, match="r-bad"):
-        migrate_v1_to_v2(_v1_doc([bad]))
+        migrate(_v1_doc([bad]))
 
 
 def test_unknown_kind_is_refused_loudly():
@@ -133,10 +127,10 @@ def test_unknown_kind_is_refused_loudly():
            "anchor": {"type": "geo", "lng": 0.0, "lat": 0.0, "altitude": 0.0},
            "title": "T", "credit": V1_CREDIT}
     with pytest.raises(ValueError, match="x"):
-        migrate_v1_to_v2(_v1_doc([bad]))
+        migrate(_v1_doc([bad]))
 
 
-@pytest.mark.parametrize("version", [None, 3, "1", 0])
+@pytest.mark.parametrize("version", [None, SCHEMA_VERSION + 1, "1", 0])
 def test_unsupported_schema_version_is_refused(version):
     doc = _v1_doc([_v1_text()])
     if version is None:
@@ -144,19 +138,19 @@ def test_unsupported_schema_version_is_refused(version):
     else:
         doc["schemaVersion"] = version
     with pytest.raises(ValueError, match="schemaVersion"):
-        migrate_v1_to_v2(doc)
+        migrate(doc)
 
 
 def test_a_stop_with_no_overlays_survives():
     doc = _v1_doc([])
-    assert migrate_v1_to_v2(doc)["stops"][0]["overlays"] == []
+    assert migrate(doc)["stops"][0]["overlays"] == []
 
 
 def test_the_real_tour_migrates_and_validates():
     """Exercises migrate_v1_to_v2 against real content, permanently: the
     fixture is frozen v1 regardless of what the live tour later becomes."""
     raw = json.loads(V1_FIXTURE.read_text())
-    migrated = migrate_v1_to_v2(raw)
+    migrated = migrate(raw)
     tour = Tour.model_validate(migrated)
     assert len(tour.stops) == 6
     assert sum(len(s.overlays) for s in tour.stops) == 15
@@ -166,7 +160,7 @@ def test_the_real_tour_loses_nothing():
     """Compares the frozen v1 fixture against its own migration, so `raw`
     and `migrated` are never the same object and this can actually fail."""
     raw = json.loads(V1_FIXTURE.read_text())
-    migrated = migrate_v1_to_v2(raw)
+    migrated = migrate(raw)
 
     def ids(d):
         return [o["id"] for s in d["stops"] for o in s["overlays"]]
@@ -185,11 +179,151 @@ def test_the_real_tour_loses_nothing():
             assert a["anchor"]["altitude"] == b["anchor"]["altitudeM"]
 
 
-def test_the_shipped_tour_is_valid_v2():
+def test_the_shipped_tour_is_valid_at_the_current_version():
     """Keeps the live document honest now that the fixture tests above no
-    longer look at it: it must already be v2 and must validate as such."""
+    longer look at it: it must already be current and must validate as such."""
     raw = json.loads(REAL_TOUR.read_text())
-    assert raw["schemaVersion"] == 2
+    assert raw["schemaVersion"] == SCHEMA_VERSION
     tour = Tour.model_validate(raw)
     assert len(tour.stops) == 6
     assert sum(len(s.overlays) for s in tour.stops) == 15
+
+
+# --- v3: the chain, and the v2 -> v3 step -----------------------------------
+#
+# A frozen v2 snapshot of the repository's real tour, taken before it was
+# migrated in place. Same rule as V1_FIXTURE above: do NOT refresh it. Between
+# the two, the chain is exercised end to end against real content.
+V2_FIXTURE = Path(__file__).parent / "fixtures" / "fairfax-old-town-v2.json"
+
+
+def _v2_doc(**over):
+    base = {
+        "id": "t", "schemaVersion": 2, "title": "T", "description": "d",
+        "attribution": [{"text": "a", "url": "https://e.org", "license": "ODbL"}],
+        "stops": [{
+            "id": "s1", "order": 1, "title": "S", "summary": "sum",
+            "location": {"lng": -77.3, "lat": 38.84}, "osmRef": None,
+            "panorama": {"provider": "mapillary", "imageId": "1",
+                         "bearing": 90.0, "cachedPath": None},
+            "overlays": [],
+        }],
+    }
+    base.update(over)
+    return base
+
+
+def _v2_text(oid="t1"):
+    return {"id": oid, "kind": "text",
+            "anchor": {"type": "geo", "lng": -77.3, "lat": 38.84, "altitudeM": 3.0},
+            "display": {"mode": "marker", "icon": "note"},
+            "title": "Title", "body": "Body", "mediaId": None,
+            "credit": {"type": "sourced", "source": "s", "url": "https://e.org",
+                       "license": "l", "creator": None}}
+
+
+def test_a_v1_document_reaches_the_current_version_in_one_call():
+    """The point of the registry: callers ask for "current", not for a hop."""
+    out = migrate(_v1_doc([_v1_text()]))
+    assert out["schemaVersion"] == SCHEMA_VERSION == 3
+
+
+def test_a_v2_document_reaches_the_current_version():
+    assert migrate(_v2_doc())["schemaVersion"] == 3
+
+
+def test_migrating_a_current_document_is_a_no_op():
+    doc = migrate(_v2_doc(stops=_v2_doc()["stops"]))
+    assert migrate(doc) == doc
+
+
+def test_a_version_newer_than_this_build_is_refused():
+    with pytest.raises(ValueError, match="schemaVersion"):
+        migrate(_v2_doc(schemaVersion=SCHEMA_VERSION + 1))
+
+
+def test_a_cached_panorama_path_becomes_a_media_id():
+    """v2 stored `media/pano/x.jpg` — a path with the directory baked in,
+    outside the `mediaId` namespace and invisible to the orphan check."""
+    doc = _v2_doc()
+    doc["stops"][0]["panorama"]["cachedPath"] = "media/pano/x.jpg"
+    out = migrate(doc)
+    assert out["stops"][0]["panorama"]["cachedMediaId"] == "pano/x.jpg"
+    assert "cachedPath" not in out["stops"][0]["panorama"]
+
+
+def test_an_absent_cached_panorama_stays_absent():
+    out = migrate(_v2_doc())
+    assert out["stops"][0]["panorama"]["cachedMediaId"] is None
+
+
+def test_a_cached_path_outside_the_media_directory_is_refused_loudly():
+    doc = _v2_doc()
+    doc["stops"][0]["panorama"]["cachedPath"] = "/etc/passwd"
+    with pytest.raises(ValueError, match="cachedPath"):
+        migrate(doc)
+
+
+def test_duplicate_overlay_ids_are_renamed_rather_than_refused():
+    """v3 requires unique overlay ids, and v2 did not check them. Refusing
+    would make a document in the wild unopenable; renaming keeps it."""
+    doc = _v2_doc()
+    doc["stops"][0]["overlays"] = [_v2_text("dup"), _v2_text("dup")]
+    out = migrate(doc)
+    assert [o["id"] for o in out["stops"][0]["overlays"]] == ["dup", "dup-2"]
+
+
+def test_an_overlay_id_colliding_with_a_stop_id_is_renamed():
+    doc = _v2_doc()
+    doc["stops"][0]["overlays"] = [_v2_text("s1")]
+    out = migrate(doc)
+    assert out["stops"][0]["overlays"][0]["id"] == "s1-2"
+    Tour.model_validate(out)
+
+
+def test_a_blank_attribution_url_becomes_null():
+    out = migrate(_v2_doc(
+        attribution=[{"text": "a", "url": "   ", "license": "ODbL"}]))
+    assert out["attribution"][0]["url"] is None
+
+
+def test_a_blank_attribution_license_is_refused_loudly():
+    with pytest.raises(ValueError, match="licen"):
+        migrate(_v2_doc(attribution=[{"text": "a", "url": "https://e.org",
+                                      "license": ""}]))
+
+
+def test_the_real_v2_tour_migrates_and_validates():
+    raw = json.loads(V2_FIXTURE.read_text())
+    assert raw["schemaVersion"] == 2
+    tour = Tour.model_validate(migrate(raw))
+    assert len(tour.stops) == 6
+    assert sum(len(s.overlays) for s in tour.stops) == 15
+    assert [s.panorama.cached_media_id for s in tour.stops] == [
+        f"pano/pano-{slug}.jpg" for slug in (
+            "historic-courthouse", "marr-monument", "old-town-hall",
+            "ratcliffe-allison-pozer-house", "fairfax-museum", "fairfax-city-hall")
+    ]
+
+
+def test_the_v1_fixture_migrates_through_both_steps_to_the_current_version():
+    """The chain, against real content: v1 -> v2 -> v3 in one call, with the
+    v1-only shapes (rephoto, geoQuad) and the v3-only ones (cachedMediaId)
+    both landing correctly."""
+    raw = json.loads(V1_FIXTURE.read_text())
+    tour = Tour.model_validate(migrate(raw))
+    assert len(tour.stops) == 6
+    assert sum(len(s.overlays) for s in tour.stops) == 15
+    assert tour.stops[0].panorama.cached_media_id == "pano/pano-historic-courthouse.jpg"
+    in_world = [o for s in tour.stops for o in s.overlays
+                if o.display.mode == "inWorld"]
+    assert len(in_world) == 2
+
+
+def test_a_blank_attribution_text_is_refused_loudly():
+    """v2's `min_length=1` let a whitespace-only line through; v3's NonBlank
+    does not, so the step must refuse rather than hand on a document that
+    fails validation one layer later."""
+    with pytest.raises(ValueError, match="attribution"):
+        migrate(_v2_doc(attribution=[{"text": "   ", "url": None,
+                                      "license": "ODbL"}]))

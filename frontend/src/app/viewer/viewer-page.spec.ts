@@ -5,6 +5,13 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ViewerPage } from './viewer-page';
 import { PANORAMA_VIEWER } from '../panorama/panorama-pane';
 import { FakeViewer } from '../panorama/fake-viewer';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { Tour } from '../core/tour.models';
+
+const TOUR: Tour = JSON.parse(
+  readFileSync(join(process.cwd(), '..', 'content', 'tours', 'fairfax-old-town.json'), 'utf8'),
+);
 
 describe('ViewerPage', () => {
   let http: HttpTestingController;
@@ -67,5 +74,32 @@ describe('ViewerPage', () => {
     expect(el.textContent).toContain('Loading the tour');
     http.expectOne('tour-data/config.json');
     http.expectOne('tour-data/tour.json');
+  });
+
+  it('renders an attribution with no URL as plain text, not a broken link', async () => {
+    // `Attribution.url` is nullable as of v3, for the same reason
+    // `OriginalCredit` exists: a line of credit with nothing to link to is
+    // ordinary. The template used to emit `<a href>` unconditionally, which
+    // for a null URL is a link to the page itself.
+    const fixture = TestBed.createComponent(ViewerPage);
+    fixture.detectChanges();
+    http.expectOne('tour-data/config.json').flush({
+      mapillaryToken: '',
+      tileUrl: 'https://tile.example/{z}/{x}/{y}.png',
+      attribution: [
+        { text: 'Photographs by the author', url: null, license: 'CC-BY-4.0' },
+        { text: 'Map data (c) OpenStreetMap contributors',
+          url: 'https://www.openstreetmap.org/copyright', license: 'ODbL' },
+      ],
+    });
+    http.expectOne('tour-data/tour.json').flush(TOUR);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const footer = (fixture.nativeElement as HTMLElement).querySelector('.attribution')!;
+    expect(footer.textContent).toContain('Photographs by the author');
+    const links = [...footer.querySelectorAll('a')].map((a) => a.textContent?.trim());
+    expect(links).toEqual(['Map data (c) OpenStreetMap contributors']);
   });
 });

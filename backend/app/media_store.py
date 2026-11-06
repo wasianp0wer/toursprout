@@ -21,7 +21,7 @@ import tempfile
 import threading
 from pathlib import Path
 
-from .models import Tour
+from .models import Tour, referenced_media
 
 # Sniffed type -> the one extension it is stored under.
 ALLOWED_TYPES: dict[str, str] = {
@@ -175,8 +175,13 @@ def _write_atomic(path: Path, data: bytes) -> None:
 
 
 def orphan_ids(work: Path, tour: Tour) -> list[str]:
-    """Media no overlay references. A warning, never a deletion: an author
-    mid-edit routinely has media not yet placed."""
+    """Media the document does not reference. A warning, never a deletion:
+    an author mid-edit routinely has media not yet placed.
+
+    "Reference" is `models.referenced_media`, which counts a stop's cached
+    panorama as well as an overlay's `mediaId`. While this read only
+    overlays, the shipped example's six panoramas were permanently reported
+    here as orphans."""
     media_dir = work / "media"
     if not media_dir.is_dir():
         return []
@@ -185,5 +190,4 @@ def orphan_ids(work: Path, tour: Tour) -> list[str]:
         for p in media_dir.rglob("*")
         if p.is_file() and not p.name.startswith(".")
     }
-    referenced = {o.media_id for s in tour.stops for o in s.overlays if o.media_id}
-    return sorted(present - referenced)
+    return sorted(present - referenced_media(tour))

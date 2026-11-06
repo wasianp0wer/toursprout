@@ -9,8 +9,14 @@
     <aside class="panel-slot"><app-stop-panel /></aside>
     <footer class="attribution">
       <span class="tour-title">{{ tourTitle() }}</span>
-      @for (a of attribution(); track a.url) {
-        <a [href]="a.url" target="_blank" rel="noopener">{{ a.text }}</a>
+      <!-- Tracked by text, not url: a url is nullable as of schema v3, and
+           two credits with nothing to link to would share a null key. -->
+      @for (a of attribution(); track a.text) {
+        @if (a.url) {
+          <a [href]="a.url" target="_blank" rel="noopener">{{ a.text }}</a>
+        } @else {
+          <span>{{ a.text }}</span>
+        }
       }
     </footer>
   </main>
