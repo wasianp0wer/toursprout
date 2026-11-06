@@ -23,7 +23,7 @@ describe('ToolsApi', () => {
     expect((await p)[0].imageId).toBe('a');
   });
 
-  it('unwraps places, archive results and narration', async () => {
+  it('unwraps places and archive results', async () => {
     const pl = api.places(1, 2, ' Courthouse ');
     const r1 = http.expectOne('/api/tools/places');
     expect(r1.request.body).toEqual({ lng: 1, lat: 2, name: 'Courthouse' });
@@ -35,12 +35,6 @@ describe('ToolsApi', () => {
     expect(r2.request.body).toEqual({ query: 'fairfax' });
     r2.flush({ results: [{ title: 'T', rights: null }] });
     expect((await ar)[0].rights).toBeNull();
-
-    const na = api.narrate('hello');
-    const r3 = http.expectOne('/api/tools/narrate');
-    expect(r3.request.body).toEqual({ text: 'hello' });
-    r3.flush({ mediaId: 'n.m4a', credit: { source: 's', license: 'l', creator: 'c' } });
-    expect((await na).mediaId).toBe('n.m4a');
   });
 
   it('asks the server to fetch an archive image and returns the stored mediaId', async () => {
@@ -63,8 +57,8 @@ describe('ToolsApi', () => {
   });
 
   it('says so when the server cannot be reached or gives no message', async () => {
-    const p = api.narrate('x');
-    http.expectOne('/api/tools/narrate').error(new ProgressEvent('error'), { status: 0 });
+    const p = api.places(1, 2);
+    http.expectOne('/api/tools/places').error(new ProgressEvent('error'), { status: 0 });
     await expect(p).rejects.toThrow(/could not reach the server/);
     const q = api.places(1, 2);
     http.expectOne('/api/tools/places').flush({ detail: [{ msg: 'bad' }] }, { status: 422, statusText: 'x' });

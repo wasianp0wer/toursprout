@@ -34,9 +34,7 @@ export function legalModesFor(kind: OverlayKind): readonly DisplayMode[] {
 
 /**
  * What a new stop's text says until the author writes their own. The backend
- * skeleton uses the same words. The viewer shows the summary, and "Narrate
- * this text" reads it, so it must never be synthesised and credited as if it
- * were the author's: see `narrationSource`.
+ * skeleton uses the same words. The viewer shows the summary.
  */
 export const PLACEHOLDER_SUMMARY = 'Describe this place.';
 
@@ -582,25 +580,4 @@ export function archiveCredit(
     type: 'sourced', source: 'Library of Congress', url, license,
     creator: result.creator?.trim() || null,
   };
-}
-
-/** The words to narrate for a selection, and the stop the audio belongs to. */
-export function narrationSource(
-  tour: Tour, selectedId: string | null,
-): { stopId: string; text: string; title: string } | null {
-  if (!selectedId) return null;
-  for (const s of tour.stops) {
-    if (s.id === selectedId) {
-      const text = s.summary.trim();
-      // The placeholder is not the author's words; narrating it would store
-      // audio of "Describe this place." and credit it to them.
-      return text && text !== PLACEHOLDER_SUMMARY ? { stopId: s.id, text, title: `Narration of ${s.title} (synthesised voice)` } : null;
-    }
-    const o = s.overlays.find((x) => x.id === selectedId);
-    if (o) {
-      const text = (o.body ?? '').trim();
-      return text ? { stopId: s.id, text, title: `Narration of ${o.title} (synthesised voice)` } : null;
-    }
-  }
-  return null;
 }

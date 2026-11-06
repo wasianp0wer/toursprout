@@ -1,7 +1,7 @@
 import { Component, ElementRef, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
 import { EditorStore } from './editor-store';
 import {
-  addMediaOverlay, addStop, archiveCredit, narrationSource, addTextOverlay, deleteOverlay, deleteStop, defaultsAnswerValid, hasDefaults, mediaKindOf, moveStop,
+  addMediaOverlay, addStop, archiveCredit, addTextOverlay, deleteOverlay, deleteStop, defaultsAnswerValid, hasDefaults, mediaKindOf, moveStop,
 } from './document-ops';
 import { SessionApi } from '../core/session-api';
 import { ToolsApi, type ArchiveResult } from '../core/tools-api';
@@ -9,7 +9,7 @@ import type { Credit } from '../core/tour.models';
 import { ActiveRecording, RecordingError, formatWarning, startRecording } from './recorder';
 
 type MediaKind = 'image' | 'audio';
-type PromptKind = MediaKind | 'text' | 'record' | 'narrate';
+type PromptKind = MediaKind | 'text' | 'record';
 
 /** The tour as a list: stops in order, each with its overlays. Thin over EditorStore. */
 @Component({
@@ -120,8 +120,6 @@ export class OutlinePane implements OnDestroy {
     this.promptKind.set(null);
     if (kind === 'record') {
       void this.beginRecording();
-    } else if (kind === 'narrate') {
-      void this.runNarrate();
     } else if (kind === 'text') {
       const stopId = this.targetStopId ?? this.store.currentStop()?.id;
       this.targetStopId = null;
@@ -240,7 +238,7 @@ export class OutlinePane implements OnDestroy {
   }
 
   /**
-   * The create half, for media already stored (uploaded, or narrated). Called
+   * The create half, for media already stored (uploaded or recorded). Called
    * only after the network has resolved, so a refusal here is the document's
    * and leaves it untouched.
    */
@@ -262,50 +260,6 @@ export class OutlinePane implements OnDestroy {
     }
     const added = after!.stops.find((s) => s.id === stopId)?.overlays.at(-1);
     if (added) this.store.select(added.id);
-  }
-
-  // --- narration -----------------------------------------------------------
-
-  /** What narrate would say right now: the selected stop's summary or overlay's body. */
-  protected readonly narration = computed(() => {
-    const doc = this.store.draft();
-    return doc ? narrationSource(doc, this.store.selectedId()) : null;
-  });
-
-  /**
-   * The author wrote the words, a synthesised voice reads them, so the credit
-   * is the tour's creator and licence (asked for once, like any add) and the
-   * title says the voice is synthesised.
-   */
-  protected narrate(): void {
-    const src = this.narration();
-    const doc = this.store.draft();
-    if (!src || !doc || this.busy()) return;
-    this.mediaError.set(null);
-    if (!hasDefaults(doc) && !this.store.pendingDefaults()) {
-      this.promptError.set(null);
-      this.promptKind.set('narrate');
-      return;
-    }
-    void this.runNarrate();
-  }
-
-  private async runNarrate(): Promise<void> {
-    const src = this.narration();
-    if (!src) return;
-    this.busy.set(true);
-    this.mediaError.set(null);
-    let result: Awaited<ReturnType<ToolsApi['narrate']>>;
-    try {
-      result = await this.tools.narrate(src.text);
-    } catch (err) {
-      this.mediaError.set(err instanceof Error ? err.message : 'narration failed');
-      this.busy.set(false);
-      return;
-    }
-    this.busy.set(false);
-    this.createFromMedia('audio', result.mediaId, src.title, src.stopId, undefined,
-      'The narration was generated but not added.');
   }
 
   // --- archive search ------------------------------------------------------

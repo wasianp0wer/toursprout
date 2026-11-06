@@ -12,7 +12,6 @@
     } @else {
       <button type="button" data-record [disabled]="!store.currentStop() || busy()" (click)="record()">Record audio</button>
     }
-    <button type="button" data-narrate [disabled]="!narration() || busy()" (click)="narrate()">Narrate this text</button>
     <button type="button" data-archive-open [disabled]="!store.currentStop()" (click)="toggleArchive()">Search the archive</button>
     <input #imageInput type="file" hidden data-file-image accept="image/jpeg,image/png,image/webp" (change)="onFile('image', $event)" />
     <input #audioInput type="file" hidden data-file-audio accept="audio/*,.webm,.m4a,.mp3,.ogg,.wav" (change)="onFile('audio', $event)" />

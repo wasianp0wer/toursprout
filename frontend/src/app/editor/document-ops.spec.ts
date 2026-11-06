@@ -4,7 +4,7 @@ import {
   deleteStop, deriveHeading, legalModesFor, moveStop, renumberStops,
   setOverlayKind, slugify, uniqueId, updateOverlay,
   creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
-  setStopLocation, selectPanorama, archiveCredit, narrationSource,
+  setStopLocation, selectPanorama, archiveCredit,
   PLACEHOLDER_SUMMARY, setStopSummary, setTourDescription, setTourTitle,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
@@ -571,7 +571,7 @@ describe('stop location and panorama selection', () => {
   });
 });
 
-describe('sourced and narration credits', () => {
+describe('sourced credits', () => {
   const found = {
     title: 'Courthouse, 1920', creator: 'A. Photographer',
     itemUrl: 'https://loc.gov/item/1/', imageUrl: 'https://tile.loc.gov/1.jpg',
@@ -609,22 +609,6 @@ describe('sourced and narration credits', () => {
   });
 });
 
-describe('narrationSource', () => {
-  it('uses a stop summary or an overlay body, with the owning stop', () => {
-    const t = tour([stop('s1', 1, [overlay('o1', { body: 'Overlay words' })], { summary: 'Stop words' })]);
-    expect(narrationSource(t, 's1')).toMatchObject({ stopId: 's1', text: 'Stop words', title: expect.stringContaining('synthesised') });
-    expect(narrationSource(t, 'o1')).toMatchObject({ stopId: 's1', text: 'Overlay words' });
-  });
-
-  it('is null for nothing selected, a blank text, or an unknown id', () => {
-    const t = tour([stop('s1', 1, [overlay('o1', { body: null })], { summary: '  ' })]);
-    expect(narrationSource(t, 's1')).toBeNull();
-    expect(narrationSource(t, 'o1')).toBeNull();
-    expect(narrationSource(t, 'zz')).toBeNull();
-    expect(narrationSource(t, null)).toBeNull();
-  });
-});
-
 describe('naming and describing', () => {
   it('setTourTitle and setTourDescription change only their field and do not mutate', () => {
     const x = tour(); const snap = JSON.stringify(x);
@@ -644,12 +628,9 @@ describe('naming and describing', () => {
     expect(JSON.stringify(x)).toBe(snap);
   });
 
-  it('a new stop carries the placeholder, and narration refuses to read it', () => {
+  it('a new stop carries the placeholder', () => {
     const t = addStop(tour(), 'Courthouse');
     const added = t.stops[t.stops.length - 1];
     expect(added.summary).toBe(PLACEHOLDER_SUMMARY);
-    expect(narrationSource(t, added.id)).toBeNull();
-    const written = setStopSummary(t, added.id, 'Built in 1800.');
-    expect(narrationSource(written, added.id)).toMatchObject({ text: 'Built in 1800.' });
   });
 });

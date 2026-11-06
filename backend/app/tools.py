@@ -15,11 +15,7 @@ timeout, so a hung upstream cannot hang the editor.
 from __future__ import annotations
 
 import math
-import re
-import subprocess
-import tempfile
 import time
-from pathlib import Path
 
 import httpx
 from pydantic import BaseModel, Field, field_validator
@@ -46,8 +42,6 @@ LOC_TIMEOUT = 30.0  # loc.gov returns large payloads
 # Adjust against your own network.
 OVERPASS_TIMEOUT = 45.0
 OVERPASS_BUDGET = 45.0
-SAY_TIMEOUT = 60.0
-FFMPEG_TIMEOUT = 60.0
 
 RETRY_PAUSE = 0.3
 
@@ -57,15 +51,6 @@ EXCLUDE_KINDS = {"place_of_worship"}
 # Archive search is fuzzy; these places surfaced as false matches for Fairfax.
 DEFAULT_EXCLUDED_PLACES = ["alexandria", "chantilly", "lorton", "reston", "great falls",
                            "mclean", "philadelphia", "accawmacke"]
-
-SAY = "say"
-VOICE = "Samantha"
-FFMPEG = "ffmpeg"
-NARRATION_CREDIT = {
-    "source": "Synthesized narration, generated for this tour",
-    "license": "Generated for this tour; not an archival recording",
-    "creator": f"macOS speech synthesis, voice {VOICE}",
-}
 
 OVERPASS_QUERY = """
 [out:json][timeout:12];
@@ -353,52 +338,6 @@ def search_archive(client: httpx.Client, query: str, terms: list[str],
     return [r for _, r in scored]
 
 
-# --- narration (make_narration.py: synth) ------------------------------------
-
-def _run(cmd: list[str], what: str, timeout: float, text: str | None = None) -> None:
-    try:
-        done = subprocess.run(cmd, input=text, capture_output=True, text=True,
-                              timeout=timeout, check=False)
-    except FileNotFoundError as exc:
-        raise ToolError(502, f"{what} is not available on this machine ({cmd[0]})") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise ToolError(502, f"{what} timed out") from exc
-    if done.returncode != 0:
-        raise ToolError(502, f"{what} failed: {(done.stderr or '').strip()[:200] or done.returncode}")
-
-
-def synthesize(text: str) -> bytes:
-    """Speak `text` with macOS `say` and return audio bytes the media store
-    accepts: AAC in an M4A (as make_narration.py does, via ffmpeg), or WAV
-    straight from `say` when ffmpeg is missing or fails.
-
-    The text goes in on stdin: as an argument, text beginning with `-` would
-    be read by `say` as an option.
-    """
-    with tempfile.TemporaryDirectory(prefix="narrate-") as tmp:
-        work = Path(tmp)
-        aiff, m4a, wav = work / "n.aiff", work / "n.m4a", work / "n.wav"
-        _run([SAY, "-v", VOICE, "-f", "-", "-o", str(aiff)], "speech synthesis (say)",
-             SAY_TIMEOUT, text)
-        try:
-            _run([FFMPEG, "-y", "-loglevel", "error", "-i", str(aiff),
-                  "-c:a", "aac", "-b:a", "96k", str(m4a)], "audio conversion", FFMPEG_TIMEOUT)
-            data = m4a.read_bytes()
-        except ToolError:
-            data = b""
-        if not data:
-            _run([SAY, "-v", VOICE, "--data-format=LEI16@22050", "-f", "-", "-o", str(wav)],
-                 "speech synthesis (say)", SAY_TIMEOUT, text)
-            data = wav.read_bytes()
-        if not data:
-            raise ToolError(502, "speech synthesis produced no audio")
-        return data
-
-
-def clean_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
-
-
 # --- request bodies ------------------------------------------------------------
 
 class _Point(BaseModel):
@@ -434,18 +373,6 @@ class ArchiveRequest(BaseModel):
 class ArchiveFetchRequest(BaseModel):
     imageUrl: str = Field(max_length=2000)
     title: str = Field(default="", max_length=300)
-
-
-class NarrateRequest(BaseModel):
-    text: str = Field(max_length=20000)
-
-    @field_validator("text")
-    @classmethod
-    def _text_not_blank(cls, v: str) -> str:
-        v = clean_text(v)
-        if not v:
-            raise ValueError("text must not be blank")
-        return v
 
 
 # --- archive image download (relevance.py: get_bytes_with_retry) -------------

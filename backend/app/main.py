@@ -507,23 +507,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {**session.summary(), "mediaId": media_id}
 
-    @app.post("/api/tools/narrate", dependencies=[Depends(_reject_cross_site)])
-    def tool_narrate(body: tools.NarrateRequest) -> dict:
-        session = app.state.session
-        if not session.is_open:
-            raise HTTPException(
-                status_code=409,
-                detail="no tour is open; call POST /api/session/new first",
-            )
-        try:
-            audio = tools.synthesize(body.text)
-            media_id = store_media(session.path, audio, "narration")
-        except tools.ToolError as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
-        except MediaError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {**session.summary(), "mediaId": media_id, "credit": tools.NARRATION_CREDIT}
-
     @app.get("/api/session/export")
     def export_bundle() -> Response:
         session = app.state.session

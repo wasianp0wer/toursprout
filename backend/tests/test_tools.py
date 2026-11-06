@@ -2,13 +2,10 @@
 
 The three network tools are tested against `httpx.MockTransport` with response
 shapes taken from the content scripts' parsing code (provenance is noted at
-each fixture). No test here touches the network; narration runs the real
-`/usr/bin/say`.
+each fixture). No test here touches the network.
 """
 
 from __future__ import annotations
-
-import shutil
 
 import httpx
 import pytest
@@ -16,7 +13,6 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.media_store import sniff
 
 # --- captured shapes -------------------------------------------------------
 
@@ -108,7 +104,6 @@ TOOLS = {
     "panoramas": {"lng": -77.3062, "lat": 38.846},
     "places": {"lng": -77.3062, "lat": 38.846},
     "archive-search": {"query": "fairfax court house"},
-    "narrate": {"text": "Hello."},
     "archive-fetch": {"imageUrl": "https://tile.loc.gov/t/1.jpg"},
 }
 
@@ -299,51 +294,8 @@ def test_archive_search_no_match_is_empty_not_an_error(client):
     assert r.status_code == 200 and r.json()["results"] == []
 
 
-# --- narrate (real `say`) ---------------------------------------------------
-
-def test_narrate_stores_real_audio(client):
-    open_tour(client)
-    r = client.post("/api/tools/narrate", json={"text": "Welcome to Old Town Fairfax."})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    media_id = body["mediaId"]
-    assert media_id.endswith((".m4a", ".wav"))
-    path = client.app.state.session.path / "media" / media_id
-    data = path.read_bytes()
-    assert len(data) > 2000
-    kind, _ext = sniff(data)
-    assert kind in ("audio/mp4", "audio/wav")
-    if shutil.which("ffmpeg"):
-        assert media_id.endswith(".m4a")
-    # No scratch files left behind next to the stored audio.
-    assert [p.name for p in path.parent.iterdir()] == [media_id]
-
-
-def test_narrate_text_that_looks_like_a_flag(client):
-    open_tour(client)
-    r = client.post("/api/tools/narrate", json={"text": "--voice=? is not an option"})
-    assert r.status_code == 200, r.text
-
-
-def test_narrate_needs_an_open_tour(client):
-    r = client.post("/api/tools/narrate", json={"text": "Hello."})
-    assert r.status_code == 409
-
-
-def test_narrate_validates_text(client):
-    open_tour(client)
-    assert client.post("/api/tools/narrate", json={"text": "  "}).status_code == 422
-    assert client.post("/api/tools/narrate",
-                       json={"text": "x" * 20001}).status_code == 422
-
-
-def test_narrate_missing_say_is_502(client, monkeypatch):
-    open_tour(client)
-    from app import tools
-    monkeypatch.setattr(tools, "SAY", "/nonexistent/say")
-    r = client.post("/api/tools/narrate", json={"text": "Hello."})
-    assert r.status_code == 502
-    assert "say" in r.json()["detail"]
+def test_narrate_route_is_gone(client):
+    assert client.post("/api/tools/narrate", json={"text": "hello"}).status_code == 404
 
 
 def test_tools_module_does_not_use_urllib():

@@ -33,16 +33,10 @@ export interface ArchiveResult {
   rights: string | null;
 }
 
-export interface NarrationResult {
-  mediaId: string;
-  credit: { source: string; license: string; creator: string };
-}
-
 /**
  * The acquisition tools. A sibling of SessionApi rather than part of it:
  * SessionApi is the open document (read, write, upload), while these are
- * stateless searches over third parties (only narrate touches the session,
- * by storing audio). Every failure rejects with an Error carrying the
+ * stateless searches over third parties. Every failure rejects with an Error carrying the
  * backend's message, so a caller shows it verbatim and changes nothing.
  */
 @Injectable({ providedIn: 'root' })
@@ -66,10 +60,6 @@ export class ToolsApi {
   /** Have the server download an archive image (loc.gov only) and store it. */
   async archiveFetch(imageUrl: string, title: string): Promise<string> {
     return (await this.post<{ mediaId: string }>('archive-fetch', { imageUrl, title })).mediaId;
-  }
-
-  async narrate(text: string): Promise<NarrationResult> {
-    return this.post<NarrationResult>('narrate', { text });
   }
 
   private async post<T>(tool: string, body: object): Promise<T> {
