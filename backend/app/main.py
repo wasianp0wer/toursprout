@@ -459,17 +459,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     def _tool_client(timeout: float):
         return tools.make_client(getattr(app.state, "http_transport", None), timeout)
 
-    @app.post("/api/tools/panoramas", dependencies=[Depends(_reject_cross_site)])
-    def tool_panoramas(body: tools.PanoramaRequest) -> dict:
-        try:
-            with _tool_client(tools.MAPILLARY_TIMEOUT) as c:
-                found = tools.find_panoramas(
-                    c, app.state.cfg.mapillary_token, body.lng, body.lat,
-                    body.radiusM, body.panoOnly, body.limit)
-        except tools.ToolError as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
-        return {"candidates": found}
-
     @app.post("/api/tools/places", dependencies=[Depends(_reject_cross_site)])
     def tool_places(body: tools.PlacesRequest) -> dict:
         try:

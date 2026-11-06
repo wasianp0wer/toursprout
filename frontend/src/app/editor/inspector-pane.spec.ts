@@ -3,7 +3,8 @@ import { TestBed } from '@angular/core/testing';
 import { InspectorPane } from './inspector-pane';
 import { EditorStore } from './editor-store';
 import { overlay, stop, tour } from './test-builders';
-import { ToolsApi, type PanoramaCandidate, type PlaceCandidate } from '../core/tools-api';
+import { MapillarySearch, type PanoramaCandidate } from '../core/mapillary-search';
+import { ToolsApi, type PlaceCandidate } from '../core/tools-api';
 import { vi } from 'vitest';
 import { deriveHeading } from './document-ops';
 import type { Overlay } from '../core/tour.models';
@@ -251,7 +252,7 @@ describe('InspectorPane', () => {
     expect(q('[data-field="lng"]')).toBeNull();
   });
 
-  it('edits the stop text, which is what the viewer shows and narration reads', async () => {
+  it('edits the stop text, which is what the viewer shows', async () => {
     store.load(tour());
     store.select('s1');
     fixture = TestBed.createComponent(InspectorPane);
@@ -294,7 +295,10 @@ describe('InspectorPane: placing a stop', () => {
     places = vi.fn();
     TestBed.configureTestingModule({
       imports: [InspectorPane],
-      providers: [{ provide: ToolsApi, useValue: { panoramas, places } }],
+      providers: [
+        { provide: ToolsApi, useValue: { places } },
+        { provide: MapillarySearch, useValue: { panoramas } },
+      ],
     });
     store = TestBed.inject(EditorStore);
     store.load(tour([stop('s1', 1, [overlay('o1', {

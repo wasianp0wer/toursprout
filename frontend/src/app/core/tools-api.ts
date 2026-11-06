@@ -2,18 +2,6 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-export interface PanoramaCandidate {
-  imageId: string;
-  /** The CAMERA's own position, not the subject's. */
-  lng: number;
-  lat: number;
-  isPano?: boolean;
-  capturedAt: number | string | null;
-  compassAngle?: number | null;
-  thumbUrl: string | null;
-  distanceM: number;
-}
-
 export interface PlaceCandidate {
   name: string;
   osmRef: string;
@@ -31,11 +19,6 @@ export interface PlaceCandidate {
 @Injectable({ providedIn: 'root' })
 export class ToolsApi {
   private readonly http = inject(HttpClient);
-
-  async panoramas(lng: number, lat: number, radiusM?: number): Promise<PanoramaCandidate[]> {
-    const body = radiusM ? { lng, lat, radiusM } : { lng, lat };
-    return (await this.post<{ candidates: PanoramaCandidate[] }>('panoramas', body)).candidates;
-  }
 
   async places(lng: number, lat: number, name?: string): Promise<PlaceCandidate[]> {
     const body = name?.trim() ? { lng, lat, name: name.trim() } : { lng, lat };
