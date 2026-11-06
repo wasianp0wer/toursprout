@@ -22,7 +22,26 @@
 - Cookie attributes, everywhere they are set: `HttpOnly`, `Secure`, `SameSite=Lax`, `Max-Age` one year (31536000).
 - The Mapillary token is allowed to reach the browser; it already does, through `config.json`.
 - The app deploys to a **subdomain root**. Do not introduce an API-base prefix; absolute `/api/...` URLs stay as they are.
-- Commands: `make check` (= lint, backend-test, frontend-test, build). Single backend test: `cd backend && uv run pytest tests/test_x.py::test_y -q`. Single frontend spec: `cd frontend && npx ng test --watch=false --include='**/core/x.spec.ts'`.
+- **Commands — this work happens in a git worktree at `.claude/worktrees/hosted-deploy` on branch `feature/hosted-tester-deployment`, where `make` DOES NOT WORK.** The Makefile points `UV_CACHE_DIR` at the worktree, so `uv` tries to build a fresh environment, needs the network, and fails; this project does not get a network allowlist. Borrow the main checkout's environment instead. All four commands, verbatim:
+
+  ```sh
+  V=/Users/maddiepersonal/phd/clio-wired/backend/.venv
+  N=/Users/maddiepersonal/.local/share/fnm/node-versions/v24.21.0/installation/bin
+
+  # backend tests (whole suite, or one test)
+  cd backend && $V/bin/python -m pytest -q
+  cd backend && $V/bin/python -m pytest tests/test_x.py::test_y -q
+  # lint
+  cd backend && $V/bin/ruff check app tests ../content/scripts
+  # frontend tests (whole suite, or one spec)
+  cd frontend && PATH=$N:$PATH npx ng test --watch=false
+  cd frontend && PATH=$N:$PATH npx ng test --watch=false --include='**/core/x.spec.ts'
+  # build
+  cd frontend && PATH=$N:$PATH npx ng build
+  ```
+
+  Where this plan says "run `make check`", run all four of lint, backend tests, frontend tests and build, using these commands. `frontend/node_modules` in the worktree is a symlink to the main checkout's; do not delete or reinstall it. Never run `uv run`, `uv sync`, `npm install` or `make` from the worktree — each will fail on the network and may leave a partial `backend/.venv` or `.uv-cache` behind, which should be deleted if it appears.
+- Baseline at the start of this work, in the worktree: **451 backend tests passing, 608 frontend tests passing**, lint clean, build clean. Tasks 2 and 3 deliberately lower those counts by deleting tests; every other task should hold or raise them.
 
 ## Review Focus
 
