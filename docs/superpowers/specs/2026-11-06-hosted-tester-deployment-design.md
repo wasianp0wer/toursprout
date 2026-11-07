@@ -183,16 +183,38 @@ Session resolution becomes a FastAPI dependency rather than
 `sessions_dir/<sid>`, and construct `Session` on that path. The cookie is
 `HttpOnly`, `Secure`, `SameSite=Lax`.
 
-**Only `/api/session` mints.** `entry-page.ts` mounts the viewer eagerly, so a
+**Only `/api/session` and the four creating routes mint.** `entry-page.ts`
+mounts the viewer eagerly, so a
 first load fires `tour-data/config.json`, `tour-data/tour.json` and
 `/api/session` concurrently. If every cookieless request minted, one load
 would create three directories, race three `Set-Cookie` headers, and leave
 the frontend's first `GET /api/session` possibly describing a session the
-browser did not keep. So `/api/session` mints when there is no usable cookie;
-every other route resolves or fails, and `/tour-data` returns 404 rather than
-conjuring a session. This is a deliberate narrowing of "no cookie mints a
-fresh `sid`", recorded here because it is a behaviour decision and not an
-implementation detail.
+browser did not keep. So minting is confined to `/api/session` and to the four
+routes that create a tour from nothing — `POST /api/session/new`,
+`POST /api/session/examples/{id}`, `POST /api/session/import` and
+`POST /api/session/import-files`. Everything else resolves or fails: a
+cookieless `PUT /api/session/tour` gets the existing 409 "no tour is open",
+and `/tour-data` returns 404 rather than conjuring a session. This is a
+deliberate narrowing of "no cookie mints a fresh `sid`", recorded here
+because it is a behaviour decision and not an implementation detail.
+
+**Why the creating routes are included**, since an earlier draft of this
+section excluded them: a route that creates a tour but cannot mint has
+nowhere safe to write it. A fixed placeholder path is the collision anti-goal
+restated, and an un-cookied `sid` path is worse — the tour lands in a
+directory the author's browser can never reach again, which is
+indistinguishable from losing their work. Refusing cookieless creation
+instead would invent a status and message this design never specified, and
+would break `docs/HANDOFF.md:172`, which documents
+`curl -X POST localhost:8000/api/session/new` as the first call of the
+supported no-browser flow. The concurrency rationale above survives intact,
+because two of the three requests in that first-load burst are `/tour-data`,
+which never mints, and the creating routes are user-initiated after
+`/api/session` has already answered and set the cookie.
+
+Minting on a POST is safe because `_reject_cross_site` guards all four
+creating routes, so a cross-site POST is refused and this opens no path an
+attacker did not already have through `GET /api/session`.
 
 Minting therefore has to do what startup used to: `main.py:142` writes the
 viewer config into the open session during the lifespan, which is where the
