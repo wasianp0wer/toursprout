@@ -14,3 +14,4 @@ Index:
 - [0003](0003-the-editor-is-three-surfaces-on-one-state.md): the editor is three surfaces on one state.
 - [0004](0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md): media comes in by content; tools wrap the scripts.
 - [0005](0005-schema-v3-locks-the-document.md): schema v3 locks the document — the last tightenings, and a migration registry.
+- [0006](0006-host-it-one-session-per-browser.md): host it rather than package it; one session per browser; what left the server because the host cannot reach it.

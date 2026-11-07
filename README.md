@@ -8,10 +8,15 @@ anchored to points in the world and overlaid on 360° panoramas.
 It has grown from a one-tour prototype into an authoring application: the tour
 is a portable document (`tour.json` plus `media/`, exportable as a `.zip`),
 an editor at `/edit` changes it, and it can be published as a static site that
-needs no backend. There is still one hand-authored tour. The editor, including
-its microphone recording and acquisition tools, has never been seen running in
-a browser, because none can launch in the development environment. The
+needs no backend. There is still one hand-authored tour. The editor's
+close dialog and microphone recorder have never been seen running in a
+browser, because none can launch in the development environment
+(`docs/UNVERIFIED.md` says exactly what has and has not been seen). The
 **schema** is the part meant to survive.
+
+It can run on your own machine, or be hosted so that several historians each
+author in their own browser: `docs/DEPLOY.md` is the runbook for the host, and
+`docs/FOR-HISTORIANS.md` is the one page a historian is given.
 
 ## What it is made of
 
@@ -20,8 +25,8 @@ a browser, because none can launch in the development environment. The
 | Map geometry and place identity | OpenStreetMap (Overpass, raster tiles) |
 | Street-level imagery | Mapillary, CC-BY-SA 4.0 |
 | Archival photography | Library of Congress, public domain |
-| Narration | macOS speech synthesis, labelled as synthetic |
-| Backend | FastAPI, pydantic, Python 3.14 |
+| Narration | The committed tour's clips were synthesised on macOS and are labelled as synthetic; in the editor, narration is recorded from the microphone |
+| Backend | FastAPI, pydantic, Python 3.13 or newer (`requires-python`; CI and the deploy use 3.13) |
 | Frontend | Angular 22, Leaflet 1.9, mapillary-js 4 |
 
 OpenStreetMap has no street-level imagery of its own; that is what Mapillary
@@ -34,7 +39,8 @@ before any content was written — see `content/scripts/probe_coverage.py` and
 - **Node 24** — Angular 22 rejects Node 25. The Makefile pins the path.
 - **uv** with `UV_CACHE_DIR` set (the Makefile does this).
 - **A Mapillary token** in `backend/.env` as `MAPILLARY_TOKEN=MLY|...`.
-  Needed to regenerate content and for the editor's panorama tool; the committed tour runs without it.
+  Needed to regenerate content and for the editor's panorama search, which
+  runs in the browser with this token; the committed tour runs without it.
 
 Read `docs/ENVIRONMENT.md` before debugging anything. It records several
 non-obvious constraints that each cost real time to find.
@@ -46,8 +52,13 @@ make serve      # builds the frontend, serves everything on :8000
 ```
 
 Then open <http://localhost:8000>. FastAPI serves both the API and the built
-Angular bundle, so there is one process and no proxy. `/` works out who is
-asking: with nothing in the session it shows a welcome screen, where *Old Town
+Angular bundle, so there is one process and no proxy. Your open tour belongs
+to your browser, not to the server: the first request sets a `tour_sid`
+cookie and the tour lives in a directory named by it, under `sessions_dir`
+(default `~/.clio-wired/sessions`; set `SESSIONS_DIR` in `backend/.env` to
+move it). A second browser, or a private window, gets its own empty session.
+`/` works out who is asking: with nothing open in this browser's session it
+shows a welcome screen, where *Old Town
 Fairfax* opens the committed six-stop tour — document, media and all — in one
 click, and where a `.zip` or a loose `tour.json` with its media folder can be
 dropped instead; with a tour open it goes straight to the editor; and on a
@@ -89,16 +100,21 @@ refuses to derive one until the panorama has loaded. **The committed anchors
 are estimates, improved by hand in commit `de48b0d` but not finished** —
 further alignment needs someone at a browser. The old `?align=1` mode is gone.
 
-**Bringing media in.** The editor uploads images and audio into the open tour,
-records narration from the microphone, and has four acquisition tools backed by
-`backend/app/tools.py`: nearby Mapillary panoramas, OSM historic places, Library
-of Congress photograph search (with download into the tour), and synthesized
-narration. The Mapillary tool needs the token in `backend/.env`. The client
-never names a stored file, and the recorder prefers `audio/mp4` where
-`MediaRecorder.isTypeSupported` allows it, otherwise whatever the browser
-produces by default (the sniffer accepts WebM and Ogg as well as MP4); see
-`docs/decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md`,
-including what was and was not checked against the live services.
+**Bringing media in.** The editor uploads images and audio into the open tour
+and records narration from the microphone; the recorder prefers `audio/mp4`
+where `MediaRecorder.isTypeSupported` allows it, otherwise whatever the browser
+produces by default (the sniffer accepts WebM and Ogg as well as MP4). Two
+searches help find where things are. **Panorama search runs in the browser**,
+straight to `graph.mapillary.com` with the token from the viewer config (the
+hosted server cannot reach Mapillary), and **place search** goes through the
+backend to OpenStreetMap's Overpass. Searching the Library of Congress from
+inside the editor, and synthesising narration with macOS `say`, were
+**removed**: loc.gov refuses the host, and `say` exists on neither the host nor
+a Windows laptop. A historian finds a photograph at loc.gov in their own
+browser and uploads it (`docs/FOR-HISTORIANS.md`). The reasons, and the
+measurements behind them, are in
+`docs/decisions/0006-host-it-one-session-per-browser.md`; the upload rules
+are in `docs/decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md`.
 
 ## Tests
 
@@ -146,6 +162,8 @@ without touching code.
 - `docs/superpowers/specs/2026-09-20-walking-tour-framework-design.md` — design
 - `docs/superpowers/plans/2026-09-20-walking-tour-prototype.md` — implementation plan
 - `docs/ENVIRONMENT.md` — verified environment constraints
+- `docs/DEPLOY.md` — putting it on the Reclaim host: a numbered runbook with stop-and-report points, and every setting
+- `docs/FOR-HISTORIANS.md` — the one page a historian tester is given
 - `docs/HANDOFF.md` — current state, how to run it, landmines, open questions
 - `docs/UNVERIFIED.md` — everything no one has seen work, each with the check that closes it; start here at a browser
 - `docs/ARCHITECTURE.md` — how the parts fit and what each layer may not do

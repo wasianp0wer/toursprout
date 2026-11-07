@@ -83,9 +83,10 @@ The checklist for the first browser session, in the order to do it, is
 - **Editor** (`/edit`). Four surfaces over one draft: outline, numeric
   inspector, editable map, editable panorama; undo; debounced autosave through
   the session API. It names the tour, writes stop text, places media, uploads
-  images and audio, records narration from the microphone, and has four
-  acquisition tools (panoramas, places, archive search/fetch, narration) backed
-  by `backend/app/tools.py`. Its top bar carries *Preview* (a plain link to
+  images and audio, records narration from the microphone, and searches for
+  panoramas (from the browser, straight to Mapillary) and for places (through
+  `backend/app/tools.py`). Archive search and synthesised narration were
+  removed for the hosted deployment (ADR 0006). Its top bar carries *Preview* (a plain link to
   `/view`, so a full page load) beside Export and Publish. It no longer has a
   "no tour is open" empty state — the welcome screen owns creating a tour, so
   `/edit` with nothing open navigates to `/`.
@@ -104,8 +105,9 @@ The checklist for the first browser session, in the order to do it, is
   because a `PUT` already on the wire lands on a dead session and 409s, and
   "Save failed" over a close that worked is the misleading message this branch
   exists to remove.
-- **Session API.** The open tour is an unpacked working directory
-  (`content/work/`, git-ignored) that every edit writes through to; there is no
+- **Session API.** The open tour is an unpacked working directory, one per
+  browser (`<sessions_dir>/<sid>/`, where the sid is in the `tour_sid` cookie;
+  see ADR 0006) that every edit writes through to; there is no
   explicit save. A session API opens, edits, closes, exports and publishes it
   as a `.zip`. The whole surface:
 
@@ -169,20 +171,46 @@ content-type header: `curl -d` alone sends
 bytes and pydantic refuses with a 422 (`{"type":"dict_type",...}`):
 
 ```sh
-curl -X POST localhost:8000/api/session/new \
+curl -c jar.txt -b jar.txt -X POST localhost:8000/api/session/new \
   -H 'Content-Type: application/json' -d '{"title": "A tour"}'      # start empty
-curl -X POST localhost:8000/api/session/import -F file=@tour.zip \
-  -F force=true                                                     # open a bundle
-curl localhost:8000/api/session/examples                            # what examples exist
-curl -X POST localhost:8000/api/session/examples/fairfax-old-town   # open one, media and all
-curl -X PUT localhost:8000/api/session/tour \
+curl -c jar.txt -b jar.txt -X POST localhost:8000/api/session/import \
+  -F file=@tour.zip -F force=true                                   # open a bundle
+curl -c jar.txt -b jar.txt localhost:8000/api/session/examples      # what examples exist
+curl -c jar.txt -b jar.txt -X POST \
+  localhost:8000/api/session/examples/fairfax-old-town              # open one, media and all
+curl -c jar.txt -b jar.txt -X PUT localhost:8000/api/session/tour \
   -H 'Content-Type: application/json' -d @tour.json                 # write the document
-curl localhost:8000/api/session/export -o tour.zip                  # save it out as a zip
-curl localhost:8000/api/session/publish -o site.zip                 # a backend-free static site
-curl -X DELETE localhost:8000/api/session                           # discard the working copy
+curl -c jar.txt -b jar.txt localhost:8000/api/session/export -o tour.zip  # save it out as a zip
+curl -c jar.txt -b jar.txt localhost:8000/api/session/publish -o site.zip # a backend-free static site
+curl -c jar.txt -b jar.txt -X DELETE localhost:8000/api/session     # discard the working copy
 ```
 
-Every route that replaces `content/work/` refuses while a tour is already
+**Every line carries `-c jar.txt -b jar.txt`, and that is not decoration.** A
+session now belongs to a cookie (`tour_sid`), and each `curl` is a fresh client
+that remembers nothing. Without a cookie jar, `new` mints a session and throws
+the cookie away, then `export` arrives cookieless, finds nothing open and 409s
+with "no tour is open" — and the `new` before it left a directory nobody can
+reach. This was run, not reasoned: against a live backend, `new` followed by
+`export` with no jar answered `409`, and the same pair with the jar answered
+`200`, the zip containing `bundle.json` and `tour.json`. `-c` writes the
+cookie the server sets and `-b` sends it back; give both on every line so
+the order of the lines stops mattering. Delete `jar.txt` to become a
+different historian.
+
+The cookie is `Secure`, which does not stop this on `http://localhost`: with
+curl 8.7.1 it was stored (`#HttpOnly_localhost ... TRUE ... tour_sid ...` in
+the jar) and sent back on the next request. Whether other curl versions treat
+`localhost` the same was not tried. The one setting to know about is where the
+sessions land: with no `SESSIONS_DIR` in `backend/.env` they go to
+`~/.clio-wired/sessions`, outside the repository, so a terminal session leaves
+directories in your home folder. Point it somewhere disposable
+(`SESSIONS_DIR=/tmp/sessions` in the environment, which is how this was run, or
+a line in `backend/.env`) for throwaway work. A second shell with its own jar is a second session, and a
+`curl` with no jar at all mints a new one each time it is allowed to
+(`new`, `import`, `import-files` and the examples route mint; `export`,
+`publish`, `PUT tour`, media upload, `DELETE` and `tour-data/` never do).
+
+Every route that replaces the session directory refuses while a tour is already
 open, because the working directory is the author's only copy of an
 unexported tour: `new` and `import` take `force` to say the discard is
 deliberate (`-F force=true` on `import`, since its body is already
@@ -191,18 +219,18 @@ the tour first. The `force=true` above is there because the line before it
 opens an empty tour; drop it when nothing is open.
 
 `DELETE /api/session` is what the editor's *Close tour* calls. It deletes
-`content/work/` and there is no undo: export first. It refuses with 409 when
+the session directory and there is no undo: export first. It refuses with 409 when
 nothing is open, which is deliberate — a caller asking to close nothing has a
 stale idea of the session, and saying so beats agreeing with it.
 
 Loose files go to a second import route, which is what the welcome screen's
 drop zone uses. Each part's *filename* is its path inside the bundle, so
 nested media keeps its directory. **Close the open tour first** — this
-replaces `content/work/`, so it 409s while a tour is open, exactly as `new`
+replaces the session directory, so it 409s while a tour is open, exactly as `new`
 and the examples route do:
 
 ```sh
-curl -X POST localhost:8000/api/session/import-files \
+curl -c jar.txt -b jar.txt -X POST localhost:8000/api/session/import-files \
   -F 'files=@content/tours/fairfax-old-town.json;filename=tour.json' \
   -F 'files=@content/media/court-1863.jpg;filename=media/court-1863.jpg' \
   -F 'files=@content/media/pano/pano-historic-courthouse.jpg;filename=media/pano/pano-historic-courthouse.jpg'
@@ -215,7 +243,7 @@ posting — which is the whole point of the loose-file path, since
 `content/media/` holds a `manifest.json` beside the photographs — and names
 what it left out. `curl` does not filter, so it is the caller's job here.
 
-Every edit above writes straight through to `content/work/`. See
+Every edit above writes straight through to the session directory. See
 `docs/decisions/0002-the-tour-is-a-portable-document.md` for why "save" works
 this way instead of writing back to an opened file.
 
@@ -244,7 +272,9 @@ Verified against a live backend (a throwaway one on a temp `CONTENT_DIR`, so
 the author's own `content/work/` was never touched):
 `POST /api/session/examples/fairfax-old-town` returns `"stopCount": 6`,
 `"mediaCount": 15`, `"orphanCount": 6` and six informational warnings, one per
-panorama (`media/pano/pano-<stop>.jpg is not referenced by any overlay`), and
+panorama (`media/pano/pano-<stop>.jpg is not referenced by any overlay`) — as
+recorded under schema v2; under v3 the same call returns `"orphanCount": 0`
+and no warnings (ADR 0005; re-run on 2026-11-06), and
 `GET /api/session/export` then returns the same 4.5&nbsp;MB zip as before
 (4,536,271 bytes). The equivalent loose import — `tour.json` plus every
 image and audio file under `content/media/`, posted to
@@ -263,7 +293,7 @@ above cannot be run here; it is not a second bootstrap procedure, it is the
 same one without a window. Run from the repo root with `make serve` up:
 
 ```sh
-curl -X POST localhost:8000/api/session/examples/fairfax-old-town
+curl -c jar.txt -b jar.txt -X POST localhost:8000/api/session/examples/fairfax-old-town
 ```
 
 That one line replaces everything below it, and the rest of this section is
@@ -271,20 +301,31 @@ kept only to explain what it does and what used to go wrong. The long way,
 which is still what to reach for with a tour that is *not* a shipped example:
 
 ```sh
-curl -X POST localhost:8000/api/session/new \
+curl -c jar.txt -b jar.txt -X POST localhost:8000/api/session/new \
   -H 'Content-Type: application/json' -d '{"title": "Old Town Fairfax"}'
 
-curl -X PUT localhost:8000/api/session/tour \
+curl -c jar.txt -b jar.txt -X PUT localhost:8000/api/session/tour \
   -H 'Content-Type: application/json' -d @content/tours/fairfax-old-town.json
+
+# The session directory is named by the sid; GET /api/session reports it as
+# recoveryKey while a tour is open. SESSIONS_DIR is whatever backend/.env sets
+# (default ~/.clio-wired/sessions).
+SID=$(curl -s -c jar.txt -b jar.txt localhost:8000/api/session \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["recoveryKey"])')
 
 # Copy the media, but not manifest.json. *.jpg and *.m4a are the three
 # archival photographs and the six narration clips; pano/ is the cached
 # panoramas the stops' cachedMediaId fields point at.
-cp content/media/*.jpg content/media/*.m4a content/work/media/
-cp -R content/media/pano content/work/media/
+cp content/media/*.jpg content/media/*.m4a "$SESSIONS_DIR/$SID/media/"
+cp -R content/media/pano "$SESSIONS_DIR/$SID/media/"
 
-curl localhost:8000/api/session/export -o fairfax-old-town.zip
+curl -c jar.txt -b jar.txt localhost:8000/api/session/export -o fairfax-old-town.zip
 ```
+
+Run against a live backend with `SESSIONS_DIR` set to a temporary directory,
+this returned `"stopCount": 6`, `"mediaCount": 15`, `"orphanCount": 0` and
+an `export` of `200`. (Export `$SESSIONS_DIR` in the shell first, or
+substitute the path.)
 
 **The copy step is not optional and nothing else performs it.** Without it,
 `GET /api/session` reports `"mediaCount": 0`, every photograph and narration
@@ -459,7 +500,8 @@ candidate for the next session than anything numbered below.
    - Recorded audio against the sniffer in a real browser. The MP4 brand is
      the risk, in Safari and also in Chromium, whose recorder prefers MP4 where
      `isTypeSupported` allows (`UNVERIFIED.md` entries 8 and 9).
-   - A real loc.gov redirect through `archive-fetch`.
+   - ~~A real loc.gov redirect through `archive-fetch`.~~ The tool is gone
+     (ADR 0006).
    - Overpass mirrors other than `overpass-api.de`, which answered in 34-42 s
      from this machine against a 15 s client timeout.
 

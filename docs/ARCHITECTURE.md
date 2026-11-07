@@ -24,13 +24,16 @@ the page, which is why a published tour needs no server.
                                                                           loose_import.py,
                                                                           examples.py
                                                                              │
- viewer   ViewerPage ──GET tour-data/*──►  StaticFiles mount ────────────►  content/work/
-                                           (/tour-data)                      ├─ bundle.json
+ viewer   ViewerPage ──GET tour-data/*──►  tour_data route (cookie) ──────►  <sessions_dir>/<sid>/
+                                           (/tour-data, never mints)         ├─ bundle.json
  editor   EditorPage                                                         ├─ tour.json
    surfaces ─► document-ops ─► EditorStore ─► Autosave                       ├─ config.json
                                     │            │                           └─ media/
                                     │            └──PUT /api/session/tour──► Session.write_tour
-                                    └── ToolsApi / SessionApi ─/api/…──────► tools.py, media_store.py
+                                    ├── SessionApi ─/api/session/…─────────► session.py, media_store.py
+                                    ├── ToolsApi ─/api/tools/places────────► tools.py (Overpass only)
+                                    └── MapillarySearch ──────────────────► graph.mapillary.com
+                                         (straight from the browser; the host cannot reach it)
    CloseDialog ──GET export, then DELETE /api/session──────────────────────► Session.close
 ```
 
@@ -40,21 +43,23 @@ the page, which is why a published tour needs no server.
 | --- | --- |
 | `models.py` | The schema, and the single source of truth for it: `Tour`, `Stop`, `Overlay` and its three axes (`kind`, `anchor`, `display`), the `Credit` union, `DISPLAY_MODES_BY_KIND`, `MediaRef`, `referenced_media`, `SCHEMA_VERSION`. Stop and overlay ids are one namespace, unique tour-wide. See ADR 0001 and ADR 0005. |
 | `migration.py` | `migrate`: one entry point over a `_MIGRATIONS` registry, one step per version behind. Pure dict-in, dict-out, and total — it refuses rather than dropping data. Stays in the tree because exported bundles in the wild are v1 and v2. ADR 0005. |
-| `session.py` | The open document: a working directory (`content/work/`, from `config.py`). `Session.write_tour` validates then swaps atomically; `Session.new`, `replace_from`, `write_config`, `summary`. |
+| `sessions.py` | Per-browser session ids and nothing else: `new_sid`, `valid_sid`, `session_dir`, and `sweep`, which reclaims abandoned directories. The sid is 16 lowercase hex characters, names a directory, and doubles as the recovery key a historian writes down — so it is validated before it is ever joined to a path. No FastAPI in this module. ADR 0006. |
+| `session.py` | One open document: a working directory, `<sessions_dir>/<sid>/`. A `Session` is built per request from the cookie, not held on the app. `Session.write_tour` validates then swaps atomically; `Session.new`, `replace_from`, `write_config`, `summary`. |
 | `media_store.py` | The **upload** door into `media/`: sniffing, `ALLOWED_TYPES`, the content-hashed id, size caps, `orphan_ids` (which asks `models.referenced_media` what counts as referenced). It is not the only door — import has its own, and the two are not interchangeable. See "Media comes in by two doors" below. |
 | `bundle.py` | The `.zip` form of the document: `write_bundle`, `read_bundle`, `stage_bundle_root`, and everything that makes importing an untrusted archive safe. `_check_media_file` is the import allowlist — see "Media comes in by two doors" below. `missing_media` is shared with export. |
 | `loose_import.py` | `stage_loose_bundle`: a loose `tour.json` plus its media parts, zipped into an ordinary bundle. It validates every path and then hands off, so a loose drop gets the same allowlist, migration, orphan warnings and atomic swap as a `.zip`. Nothing here writes to the working directory. |
 | `examples.py` | The tours that ship with the application: `list_examples`, `open_example`. An example is a directory under `content/examples/` holding `example.json` (id from the directory name, plus title, description, `document`, `mediaDir`) and a frozen `tour.json`. Opening one stages a bundle and hands it to `Session.replace_from`, so it is an import; it copies and never mutates the example. |
 | `publish.py` | `build_site`: the built Angular app plus the working directory under `tour-data/`, zipped. |
-| `tools.py` | The acquisition tools (panorama search, place search, archive search, archive image fetch, narration) as functions over an injectable `httpx.Client`. ADR 0004. |
-| `main.py` | `create_app`: the routes, the `/tour-data` mount, the SPA fallback, the cross-site guard (`_reject_cross_site`), and `_viewer_config`. Routing and HTTP status mapping only; the work is in the modules above. |
-| `config.py` | `Settings`: Mapillary token, `content_dir`, `frontend_dist`. |
+| `tools.py` | What is left of the acquisition tools: place search over Overpass, as a function over an injectable `httpx.Client`, plus the URLs the egress diagnostic probes. Panorama search moved into the browser, and archive search and narration were removed (ADR 0006; ADR 0004 records the tools as first built). |
+| `main.py` | `create_app`: the routes, the cookie-keyed `/tour-data` route, the SPA fallback, the cross-site guard (`_reject_cross_site`), the two session dependencies (`current_session` resolves, `mint_session` creates) and `_viewer_config`. Routing and HTTP status mapping only; the work is in the modules above. |
+| `config.py` | `Settings`: Mapillary token, `content_dir`, `frontend_dist`, `sessions_dir`, the two sweep retention windows and the four resource caps. All overridable from `backend/.env`; `docs/DEPLOY.md` lists them. |
+| `../../passenger_wsgi.py` | The host's entry point: `a2wsgi` wraps the ASGI app for Passenger, which is WSGI-only. Lives at the repository root, outside `backend/`. The bridge does not run the ASGI lifespan, so `create_app` sets `app.state.cfg` in its body. |
 
 ### Frontend (`frontend/src/app/`)
 
 | Folder | Owns |
 | --- | --- |
-| `core/` | Shared by viewer and editor. `tour.models.ts` (TypeScript mirror of the schema), `tour-api.ts` (`TourApi`: reads `tour-data/`), `tour-store.ts` (`TourStore`: the viewer's walking state), `arrival.ts`, `geo.ts`, `credit.ts`, `config-store.ts`. Also the two **editor-only** HTTP clients, `session-api.ts` and `tools-api.ts`, which live here but are never used by the viewer. |
+| `core/` | Shared by viewer and editor. `tour.models.ts` (TypeScript mirror of the schema), `tour-api.ts` (`TourApi`: reads `tour-data/`), `tour-store.ts` (`TourStore`: the viewer's walking state), `arrival.ts`, `geo.ts`, `credit.ts`, `config-store.ts`. Also the **editor-only** clients, which live here but are never used by the viewer: `session-api.ts` and `tools-api.ts` (place search, the one tool still on the server) talk to our backend, and `mapillary-search.ts` (`MapillarySearch`) talks to `graph.mapillary.com` directly. |
 | `entry/` | Route `''`. `entry-page.ts` (`EntryPage`): the three-way decision below, and `SESSION_PROBE_TIMEOUT_MS`. Eager, and deliberately small. Its CSS is load-bearing — read the comment in `entry-page.css` before changing it. |
 | `welcome/` | The front door, a lazy chunk reached only from `EntryPage`. `welcome-page.ts` (`WelcomePage`) and `dropped-files.ts`, which is the pure part: `readDroppedFiles` walks a dropped directory with `webkitGetAsEntry`, and `sortDrop` files each part under `media/`, keeps its nesting, and filters what a tour cannot contain. |
 | `viewer/` | `viewer-page.ts` (`ViewerPage`): loads config and tour, composes `map/`, `panorama/`, `stop/`. Routes `view` and `**`, and mounted in place by `EntryPage` at `''`. |
@@ -66,6 +71,33 @@ the page, which is why a published tour needs no server.
 are `ViewerPage`, all three eager; `edit` is `EditorPage` and the welcome
 screen is a `@defer` block inside `EntryPage`, both lazy, so visitors download
 neither.
+
+### Sessions: one per browser
+
+There is no global open tour. Each browser carries a `tour_sid` cookie, and the
+sid in it names a directory under `Settings.sessions_dir` (default
+`~/.clio-wired/sessions`, deliberately outside the deploy tree so that
+`rsync` cannot reach it). Every `/api/session/*` route and `/tour-data/*`
+resolves that directory from the cookie.
+
+Two dependencies in `main.py` draw the line that matters. `current_session`
+**resolves** and never creates: a request with no usable cookie gets a
+`Session` rooted at a directory that does not exist, so it reads as closed and
+each route's existing guard refuses in its existing words. `mint_session`
+**creates** the directory and sets the cookie, and only five routes use it:
+`GET /api/session` (the frontend's first call) and the four that make a tour
+out of nothing (`new`, `examples/{id}`, `import`, `import-files`). `/tour-data`
+must never mint, because a first page load fires it twice concurrently with
+`GET /api/session`.
+
+The sid is also the **recovery key**: `GET /api/session` returns it as
+`recoveryKey` while a tour is open, the editor shows it with a Copy button,
+and `POST /api/session/reattach` points a browser that has lost its cookie
+back at a tour by key. Reattach refuses while the caller already has a tour
+open. `sessions.sweep` removes abandoned directories on a mint, at most hourly
+(`docs/DEPLOY.md` has the windows). The cookie is always `Secure`; see the
+comment in `_set_sid_cookie` for why it is not derived from the request
+scheme. ADR 0006.
 
 ### Routing: who is asking
 
@@ -141,9 +173,11 @@ builds the third. Nothing else in the viewer fetches anything of its own.
 
 The same code serves two very different hosts:
 
-- **In the editor**, FastAPI mounts the working directory at `/tour-data`
-  (`_mount_tour_data` in `main.py`), so those URLs resolve to
-  `content/work/…`. `EditorPage` loads its draft through the same `TourApi`.
+- **In the editor**, FastAPI answers `/tour-data/…` from a route
+  (`tour_data` in `main.py`) that reads the session cookie and serves from
+  inside that session's directory, `<sessions_dir>/<sid>/…`. It never mints a
+  session: no cookie, or a cookie naming a directory that is not there, is a
+  404. `EditorPage` loads its draft through the same `TourApi`.
 - **In a published site**, `tour-data/` is simply a folder beside
   `index.html` (`<base href="./">` in `frontend/src/index.html` is what makes
   the URLs relative).
@@ -196,8 +230,9 @@ Points worth knowing before you touch any of it:
 - **Media is uploaded before the document changes.** A new photograph goes
   `POST /api/session/media` → `store_media` → the server returns a `mediaId`
   → only then does the surface call `addMediaOverlay`. A refused upload
-  therefore never touches the draft. Archive downloads and narration follow
-  the same shape (`/api/tools/archive-fetch`, `/api/tools/narrate`).
+  therefore never touches the draft. A recording from the microphone takes
+  the same road: it is uploaded as a file, so it is sniffed and renamed like
+  any other.
 - **Editor-only state stays out of the document.** `EditorStore` holds the
   panorama position, the manual-heading flags and the pending creator/licence
   answer; none is ever saved. ADR 0003.
@@ -208,7 +243,7 @@ Points worth knowing before you touch any of it:
 
 ```
 <the built Angular app, frontend/dist/frontend/browser/…>   at the zip root
-<the working directory, content/work/…>                      under tour-data/
+<the working directory, <sessions_dir>/<sid>/…>              under tour-data/
 ```
 
 That is all it is. Because flow 1 reads `tour-data/…` relative to the page,
@@ -249,7 +284,7 @@ see entry 9 in [`CHANGING-THINGS.md`](CHANGING-THINGS.md).
 
 **All four refuse with 409 while a tour is already open**, and that is one
 guarantee rather than four coincidences: each of them replaces
-`content/work/`, which holds the author's only copy of an unexported tour.
+the session directory, which holds the author's only copy of an unexported tour.
 `new` and `import` accept `force` to say the discard is deliberate (a JSON
 field and a multipart field respectively); the examples and loose-file routes
 accept nothing and must be preceded by a close. A fifth way in needs the same
@@ -315,8 +350,9 @@ breaks a tour quietly.
 - `media_store.store_media` is the **upload** door. It deliberately
   **renames** every file to `<slug>-<contenthash><ext>` and writes it flat
   into `media/`, which is what makes the "client never names a file" rule
-  above true. It is reached by `POST /api/session/media` and by the two tools
-  that produce a file (`archive-fetch`, `narrate`).
+  above true. It is reached by `POST /api/session/media`, which is also how a
+  recording gets in. (Two server-side tools used to produce files and went
+  through it too; both were removed.)
 
 **Every path that brings a whole tour in uses the import door. Never
 `store_media`.** The repository's own tour is the case that proves why: it
@@ -407,8 +443,8 @@ copies the extension test does not see. Both are spelled out in
 `content/tours/fairfax-old-town.json` from `content/source/stops.json`. It is
 independent of the editor, shares only the schema (`build_tour.py` imports
 `SCHEMA_VERSION` and `Tour` from `app.models`), and its hand-edits are not read
-back. The acquisition tools in `tools.py` were lifted from these scripts rather
-than rewritten (ADR 0004). Caution: `stops.json` has drifted from the hand-tuned committed tour, so `make content` would revert the hand alignment; whether to retire the pipeline is the author's open call (`HANDOFF.md`, Outstanding item 2).
+back. The place search in `tools.py` was lifted from these scripts rather than
+rewritten (ADR 0004). Caution: `stops.json` has drifted from the hand-tuned committed tour, so `make content` would revert the hand alignment; whether to retire the pipeline is the author's open call (`HANDOFF.md`, Outstanding item 2).
 
 ## Decision records
 
@@ -419,3 +455,4 @@ than rewritten (ADR 0004). Caution: `stops.json` has drifted from the hand-tuned
 | [0003](decisions/0003-the-editor-is-three-surfaces-on-one-state.md) | Why pure ops over one store, whole-document undo and autosave. |
 | [0004](decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md) | Why the client never names a file, and why the scripts became endpoints. |
 | [0005](decisions/0005-schema-v3-locks-the-document.md) | Why v3 is three tightenings and a migration registry, and what AR, theming and Omeka still need to decide. |
+| [0006](decisions/0006-host-it-one-session-per-browser.md) | Why the application is hosted rather than packaged, why there is one session per browser, and what moved off the server because the host cannot reach it. |
