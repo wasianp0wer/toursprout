@@ -15,7 +15,7 @@ detail about the host is a guess, the text says so.
 How it fits together, in four sentences. A push to `main` runs
 `.github/workflows/deploy.yml`, which builds the frontend, runs the lint and
 the tests, and then `rsync`s `passenger_wsgi.py`, `backend/`, the built
-frontend and `content/` to the host over SSH. It then writes `backend/.env`,
+frontend and `content/` to the host over SSH. It then creates `backend/.env` if the host does not have one yet,
 installs the dependencies into the app's virtualenv with `pip`, and touches
 `tmp/restart.txt` so Passenger restarts. Passenger runs WSGI and the app is
 ASGI, so `passenger_wsgi.py` wraps it with `a2wsgi`. Each historian's tour
@@ -144,7 +144,7 @@ cPanel, *Software*, *Setup Python App*, *Create Application*:
 
 (These are the names in `passenger_wsgi.py`: it defines
 `application = ASGIMiddleware(app)`.) Leave the environment-variable box empty;
-settings come from `backend/.env`, which the deploy writes (see the settings
+settings come from `backend/.env`, which the first deploy creates (see the settings
 table below).
 
 cPanel puts a placeholder `passenger_wsgi.py` in the application root when it
@@ -170,7 +170,7 @@ Repository *Settings*, *Secrets and variables*, *Actions*. The two tabs matter.
 | `DEPLOY_HOST` | The SSH hostname. |
 | `DEPLOY_USER` | Your cPanel username. |
 | `DEPLOY_PATH` | The absolute path of the application root, e.g. `/home/USER/tours`. **Set it even if you only mean to rehearse**: the first workflow step refuses to run with any of these empty. |
-| `MAPILLARY_TOKEN` | Written into `backend/.env`. |
+| `MAPILLARY_TOKEN` | Written into `backend/.env` on the first deploy only. |
 
 **Variables** (the *Variables* tab; the host's public key is not secret):
 
@@ -226,7 +226,7 @@ run of any other branch with an empty target is refused on purpose.
 **You should see**, in the log, in order: *Check configuration*, *Choose the
 deploy target* ("Rehearsal deploy to the path given as input."), the build,
 `ruff` and `pytest` passing, *Copy files to the host* listing files
-(`rsync --itemize-changes`), *Write backend/.env*, then *Install dependencies
+(`rsync --itemize-changes`), *Write backend/.env (only if absent)*, then *Install dependencies
 and restart*.
 
 **Stop and paste back** the failing step's log if any step goes red. The likely
@@ -375,13 +375,15 @@ refuses every upload. `Settings` ignores keys it does not know, so **a
 misspelled key is silently ignored**: after changing one, check it took
 (restart, then try the behaviour).
 
-**The deploy overwrites `backend/.env` on every run, and writes only
-`MAPILLARY_TOKEN`.** A `SESSIONS_DIR` or a lowered cap that you added to
-`.env` on the host will be gone after the next push. To change one, add the line
-to the *Write backend/.env* step in `.github/workflows/deploy.yml`, not on the
-host. (cPanel's own environment-variable box in *Setup Python App* would also
-reach the process, and the process environment beats `.env`; whether it
-survives a restart on this host is unverified.)
+**`backend/.env` is host-owned state.** The deploy creates it once, from the
+`MAPILLARY_TOKEN` secret, and never overwrites it: the *Write backend/.env (only
+if absent)* step logs either "created it" or "left alone". So to set
+`SESSIONS_DIR`, lower a cap, or change the retention windows, **edit
+`backend/.env` on the host** and restart (`touch tmp/restart.txt`). Your edit
+survives every later deploy. The trade: **a rotated Mapillary token does not
+propagate.** Updating the `MAPILLARY_TOKEN` secret changes nothing on an
+existing host; edit the token in the host's `.env` by hand. (The file is
+created with mode 600.) To re-bootstrap, delete the host's `.env` and deploy.
 
 ## Where sessions live, and how to back them up
 

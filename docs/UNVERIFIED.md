@@ -67,7 +67,7 @@ the example's button lands in the editor with six stops was not recorded.*
   figures and the surviving `media/pano/` paths. What nobody has seen is the
   screen.
 - **Close it:** with nothing open — if a tour is open, close it first (entry
-  11) or `curl -X DELETE localhost:8000/api/session` — open
+  11) or `curl -c jar.txt -b jar.txt -X DELETE localhost:8000/api/session` — open
   <http://localhost:8000/>. Pass: a drop zone, a *New empty tour* box, *Old
   Town Fairfax* under "Open an example", and the five guide titles down the
   right, which do nothing by design. Click the example. Pass: you arrive at
@@ -201,7 +201,7 @@ console was clean was not recorded.*
 - **Close it:** in each of Chromium, Firefox and Safari, record one short clip
   in the editor and let it upload. If it is refused, the brand is the cause.
   Whether or not it is, take the first bytes of the clip you recorded
-  (`head -c 64 content/work/media/<clip> | xxd`, or the saved download) and
+  (`head -c 64 $SESSIONS_DIR/<sid>/media/<clip> | xxd`, where `<sid>` is the Recovery key shown in the editor, or the saved download) and
   commit them as fixtures in `backend/tests/test_media_store.py`, which today
   has only invented headers. If Safari's brand is refused, transcoding before
   `store_media` is the recorded answer (ADR 0004, deferred features).
@@ -262,7 +262,7 @@ console was clean was not recorded.*
   thing that arms the gate, and you want the bundle before you destroy the
   working copy. Come back here and confirm: *Close and delete* is now live,
   pressing it lands you on the welcome screen, no "Save failed" appears a
-  second later, and `content/work/` is gone. Tick the acknowledgement instead
+  second later, and the session directory (`$SESSIONS_DIR/<sid>/`) is gone. Tick the acknowledgement instead
   of downloading, on a tour you do not mind losing, to check that half too.
 
 ## 12. The blob download out of the close dialog
@@ -330,7 +330,7 @@ stay listed until each has a result written against it.*
   objects by hand, so every shape it walks is one this project invented and
   assumes a browser produces.
 - **Close it:** with nothing open (entry 13 left a tour open; close it with
-  entry 11 or `curl -X DELETE localhost:8000/api/session`), build the folder a
+  entry 11 or `curl -c jar.txt -b jar.txt -X DELETE localhost:8000/api/session`), build the folder a
   loose drop expects and drag it onto the zone:
 
   ```sh
@@ -340,18 +340,19 @@ stay listed until each has a result written against it.*
   ```
 
   Pass: 6 stops and 15 media files in the editor, and
-  `content/work/media/pano/` holding the six panoramas under their original
+  `$SESSIONS_DIR/<sid>/media/pano/` (the sid is the Recovery key) holding the six panoramas under their original
   names.
 
   **Drag that folder, not `content/` itself — and the reason is a trap, not a
   refusal.** Dragging `content/` is *accepted*: the frozen example's
   `content/examples/fairfax-old-town/tour.json` is the only `tour.json` in
-  there once nothing is open (`content/work/` does not exist — closing removes
-  the whole directory, and "open" *is* `content/work/tour.json` existing), and
+  there once nothing is open (the session directory does not exist or holds no
+  `tour.json` — closing removes the whole directory, and "open" *is* the
+  session's `tour.json` existing), and
   `content/media/` supplies the media, so the screen reports 6 stops and 15
   media files. That is character for character the pass criteria above, from a
   drop that tells you nothing about the folder you meant to test. The
-  duplicate-path refusal only arises with a `content/work/` present, which
+  duplicate-path refusal only arises with a session `tour.json` present, which
   cannot happen while the welcome screen is reachable at all. So check *which*
   folder you dropped, not only what the editor says afterwards.
 
@@ -374,7 +375,7 @@ components at all.*
 - **Why not here:** no browser, and no drag. Whether the browser's directory
   walk even reports them is the unproven half.
 - **Close it:** entry 14 left a tour open, so close it first (entry 11, or
-  `curl -X DELETE localhost:8000/api/session`) — every drop needs the welcome
+  `curl -c jar.txt -b jar.txt -X DELETE localhost:8000/api/session`) — every drop needs the welcome
   screen, which is only reachable with nothing open. Then `ls -a` the folder
   from entry 14 to see whether any sidecars exist; if none do, make one with
   real bytes so the backend's refusal is actually
@@ -423,7 +424,7 @@ components at all.*
 - **Why not here:** no browser, so no file picker. The spec feeds `File`
   objects with `webkitRelativePath` set by hand.
 - **Close it:** close whatever entry 15 left open (entry 11, or
-  `curl -X DELETE localhost:8000/api/session`), then click *choose a folder*,
+  `curl -c jar.txt -b jar.txt -X DELETE localhost:8000/api/session`), then click *choose a folder*,
   pick the folder from entry 14, and confirm the same result: 6 stops, 15
   media files, `media/pano/` intact. The flat *choose files* half below needs
   nothing open again, so close once more between the two.
@@ -710,7 +711,7 @@ narration. Panorama search now runs in the browser: see entry 32.*
   `backend/tests/test_wsgi.py::test_the_wsgi_callable_serves_a_request` is
   **skipped** here; it has never run. `a2wsgi` does not run the ASGI
   lifespan, which is why `app.state.cfg` is set in `create_app`'s body.
-- **Close it:** `docs/DEPLOY.md` step 3: on the host, the test must show as
+- **Close it:** `docs/DEPLOY.md` step 7: on the host, the test must show as
   **passed, not skipped**.
 
 ## 34. The deploy pipeline
@@ -726,7 +727,7 @@ narration. Panorama search now runs in the browser: see entry 32.*
 - **Also unproven:** that `uv sync` re-resolving in CI produces a working
   environment, since `backend/uv.lock` is stale (it does not mention
   `a2wsgi`).
-- **Close it:** `docs/DEPLOY.md`.
+- **Close it:** `docs/DEPLOY.md` steps 3 to 6 (and step 10 for production).
 
 ## 35. Sessions across real browsers
 

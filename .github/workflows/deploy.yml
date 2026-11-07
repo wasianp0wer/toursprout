@@ -189,14 +189,18 @@ jobs:
 
       # ---- 5. The host's .env, from secrets ---------------------------------
       # Piped over stdin so the token never appears in a process listing or log.
-      # It overwrites backend/.env on every deploy: any other setting (caps,
-      # SESSIONS_DIR) must be added here, not edited on the host.
-      - name: Write backend/.env
+      # Written ONLY WHEN ABSENT: backend/.env is host-owned state. The first
+      # deploy bootstraps it; later deploys leave it alone, so a SESSIONS_DIR or
+      # a lowered cap the operator added survives (rsync already excludes .env
+      # for the same reason). The cost: a rotated MAPILLARY_TOKEN secret is NOT
+      # picked up; edit backend/.env on the host. stdin is drained when skipping
+      # so the pipe never breaks.
+      - name: Write backend/.env (only if absent)
         env:
           MAPILLARY_TOKEN: ${{ secrets.MAPILLARY_TOKEN }}
         run: |
           printf 'MAPILLARY_TOKEN=%s\n' "$MAPILLARY_TOKEN" \
-            | ssh deploy-host "umask 077 && cat > '$DEPLOY_DIR/backend/.env'"
+            | ssh deploy-host "umask 077 && if [ -e '$DEPLOY_DIR/backend/.env' ]; then cat > /dev/null; echo 'backend/.env already exists on the host: left alone (token and other settings NOT updated).'; else cat > '$DEPLOY_DIR/backend/.env' && echo 'backend/.env did not exist: created it.'; fi"
 
       # ---- 6. Install dependencies on the host and restart Passenger --------
       # UNPROVEN guess about the host: CloudLinux is believed to keep each app's

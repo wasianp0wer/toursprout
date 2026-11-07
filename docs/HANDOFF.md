@@ -695,7 +695,7 @@ not keep in another.
 
 - **The drop zone was the hole in the one-tour guarantee.** `new` and the
   examples route both 409 while a tour is open, because replacing
-  `content/work/` throws away the author's only copy of an unexported tour.
+  the session directory throws away the author's only copy of an unexported tour.
   `POST /api/session/import-files` did not, so a drop onto a *stale* welcome
   screen — a second tab left showing the front door — replaced the first
   tab's tour silently. It now refuses in the same words.
