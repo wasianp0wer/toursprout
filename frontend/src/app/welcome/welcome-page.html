@@ -67,6 +67,27 @@
         <button type="submit" data-new-tour [disabled]="busy()">Start it</button>
       </form>
 
+      <!-- Where a historian whose browser forgot them comes back in. It lives
+           on this screen, not the editor, because the editor is only reached
+           with a tour open and this is the only screen reached with none:
+           exactly the state a lost cookie leaves behind. -->
+      <form class="choice" (submit)="$event.preventDefault(); reattach()">
+        <h2>Recover a tour</h2>
+        <label>
+          Recovery key
+          <input
+            type="text"
+            data-recovery-key-input
+            placeholder="16 characters"
+            autocomplete="off"
+            spellcheck="false"
+            [value]="recoveryKey()"
+            (input)="recoveryKey.set($any($event.target).value)"
+          />
+        </label>
+        <button type="submit" data-reattach [disabled]="busy()">Open it</button>
+      </form>
+
       <!-- No examples configured is the normal state, and the screen reads
            correctly without this block: the drop zone and the new tour are
            both still here. -->

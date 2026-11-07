@@ -8,9 +8,10 @@ import tempfile
 from dataclasses import asdict
 from email.utils import parsedate
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import (
+    Body,
     Depends,
     FastAPI,
     Form,
@@ -248,6 +249,25 @@ def current_session(request: Request) -> Session:
     return session
 
 
+def _set_sid_cookie(response: Response, sid: str) -> None:
+    response.set_cookie(
+        SID_COOKIE, sid, max_age=COOKIE_MAX_AGE, path="/",
+        # HttpOnly: no frontend code reads the sid, so script has no reason
+        # to see it. Lax, not Strict: a historian following a link to their
+        # own tour must arrive already attached to it.
+        #
+        # Secure unconditionally, rather than from `request.url.scheme`.
+        # The host serves HTTPS, and Chrome and Firefox accept a Secure
+        # cookie on `http://localhost`, so `ng serve` still works. Deriving
+        # it from the scheme looks more accommodating and is the worse
+        # trade: Passenger terminates TLS upstream, so the scheme this
+        # process sees can be "http" on a request the browser made over
+        # HTTPS, and the flag would then be dropped in production — exactly
+        # where it matters — to spare a local-development inconvenience.
+        httponly=True, secure=True, samesite="lax",
+    )
+
+
 def mint_session(request: Request, response: Response) -> Session:
     """`current_session`, except that an absent session is created here.
 
@@ -269,23 +289,23 @@ def mint_session(request: Request, response: Response) -> Session:
     sid = new_sid()
     session = Session(session_dir(cfg.sessions_dir, sid))
     session.write_config(_viewer_config(cfg))
-    response.set_cookie(
-        SID_COOKIE, sid, max_age=COOKIE_MAX_AGE, path="/",
-        # HttpOnly: no frontend code reads the sid, so script has no reason
-        # to see it. Lax, not Strict: a historian following a link to their
-        # own tour must arrive already attached to it.
-        #
-        # Secure unconditionally, rather than from `request.url.scheme`.
-        # The host serves HTTPS, and Chrome and Firefox accept a Secure
-        # cookie on `http://localhost`, so `ng serve` still works. Deriving
-        # it from the scheme looks more accommodating and is the worse
-        # trade: Passenger terminates TLS upstream, so the scheme this
-        # process sees can be "http" on a request the browser made over
-        # HTTPS, and the flag would then be dropped in production — exactly
-        # where it matters — to spare a local-development inconvenience.
-        httponly=True, secure=True, samesite="lax",
-    )
+    _set_sid_cookie(response, sid)
     return session
+
+
+def _with_recovery_key(session: Session) -> dict:
+    """The session summary, plus the key to get back to it.
+
+    The directory name IS the sid (`session_dir` is the only thing that
+    builds it), and the sid is the recovery key by design, so the key is read
+    off the path rather than threaded through from the cookie. A closed
+    session has none: there is nothing to recover, and handing out a key for
+    an empty directory would invite someone to write down nothing.
+    """
+    summary = session.summary()
+    if summary["open"]:
+        summary["recoveryKey"] = session.path.name
+    return summary
 
 
 CurrentSession = Annotated[Session, Depends(current_session)]
@@ -334,7 +354,40 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     @app.get("/api/session")
     def get_session(session: MintedSession) -> dict:
-        return session.summary()
+        return _with_recovery_key(session)
+
+    @app.post("/api/session/reattach", dependencies=[Depends(_reject_cross_site)])
+    def reattach_session(request: Request, response: Response,
+                         body: Annotated[Any, Body()] = None) -> dict:
+        """Point this browser at an existing tour, by its recovery key.
+
+        Neither session dependency fits: this route must not mint (an
+        unknown key opens nothing), and its job is to REPLACE what the cookie
+        names. So it reads the cookie itself.
+
+        An open tour is refused first, before the key is even looked at: the
+        only thing a reattach does to the caller is drop the cookie that
+        reaches their current session, and that is the one tour the caller
+        may not be able to get back. Neither refusal below echoes the key,
+        and nothing here logs it.
+        """
+        mine = _session_for(cfg, request.cookies.get(SID_COOKIE))
+        if mine is not None and mine.is_open:
+            raise HTTPException(
+                status_code=409,
+                detail="a tour is already open; export it first, or close it "
+                       "before using a recovery key",
+            )
+        key = body.get("key") if isinstance(body, dict) else None
+        if not isinstance(key, str) or not valid_sid(key):
+            raise HTTPException(status_code=400, detail="that is not a recovery key")
+        target = Session(session_dir(cfg.sessions_dir, key))
+        if not target.is_open:
+            raise HTTPException(
+                status_code=404, detail="there is no tour with that recovery key"
+            )
+        _set_sid_cookie(response, key)
+        return _with_recovery_key(target)
 
     @app.delete("/api/session", dependencies=[Depends(_reject_cross_site)])
     def close_session(session: CurrentSession) -> dict:

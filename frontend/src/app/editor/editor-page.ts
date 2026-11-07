@@ -64,6 +64,9 @@ export class EditorPage {
    * dialog says comes from the live draft.
    */
   protected readonly mediaCount = signal(0);
+  /** The key that names this session on the server, shown so a historian
+   * can write it down and get back to the tour if the browser forgets them. */
+  protected readonly recoveryKey = signal<string | null>(null);
 
   constructor() {
     void this.init();
@@ -83,6 +86,7 @@ export class EditorPage {
         return;
       }
       this.mediaCount.set(summary.mediaCount ?? 0);
+      this.recoveryKey.set(summary.recoveryKey ?? null);
       await this.openDocument();
     } catch (err) {
       this.error.set(initFailureMessage(err));
@@ -104,6 +108,15 @@ export class EditorPage {
     this.store.load(tour);
     this.autosave.start();
     this.open.set(true);
+  }
+
+  protected async copyRecoveryKey(): Promise<void> {
+    // Best effort: the field is selectable, so a browser that refuses the
+    // clipboard (an insecure context, a denied permission) still leaves the
+    // key copyable by hand.
+    try {
+      await navigator.clipboard.writeText(this.recoveryKey() ?? '');
+    } catch { /* copy it from the field */ }
   }
 
   protected askToClose(): void {

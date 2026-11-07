@@ -472,3 +472,125 @@ def test_tour_data_media_still_revalidates_and_ranges_together(client, cfg):
         "Range": "bytes=10-19", "If-None-Match": '"nope"'})
     assert part.status_code == 206
     assert part.content == payload[10:20]
+
+
+# --- the recovery key (task 7) -------------------------------------------
+
+
+def test_the_summary_carries_the_recovery_key(client):
+    client.post("/api/session/new", json={"title": "T"})
+    summary = client.get("/api/session").json()
+    assert valid_sid(summary["recoveryKey"])
+    assert summary["recoveryKey"] == client.cookies[SID_COOKIE]
+
+
+def test_a_closed_summary_carries_no_recovery_key(client):
+    """Nothing is open, so there is nothing to recover and nothing to write
+    down; the key is only shown for a tour that exists."""
+    assert client.get("/api/session").json() == {"open": False}
+
+
+def test_reattaching_reopens_the_same_tour_from_a_fresh_browser(cfg):
+    a = TestClient(create_app(cfg), base_url=HTTPS)
+    a.post("/api/session/new", json={"title": "Lost"})
+    key = a.get("/api/session").json()["recoveryKey"]
+
+    # A new laptop: it has already visited, so it holds a cookie of its own
+    # for an empty session, which reattaching must replace.
+    b = TestClient(create_app(cfg), base_url=HTTPS)
+    b.get("/api/session")
+    own = b.cookies[SID_COOKIE]
+    assert own != key
+
+    r = b.post("/api/session/reattach", json={"key": key})
+    assert r.status_code == 200
+    assert r.json()["title"] == "Lost"
+    assert r.cookies[SID_COOKIE] == key
+    assert b.get("/api/session").json()["title"] == "Lost"
+    assert b.get("/api/session").json()["recoveryKey"] == key
+
+
+def test_reattaching_works_with_no_cookie_at_all(cfg):
+    a = TestClient(create_app(cfg), base_url=HTTPS)
+    a.post("/api/session/new", json={"title": "Lost"})
+    key = a.cookies[SID_COOKIE]
+
+    b = TestClient(create_app(cfg), base_url=HTTPS)
+    assert SID_COOKIE not in b.cookies
+    assert b.post("/api/session/reattach", json={"key": key}).status_code == 200
+    assert b.get("/api/session").json()["title"] == "Lost"
+    # It joined the existing directory; it did not mint another.
+    assert len(list(cfg.sessions_dir.iterdir())) == 1
+
+
+def test_an_unknown_key_is_404_and_opens_nothing(client, cfg):
+    r = client.post("/api/session/reattach", json={"key": "0123456789abcdef"})
+    assert r.status_code == 404
+    assert r.json()["detail"] == "there is no tour with that recovery key"
+    assert "set-cookie" not in r.headers
+    assert client.get("/api/session").json()["open"] is False
+    assert not (cfg.sessions_dir / "0123456789abcdef").exists()
+
+
+def test_a_key_naming_a_closed_session_is_404(cfg):
+    """A directory with no tour in it (a visit that never opened one) is not
+    something to attach to: the historian would be handed a blank tour's
+    worth of nothing and could mistake it for a recovered one."""
+    a = TestClient(create_app(cfg), base_url=HTTPS)
+    a.get("/api/session")
+    b = TestClient(create_app(cfg), base_url=HTTPS)
+    r = b.post("/api/session/reattach", json={"key": a.cookies[SID_COOKIE]})
+    assert r.status_code == 404
+
+
+@pytest.mark.parametrize("bad", ["", "..", "a/b", "nope", "0123456789ABCDEF",
+                                 "0123456789abcdef\n", 12345, None, ["x"]])
+def test_a_malformed_key_is_400(client, cfg, bad):
+    r = client.post("/api/session/reattach", json={"key": bad})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "that is not a recovery key"
+    assert "set-cookie" not in r.headers
+    assert client.get("/api/session").json()["open"] is False
+
+
+@pytest.mark.parametrize("body", [{}, [], "x"])
+def test_a_body_without_a_key_is_400(client, body):
+    assert client.post("/api/session/reattach", json=body).status_code == 400
+
+
+def test_a_refusal_never_echoes_the_key(client):
+    hostile = "<script>alert(1)</script>"
+    r = client.post("/api/session/reattach", json={"key": hostile})
+    assert hostile not in r.text
+
+
+def test_reattaching_refuses_to_discard_an_open_tour(cfg):
+    a = TestClient(create_app(cfg), base_url=HTTPS)
+    a.post("/api/session/new", json={"title": "Lost"})
+    key = a.cookies[SID_COOKIE]
+
+    b = TestClient(create_app(cfg), base_url=HTTPS)
+    b.post("/api/session/new", json={"title": "Mine"})
+    mine = b.cookies[SID_COOKIE]
+
+    r = b.post("/api/session/reattach", json={"key": key})
+    assert r.status_code == 409
+    assert "export it first" in r.json()["detail"]
+    assert "set-cookie" not in r.headers
+    assert b.cookies[SID_COOKIE] == mine
+    assert b.get("/api/session").json()["title"] == "Mine"
+
+
+def test_the_409_comes_before_the_key_is_looked_at(client):
+    """An open tour is refused whatever the key says, so a mistyped attempt
+    teaches nothing about which keys exist."""
+    client.post("/api/session/new", json={"title": "Mine"})
+    for key in ("0123456789abcdef", "nope"):
+        assert client.post("/api/session/reattach", json={"key": key}).status_code == 409
+
+
+def test_reattach_is_refused_cross_site(client, cfg):
+    r = client.post("/api/session/reattach", json={"key": "0123456789abcdef"},
+                    headers={"Sec-Fetch-Site": "cross-site"})
+    assert r.status_code == 403
+    assert "set-cookie" not in r.headers

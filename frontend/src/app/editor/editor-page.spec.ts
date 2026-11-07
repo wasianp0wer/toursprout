@@ -87,6 +87,26 @@ describe('EditorPage', () => {
     fixture.detectChanges();
   }
 
+  it('shows the recovery key where it can be read and copied', async () => {
+    await mountOpen({ ...OPEN, recoveryKey: '0123456789abcdef' });
+
+    const field = q('[data-recovery-key]') as HTMLInputElement;
+    expect(field.value).toBe('0123456789abcdef');
+    // Readonly rather than text: selectable and copyable, not editable.
+    expect(field.readOnly).toBe(true);
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    q('[data-copy-recovery-key]')!.click();
+    await settle();
+    expect(writeText).toHaveBeenCalledWith('0123456789abcdef');
+  });
+
+  it('shows no recovery key when the backend sent none', async () => {
+    await mountOpen();
+    expect(q('[data-recovery-key]')).toBeNull();
+  });
+
   it('shows the loading state before the session responds', () => {
     create();
     expect(el.textContent).toContain('Loading the editor');

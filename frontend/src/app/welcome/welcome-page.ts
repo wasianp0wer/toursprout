@@ -79,6 +79,7 @@ export class WelcomePage {
   /** Highlights the drop zone while something is over it. */
   protected readonly over = signal(false);
   protected readonly newTitle = signal('');
+  protected readonly recoveryKey = signal('');
 
   constructor() {
     void this.loadExamples();
@@ -218,6 +219,21 @@ export class WelcomePage {
     // editor opens, so an empty box is not worth refusing over.
     const title = this.newTitle().trim() || 'Untitled tour';
     await this.open(() => this.api.newTour(title));
+  }
+
+  /**
+   * Reattach to a tour by the key shown in its editor. Trimmed and
+   * lower-cased, because the key is copied off paper and the server's
+   * whitelist is lowercase hex only: a stray space or a capital is the
+   * likeliest mistake and not worth a round trip to be refused for. Anything
+   * else wrong with it is the server's to say, in its own words.
+   */
+  protected async reattach(): Promise<void> {
+    if (this.busy()) return;
+    const key = this.recoveryKey().trim().toLowerCase();
+    if (!key) return;
+    this.reset();
+    await this.open(() => this.api.reattach(key));
   }
 
   protected async openExample(id: string): Promise<void> {

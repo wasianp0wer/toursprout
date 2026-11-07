@@ -193,4 +193,22 @@ describe('SessionApi', () => {
     http.expectOne('/api/session/import-files').error(new ProgressEvent('error'));
     await expect(c).rejects.toThrow(/could not reach/i);
   });
+
+  it('reattaches by recovery key and returns the summary', async () => {
+    const promise = api.reattach('0123456789abcdef');
+    const req = http.expectOne('/api/session/reattach');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ key: '0123456789abcdef' });
+    req.flush({ open: true, title: 'Lost', recoveryKey: '0123456789abcdef' });
+    expect((await promise).title).toBe('Lost');
+  });
+
+  it('rejects a reattach with the backend\'s own words', async () => {
+    const promise = api.reattach('0123456789abcdef');
+    const rejects = expect(promise).rejects.toThrow('there is no tour with that recovery key');
+    http.expectOne('/api/session/reattach').flush(
+      { detail: 'there is no tour with that recovery key' },
+      { status: 404, statusText: 'Not Found' });
+    await rejects;
+  });
 });

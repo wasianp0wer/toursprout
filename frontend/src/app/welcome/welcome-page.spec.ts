@@ -182,6 +182,51 @@ describe('WelcomePage', () => {
     expect(navigate).toHaveBeenCalledWith(['/edit']);
   });
 
+  it('reattaches a tour by its recovery key and goes to the editor', async () => {
+    await mount([]);
+
+    const input = q('[data-recovery-key-input]') as HTMLInputElement;
+    // Typed the way it is copied off paper: stray spaces, capitals.
+    input.value = '  0123456789ABCDEF ';
+    input.dispatchEvent(new Event('input'));
+    await settle();
+    q('[data-reattach]')!.click();
+    await settle();
+
+    const req = http.expectOne('/api/session/reattach');
+    expect(req.request.body).toEqual({ key: '0123456789abcdef' });
+    req.flush({ open: true, title: 'Lost', recoveryKey: '0123456789abcdef' });
+    await settle();
+
+    expect(navigate).toHaveBeenCalledWith(['/edit']);
+  });
+
+  it('shows the backend\'s refusal of a recovery key and stays put', async () => {
+    await mount([]);
+
+    const input = q('[data-recovery-key-input]') as HTMLInputElement;
+    input.value = '0123456789abcdef';
+    input.dispatchEvent(new Event('input'));
+    q('[data-reattach]')!.click();
+    await settle();
+
+    http.expectOne('/api/session/reattach').flush(
+      { detail: 'there is no tour with that recovery key' },
+      { status: 404, statusText: 'Not Found' });
+    await settle();
+
+    expect(q('[data-error]')?.textContent).toContain('there is no tour with that recovery key');
+    expect(navigate).not.toHaveBeenCalled();
+    expect((q('[data-reattach]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('does not send an empty recovery key', async () => {
+    await mount([]);
+    q('[data-reattach]')!.click();
+    await settle();
+    http.expectNone('/api/session/reattach');
+  });
+
   it('sends a dropped .zip to the bundle route', async () => {
     await mount([]);
     const zip = new File(['z'], 'tour.zip', { type: 'application/zip' });
