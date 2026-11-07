@@ -16,7 +16,12 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from .bundle import BUNDLE_VERSION, read_bundle
+from .bundle import (
+    BUNDLE_VERSION,
+    DEFAULT_MAX_BUNDLE_BYTES,
+    DEFAULT_MAX_ENTRIES,
+    read_bundle,
+)
 from .media_store import orphan_ids
 from .migration import migrate
 from .models import SCHEMA_VERSION, Tour
@@ -155,10 +160,18 @@ class Session:
         _atomic_write_text(self.path / "tour.json", json.dumps(doc, indent=2) + "\n")
         return tour
 
-    def replace_from(self, zip_path: Path) -> list[str]:
+    def replace_from(
+        self,
+        zip_path: Path,
+        *,
+        max_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+        max_entries: int = DEFAULT_MAX_ENTRIES,
+    ) -> list[str]:
         """Import a bundle. read_bundle validates into staging and only then
         swaps, so a failure here leaves the open document exactly as it was."""
-        return read_bundle(zip_path, self.path)
+        return read_bundle(
+            zip_path, self.path, max_bytes=max_bytes, max_entries=max_entries
+        )
 
     def write_config(self, cfg: dict) -> None:
         """Persist the viewer's config atomically — see `_atomic_write_text`.

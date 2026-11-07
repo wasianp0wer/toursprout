@@ -35,8 +35,10 @@ BUNDLE_VERSION = 1
 
 # A tour is a few hundred kB of document and some tens of MB of media. These
 # caps are far above anything legitimate and far below anything that hurts.
-MAX_TOTAL_BYTES = 512 * 1024 * 1024
-MAX_ENTRIES = 5000
+# Defaults only: `Settings.max_bundle_bytes` / `max_bundle_entries` are the live
+# caps, passed down from the routes. Not `media_store.DEFAULT_MAX_SESSION_BYTES`.
+DEFAULT_MAX_BUNDLE_BYTES = 512 * 1024 * 1024
+DEFAULT_MAX_ENTRIES = 5000
 
 
 class BundleError(Exception):
@@ -138,7 +140,13 @@ def _safe_media_name(name: str) -> Path:
     return rel
 
 
-def read_bundle(zip_path: Path, dest: Path) -> list[str]:
+def read_bundle(
+    zip_path: Path,
+    dest: Path,
+    *,
+    max_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+    max_entries: int = DEFAULT_MAX_ENTRIES,
+) -> list[str]:
     """Extract and validate a bundle into `dest`. Returns warnings.
 
     `dest` is only touched once everything has been checked, so a failed
@@ -152,17 +160,22 @@ def read_bundle(zip_path: Path, dest: Path) -> list[str]:
 
     with zipfile.ZipFile(zip_path) as zf:
         infos = zf.infolist()
-        _check_safe(infos)
+        _check_safe(infos, max_bytes=max_bytes, max_entries=max_entries)
 
         with tempfile.TemporaryDirectory() as staging_name:
             staging = Path(staging_name)
-            _extract_safely(zf, staging)
+            _extract_safely(zf, staging, max_bytes=max_bytes)
             warnings = _validate_tree(staging)
             _swap_in(staging, Path(dest))
     return warnings
 
 
-def _check_safe(infos: list[zipfile.ZipInfo]) -> None:
+def _check_safe(
+    infos: list[zipfile.ZipInfo],
+    *,
+    max_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+    max_entries: int = DEFAULT_MAX_ENTRIES,
+) -> None:
     """Cheap, metadata-only checks, run before a single byte is read from the
     archive. These catch an HONESTLY declared bomb or an obviously unsafe
     name for free, but `ZipInfo.file_size` is attacker-controlled — nothing
@@ -171,15 +184,15 @@ def _check_safe(infos: list[zipfile.ZipInfo]) -> None:
     enforcement. `_extract_safely` is what actually enforces the cap, by
     counting real bytes as they are written.
     """
-    if len(infos) > MAX_ENTRIES:
+    if len(infos) > max_entries:
         raise BundleError(
-            f"too many entries in the archive: {len(infos)}, limit {MAX_ENTRIES}"
+            f"too many entries in the archive: {len(infos)}, limit {max_entries}"
         )
     total = sum(i.file_size for i in infos)
-    if total > MAX_TOTAL_BYTES:
+    if total > max_bytes:
         raise BundleError(
             f"archive is too large uncompressed: {total} bytes, "
-            f"limit {MAX_TOTAL_BYTES}"
+            f"limit {max_bytes}"
         )
     for info in infos:
         name = info.filename
@@ -199,10 +212,15 @@ def _check_safe(infos: list[zipfile.ZipInfo]) -> None:
             raise BundleError(f"unsafe archive entry (escapes the bundle): {name}")
 
 
-def _extract_safely(zf: zipfile.ZipFile, staging: Path) -> None:
+def _extract_safely(
+    zf: zipfile.ZipFile,
+    staging: Path,
+    *,
+    max_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+) -> None:
     """Extract entry by entry, counting actual decompressed bytes as they
     are written, aborting the moment the running total exceeds
-    `MAX_TOTAL_BYTES`.
+    `max_bytes`.
 
     `_check_safe`'s size check sums `ZipInfo.file_size` — metadata an
     attacker controls — and is only an early-out for an HONESTLY declared
@@ -237,10 +255,10 @@ def _extract_safely(zf: zipfile.ZipFile, staging: Path) -> None:
                     if not chunk:
                         break
                     total += len(chunk)
-                    if total > MAX_TOTAL_BYTES:
+                    if total > max_bytes:
                         raise BundleError(
                             "archive is too large uncompressed (streamed): "
-                            f"exceeded {MAX_TOTAL_BYTES} bytes while "
+                            f"exceeded {max_bytes} bytes while "
                             f"extracting {info.filename!r} — its declared "
                             "size cannot be trusted"
                         )

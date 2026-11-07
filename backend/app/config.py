@@ -5,6 +5,9 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .bundle import DEFAULT_MAX_BUNDLE_BYTES, DEFAULT_MAX_ENTRIES
+from .media_store import DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_SESSION_BYTES
+
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 REPO_DIR = BACKEND_DIR.parent
 
@@ -36,6 +39,17 @@ class Settings(BaseSettings):
     # key on paper, so it is kept long.
     session_retention_days_without_tour: int = Field(default=1, gt=0)
     session_retention_days_with_tour: int = Field(default=90, gt=0)
+
+    # Resource caps. The defaults are the values these had as module
+    # constants, so nothing changes until the host's `.env` lowers one. Four
+    # limits, two of them easy to confuse: the media total is per SESSION
+    # (everything under one tour's media/), the bundle size is per ARCHIVE
+    # (uncompressed, on import). Positive-only, so a typo is an error at
+    # startup rather than a server that refuses every upload.
+    max_media_file_bytes: int = Field(default=DEFAULT_MAX_FILE_BYTES, gt=0)
+    max_session_media_bytes: int = Field(default=DEFAULT_MAX_SESSION_BYTES, gt=0)
+    max_bundle_bytes: int = Field(default=DEFAULT_MAX_BUNDLE_BYTES, gt=0)
+    max_bundle_entries: int = Field(default=DEFAULT_MAX_ENTRIES, gt=0)
 
 
 settings = Settings()

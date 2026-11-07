@@ -46,8 +46,11 @@ _MAGIC: list[tuple[bytes, str]] = [
     (b"\x1a\x45\xdf\xa3", "audio/webm"),
 ]
 
-MAX_FILE_BYTES = 64 * 1024 * 1024
-MAX_TOTAL_BYTES = 1024 * 1024 * 1024
+# Defaults only: `Settings.max_media_file_bytes` / `max_session_media_bytes` are
+# the live caps, and the routes pass them to `store_media`. Not to be confused
+# with `bundle.DEFAULT_MAX_BUNDLE_BYTES`, a different limit.
+DEFAULT_MAX_FILE_BYTES = 64 * 1024 * 1024
+DEFAULT_MAX_SESSION_BYTES = 1024 * 1024 * 1024
 
 # Hex characters of the content hash in an id. Normally the first; the longer
 # ones exist only so that a (practically impossible) collision between two
@@ -121,11 +124,21 @@ def _total_bytes(media_dir: Path) -> int:
     return sum(p.stat().st_size for p in media_dir.rglob("*") if p.is_file())
 
 
-def store_media(work: Path, data: bytes, original_name: str) -> str:
-    """Store `data` under a server-chosen id and return it."""
-    if len(data) > MAX_FILE_BYTES:
+def store_media(
+    work: Path,
+    data: bytes,
+    original_name: str,
+    *,
+    max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
+    max_session_bytes: int = DEFAULT_MAX_SESSION_BYTES,
+) -> str:
+    """Store `data` under a server-chosen id and return it.
+
+    The caps are parameters so this stays independent of `Settings`; the
+    routes pass the configured ones."""
+    if len(data) > max_file_bytes:
         raise MediaError(
-            f"that file is {len(data)} bytes; the limit is {MAX_FILE_BYTES}"
+            f"that file is {len(data)} bytes; the limit is {max_file_bytes}"
         )
     _kind, ext = sniff(data)
 
@@ -142,10 +155,10 @@ def store_media(work: Path, data: bytes, original_name: str) -> str:
                 if existing.is_file() and existing.read_bytes() == data:
                     return existing.name
 
-        if _total_bytes(media_dir) + len(data) > MAX_TOTAL_BYTES:
+        if _total_bytes(media_dir) + len(data) > max_session_bytes:
             raise MediaError(
                 "this tour's media would exceed "
-                f"{MAX_TOTAL_BYTES} bytes; remove something first"
+                f"{max_session_bytes} bytes; remove something first"
             )
 
         # Never overwrite a different file that already holds this id.

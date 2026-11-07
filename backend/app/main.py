@@ -29,10 +29,8 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.staticfiles import NotModifiedResponse
 
-from . import media_store, tools
+from . import tools
 from .bundle import (
-    MAX_ENTRIES,
-    MAX_TOTAL_BYTES,
     BundleError,
     missing_media,
     write_bundle,
@@ -379,7 +377,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
                 declared = int(request.headers.get("content-length", "0"))
             except ValueError:
                 declared = 0
-            if declared > media_store.MAX_FILE_BYTES + 1024 * 1024:
+            if declared > cfg.max_media_file_bytes + 1024 * 1024:
                 return Response(
                     content='{"detail":"that upload is too large"}',
                     status_code=413, media_type="application/json",
@@ -546,7 +544,11 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
                 status_code=400, detail=f"could not save the upload: {exc}"
             ) from exc
         try:
-            warnings = session.replace_from(staged)
+            warnings = session.replace_from(
+                staged,
+                max_bytes=cfg.max_bundle_bytes,
+                max_entries=cfg.max_bundle_entries,
+            )
         except BundleError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         finally:
@@ -602,27 +604,27 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         #
         # `>=`, not `>`: `stage_bundle_root` adds a `bundle.json` beside the
         # `tour.json`, so N parts become an archive of N + 1 entries. At
-        # exactly `MAX_ENTRIES` a `>` test passed the drop through and
+        # exactly `max_bundle_entries` a `>` test passed the drop through and
         # `read_bundle` then refused it at 5001 — which is the expensive
         # refusal this check exists to avoid, at the one count where it was
         # still reachable.
-        if len(files) >= MAX_ENTRIES:
+        if len(files) >= cfg.max_bundle_entries:
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"too many files in the drop: {len(files)}, "
-                    f"limit {MAX_ENTRIES - 1} (the bundle's own "
+                    f"limit {cfg.max_bundle_entries - 1} (the bundle's own "
                     "bundle.json takes the last of the "
-                    f"{MAX_ENTRIES} entries an archive may hold)"
+                    f"{cfg.max_bundle_entries} entries an archive may hold)"
                 ),
             )
         total = sum(_part_size(f) for f in files)
-        if total > MAX_TOTAL_BYTES:
+        if total > cfg.max_bundle_bytes:
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"that drop is too large: {total} bytes, "
-                    f"limit {MAX_TOTAL_BYTES}"
+                    f"limit {cfg.max_bundle_bytes}"
                 ),
             )
         fd, tmp_name = tempfile.mkstemp(suffix=".zip")
@@ -630,7 +632,11 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         staged = Path(tmp_name)
         try:
             stage_loose_bundle([(f.filename or "", f.file) for f in files], staged)
-            warnings = session.replace_from(staged)
+            warnings = session.replace_from(
+                staged,
+                max_bytes=cfg.max_bundle_bytes,
+                max_entries=cfg.max_bundle_entries,
+            )
         except BundleError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except OSError as exc:
@@ -671,17 +677,19 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
                 raise HTTPException(
                     status_code=400, detail=f"could not save the upload: {exc}"
                 ) from exc
-            if staged.stat().st_size > media_store.MAX_FILE_BYTES:
+            if staged.stat().st_size > cfg.max_media_file_bytes:
                 raise HTTPException(
                     status_code=400,
                     detail=(
                         "that file is over the "
-                        f"{media_store.MAX_FILE_BYTES} byte limit"
+                        f"{cfg.max_media_file_bytes} byte limit"
                     ),
                 )
             try:
                 media_id = store_media(
-                    session.path, staged.read_bytes(), file.filename or ""
+                    session.path, staged.read_bytes(), file.filename or "",
+                    max_file_bytes=cfg.max_media_file_bytes,
+                    max_session_bytes=cfg.max_session_media_bytes,
                 )
             except MediaError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
