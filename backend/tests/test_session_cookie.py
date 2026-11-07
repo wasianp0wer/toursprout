@@ -121,9 +121,19 @@ def test_a_resolved_session_is_not_re_minted(client):
 
 
 def test_a_cookie_whose_directory_is_gone_reads_as_closed(client, cfg):
+    """Closed, and still the SAME session: a re-minted one would also answer
+    `{"open": false}`, so without the sid assertions this would only prove
+    "not a 500". Keeping the sid is what task 7's recovery key depends on —
+    a historian whose directory was swept must still be able to read their
+    key back, not be silently handed a new one."""
     client.post("/api/session/new", json={"title": "T"})
+    before = client.cookies[SID_COOKIE]
     shutil.rmtree(cfg.sessions_dir)
-    assert client.get("/api/session").json() == {"open": False}   # not a 500
+
+    r = client.get("/api/session")
+    assert r.json() == {"open": False}   # not a 500
+    assert "set-cookie" not in r.headers
+    assert client.cookies[SID_COOKIE] == before
 
 
 def test_a_forged_sid_is_refused(client):
@@ -395,3 +405,70 @@ def test_tour_data_reports_a_browser_recognised_content_type(client, cfg):
         r = client.get(f"/tour-data/media/{name}")
         assert r.status_code == 200
         assert r.headers["content-type"] == expected, name
+
+
+def test_tour_data_answers_304_to_a_validator_it_advertised(client, cfg):
+    """`FileResponse` sends `ETag` and `Last-Modified` but ignores them on
+    the way back, where the `StaticFiles` mount answered 304. On shared
+    hosting with a media-heavy tour that meant every editor reload
+    re-transferred every panorama and audio clip."""
+    client.post("/api/session/new", json={"title": "T"})
+    first = client.get("/tour-data/tour.json")
+    assert first.status_code == 200
+    etag = first.headers["etag"]
+
+    again = client.get("/tour-data/tour.json", headers={"If-None-Match": etag})
+    assert again.status_code == 304
+    assert again.content == b""
+    assert again.headers["etag"] == etag
+    assert again.headers["x-content-type-options"] == "nosniff"
+
+    # A weak validator, and one inside a list, are the same file.
+    assert client.get("/tour-data/tour.json",
+                      headers={"If-None-Match": f"W/{etag}"}).status_code == 304
+    assert client.get("/tour-data/tour.json",
+                      headers={"If-None-Match": f'"other", {etag}'}).status_code == 304
+
+    # A stale validator still gets the body.
+    stale = client.get("/tour-data/tour.json", headers={"If-None-Match": '"nope"'})
+    assert stale.status_code == 200
+    assert stale.json()["title"] == "T"
+
+
+def test_tour_data_answers_304_to_if_modified_since(client, cfg):
+    """The mount honoured this one too, so it is not dropped on the way."""
+    client.post("/api/session/new", json={"title": "T"})
+    first = client.get("/tour-data/tour.json")
+    last_modified = first.headers["last-modified"]
+
+    r = client.get("/tour-data/tour.json",
+                   headers={"If-Modified-Since": last_modified})
+    assert r.status_code == 304
+    assert r.content == b""
+
+    # An etag that does not match wins over a satisfied If-Modified-Since,
+    # per RFC 9110: the stronger validator decides, so this is a 200.
+    both = client.get("/tour-data/tour.json", headers={
+        "If-None-Match": '"nope"', "If-Modified-Since": last_modified})
+    assert both.status_code == 200
+
+    old = client.get("/tour-data/tour.json",
+                     headers={"If-Modified-Since": "Thu, 01 Jan 1970 00:00:00 GMT"})
+    assert old.status_code == 200
+
+
+def test_tour_data_media_still_revalidates_and_ranges_together(client, cfg):
+    """A matching etag answers 304 even alongside `Range`, and the range
+    still works when the validator does not match."""
+    client.post("/api/session/new", json={"title": "T"})
+    payload = bytes(range(256)) * 4
+    (session_path(client, cfg) / "media" / "clip.bin").write_bytes(payload)
+    etag = client.get("/tour-data/media/clip.bin").headers["etag"]
+
+    assert client.get("/tour-data/media/clip.bin", headers={
+        "Range": "bytes=10-19", "If-None-Match": etag}).status_code == 304
+
+    part = client.get("/tour-data/media/clip.bin", headers={
+        "Range": "bytes=10-19", "If-None-Match": '"nope"'})
+    assert part.status_code == 206
+    assert part.content == payload[10:20]

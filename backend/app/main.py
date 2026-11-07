@@ -3,8 +3,10 @@ from __future__ import annotations
 import mimetypes
 import os
 import shutil
+import stat as stat_module
 import tempfile
 from dataclasses import asdict
+from email.utils import parsedate
 from pathlib import Path
 from typing import Annotated
 
@@ -20,7 +22,9 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import NotModifiedResponse
 
 from . import media_store, tools
 from .bundle import (
@@ -123,6 +127,35 @@ def _part_size(part: UploadFile) -> int:
         part.file.seek(here)
 
 
+def _not_modified(request_headers: Headers, response_headers: MutableHeaders) -> bool:
+    """Whether the client already has this exact file.
+
+    The same two comparisons `StaticFiles.is_not_modified` makes, written
+    out here because the tour-data route answers from `FileResponse`
+    directly and no longer has a `StaticFiles` instance to ask.
+
+    `If-None-Match` wins outright when it is present, and `If-Modified-Since`
+    is then ignored, which is what RFC 9110 §13.1.3 requires: a browser
+    holding both sends both, and the etag is the stronger of the two. The
+    header is a comma-separated list, and `W/` marks a weak validator —
+    which for a whole file is the same file, so the prefix is stripped
+    rather than treated as a mismatch.
+    """
+    if_none_match = request_headers.get("if-none-match")
+    if if_none_match:
+        etag = response_headers.get("etag")
+        return etag is not None and etag in [
+            tag.strip().removeprefix("W/") for tag in if_none_match.split(",")
+        ]
+    if_modified_since = parsedate(request_headers.get("if-modified-since", ""))
+    last_modified = parsedate(response_headers.get("last-modified", ""))
+    return (
+        if_modified_since is not None
+        and last_modified is not None
+        and if_modified_since >= last_modified
+    )
+
+
 def _viewer_config(cfg: Settings) -> dict:
     """What the viewer needs, identical in the editor and in a published site.
 
@@ -202,11 +235,16 @@ def current_session(request: Request) -> Session:
     that every cookieless caller shares, which is the collision this task
     exists to remove. This path is never created and never sent back in a
     cookie, so nothing can land in it or be read out of it.
+
+    It goes through `session_dir` like every other path, rather than being
+    joined by hand: `session_dir` is the one place that knows how a sid
+    becomes a directory, and a second spelling here would quietly stop
+    agreeing with it the day that layout changes.
     """
     cfg: Settings = request.app.state.cfg
     session = _session_for(cfg, request.cookies.get(SID_COOKIE))
     if session is None:
-        return Session(cfg.sessions_dir / new_sid())
+        return Session(session_dir(cfg.sessions_dir, new_sid()))
     return session
 
 
@@ -632,7 +670,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     # SPA's index.html fallback.
     @app.api_route("/tour-data/{path:path}", methods=["GET", "HEAD"],
                    name="tour-data")
-    def tour_data(path: str, session: CurrentSession) -> Response:
+    def tour_data(path: str, request: Request, session: CurrentSession) -> Response:
         """Serve this session's directory at the same relative path a
         published site uses, so the viewer has exactly one set of URLs and no
         deployment detection.
@@ -644,14 +682,17 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         a 404. Minting here would mean the eager viewer's two `tour-data/`
         fetches each made a session on the first page load.
 
-        `FileResponse` keeps the two things the mount gave for free: Range
-        (the narration audio needed it; the historians' own recorded audio
-        needs it as much) and a content type from `mimetypes`, including the
-        two overrides pinned at the top of this module. nosniff is set by
-        hand here; it is defence in depth for a polyglot file that slipped
-        past the upload sniffing, and a belt for the editor only, since a
-        published static host sets its own headers.
+        `FileResponse` keeps two of the three things the mount gave for
+        free: Range (the narration audio needed it; the historians' own
+        recorded audio needs it as much) and a content type from
+        `mimetypes`, including the two overrides pinned at the top of this
+        module. The third, 304 revalidation, it does NOT keep, so it is
+        restored by hand below. nosniff is set by hand too; it is defence in
+        depth for a polyglot file that slipped past the upload sniffing, and
+        a belt for the editor only, since a published static host sets its
+        own headers.
         """
+        found = None
         try:
             # Resolved and checked before anything is opened, the way
             # `examples.py`'s `_inside` does it. `session.path / path` is
@@ -661,14 +702,41 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             # siblings, so it is also what stops `../<other sid>/tour.json`.
             root = session.path.resolve()
             target = (session.path / path).resolve()
-            inside = target.is_relative_to(root) and target.is_file()
+            if target.is_relative_to(root):
+                # Stat ONCE, and hand the result to `FileResponse`, the way
+                # the `StaticFiles` mount did. Deciding with `is_file()` and
+                # letting `FileResponse` stat again left a window in which a
+                # file removed between the two turned into a `RuntimeError`
+                # — a 500 where the author should have had this 404.
+                st = target.stat()
+                if stat_module.S_ISREG(st.st_mode):
+                    found = (target, st)
         except (OSError, ValueError):
-            # A path pathlib or the filesystem will not even look at: an
-            # embedded NUL, or a component past NAME_MAX. A 404, not a 500.
-            inside = False
-        if not inside:
+            # A path pathlib or the filesystem will not even look at (an
+            # embedded NUL, a component past NAME_MAX), or one that has just
+            # stopped existing. A 404, not a 500.
+            found = None
+        if found is None:
             raise HTTPException(status_code=404)
-        return FileResponse(target, headers={"X-Content-Type-Options": "nosniff"})
+        target, st = found
+
+        response = FileResponse(target, stat_result=st,
+                                headers={"X-Content-Type-Options": "nosniff"})
+        # `FileResponse` advertises `ETag` and `Last-Modified` but ignores
+        # the validators a client sends back, so every editor reload
+        # re-transferred every panorama and audio clip in the tour. The
+        # `StaticFiles` mount answered 304 here. Advertising a validator and
+        # then ignoring it is silent waste, and this deploys to shared
+        # hosting with CPU and bandwidth limits.
+        if _not_modified(request.headers, response.headers):
+            # Starlette's own 304, so the header whitelist is the one the
+            # mount used; nosniff is re-added because the mount's wrapper
+            # put it on its 304s too, even though a bodyless response has
+            # nothing to sniff.
+            not_modified = NotModifiedResponse(response.headers)
+            not_modified.headers["X-Content-Type-Options"] = "nosniff"
+            return not_modified
+        return response
 
     _mount_frontend(app, cfg)
     return app
