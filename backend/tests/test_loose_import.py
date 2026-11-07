@@ -12,15 +12,19 @@ from app.bundle import BundleError
 from app.config import Settings
 from app.loose_import import _media_name
 from app.main import create_app
+from app.sessions import SID_COOKIE
 
 from .test_bundle import JPEG, _minimal_doc
 
 
 @pytest.fixture
 def client(tmp_path):
-    cfg = Settings(content_dir=tmp_path, frontend_dist=tmp_path / "nodist",
+    cfg = Settings(content_dir=tmp_path, sessions_dir=tmp_path / "sessions",
+                   frontend_dist=tmp_path / "nodist",
                    mapillary_token="test-token")
-    with TestClient(create_app(cfg)) as c:
+    # https, because the session cookie is `Secure` and a cookiejar will not
+    # send one over an insecure request — see test_session_cookie.py.
+    with TestClient(create_app(cfg), base_url="https://testserver") as c:
         yield c
 
 
@@ -44,7 +48,8 @@ def test_preserves_nested_media_paths(client, tmp_path):
         ("files", ("media/pano/p.jpg", JPEG, "image/jpeg")),
     ])
     assert res.status_code == 200
-    assert (tmp_path / "work" / "media" / "pano" / "p.jpg").is_file()
+    sid = client.cookies[SID_COOKIE]
+    assert (tmp_path / "sessions" / sid / "media" / "pano" / "p.jpg").is_file()
 
 
 def test_tour_json_may_arrive_after_the_media(client):

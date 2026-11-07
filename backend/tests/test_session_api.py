@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app import main as main_module
 from app.config import Settings
 from app.main import create_app
+from app.sessions import SID_COOKIE
 
 
 @pytest.fixture
@@ -18,9 +19,12 @@ def client(tmp_path):
     # frontend_dist is pinned at a path that does not exist so these tests
     # never depend on whether `make build` has been run. The
     # publish-without-a-build test relies on this.
-    cfg = Settings(content_dir=tmp_path, frontend_dist=tmp_path / "nodist",
+    cfg = Settings(content_dir=tmp_path, sessions_dir=tmp_path / "sessions",
+                   frontend_dist=tmp_path / "nodist",
                    mapillary_token="test-token")
-    with TestClient(create_app(cfg)) as c:
+    # https, because the session cookie is `Secure` and a cookiejar will not
+    # send one over an insecure request — see test_session_cookie.py.
+    with TestClient(create_app(cfg), base_url="https://testserver") as c:
         yield c
 
 
@@ -42,8 +46,11 @@ def client_with_frontend(tmp_path):
     (frontend_dist / "index.html").write_text("<html>SPA shell</html>")
     (frontend_dist / "app.js").write_text("console.log('stub asset');")
     cfg = Settings(content_dir=tmp_path / "content",
+                   sessions_dir=tmp_path / "sessions",
                    frontend_dist=frontend_dist, mapillary_token="test-token")
-    with TestClient(create_app(cfg)) as c:
+    # https, because the session cookie is `Secure` and a cookiejar will not
+    # send one over an insecure request — see test_session_cookie.py.
+    with TestClient(create_app(cfg), base_url="https://testserver") as c:
         yield c
 
 
@@ -429,9 +436,14 @@ def test_publish_without_a_build_is_a_409(client):
 
 @pytest.fixture
 def media_dir(client_with_frontend, tmp_path):
-    """Opens a session and returns (client, its media directory)."""
+    """Opens a session and returns (client, its media directory).
+
+    Read off the client's own cookie: there is no longer one shared working
+    directory to name, and naming the wrong session's would make every
+    range and content-type test below 404 instead of failing honestly."""
     client_with_frontend.post("/api/session/new", json={"title": "My Tour"})
-    return client_with_frontend, tmp_path / "content" / "work" / "media"
+    sid = client_with_frontend.cookies[SID_COOKIE]
+    return client_with_frontend, tmp_path / "sessions" / sid / "media"
 
 
 @pytest.fixture

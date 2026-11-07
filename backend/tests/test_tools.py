@@ -33,7 +33,8 @@ OVERPASS = {"elements": [
 
 @pytest.fixture
 def client(tmp_path):
-    cfg = Settings(content_dir=tmp_path, frontend_dist=tmp_path / "nodist",
+    cfg = Settings(content_dir=tmp_path, sessions_dir=tmp_path / "sessions",
+                   frontend_dist=tmp_path / "nodist",
                    mapillary_token="test-token")
     with TestClient(create_app(cfg)) as c:
         yield c

@@ -11,6 +11,7 @@ def _settings(tmp_path, dist):
     return Settings(
         mapillary_token="MLY|t",
         content_dir=tmp_path,
+        sessions_dir=tmp_path / "sessions",
         frontend_dist=dist,
     )
 
