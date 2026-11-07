@@ -29,6 +29,13 @@ OVERPASS_MIRRORS = [
     "https://overpass.osm.jp/api/interpreter",
 ]
 
+# Reachability probes for /api/diagnostics/egress. Short on purpose: a
+# diagnostic that hangs is useless, and a silently dropped SYN is the failure
+# being looked for.
+MAPILLARY_PROBE_URL = "https://graph.mapillary.com/"
+LOC_PROBE_URL = "https://www.loc.gov/"
+EGRESS_TIMEOUT = 8.0
+
 # Per-request timeouts, seconds. Overpass is per mirror, with a total budget.
 # The 45 s figures come from ONE observation: the live run measured Overpass
 # at 34-42 s per query (and one 502). A too-generous timeout costs a slower

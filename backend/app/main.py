@@ -7,11 +7,13 @@ import shutil
 import stat as stat_module
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from email.utils import parsedate
 from pathlib import Path
 from typing import Annotated, Any
 
+import httpx
 from fastapi import (
     Body,
     Depends,
@@ -706,6 +708,27 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     def _tool_client(timeout: float):
         return tools.make_client(getattr(app.state, "http_transport", None), timeout)
+
+    @app.get("/api/diagnostics/egress")
+    def egress_diagnostic() -> dict:
+        # Asks the application itself, from its own user context, which
+        # outside hosts it can reach: a cPanel shell is not the Passenger
+        # worker. Any HTTP response (even 403) proves the network path;
+        # only an exception means blocked. One host failing must never hide
+        # the rest, so each is probed independently and in parallel.
+        urls = [tools.MAPILLARY_PROBE_URL, tools.LOC_PROBE_URL, *tools.OVERPASS_MIRRORS]
+
+        def probe(c: httpx.Client, url: str) -> tuple[str, dict]:
+            host = httpx.URL(url).host
+            try:
+                return host, {"status": c.get(url).status_code}
+            except Exception as exc:  # noqa: BLE001 - report, never raise
+                return host, {"error": tools._describe(exc)}
+
+        with (_tool_client(tools.EGRESS_TIMEOUT) as c,
+              ThreadPoolExecutor(max_workers=len(urls)) as pool):
+            results = list(pool.map(lambda u: probe(c, u), urls))
+        return {"hosts": dict(results)}
 
     @app.post("/api/tools/places", dependencies=[Depends(_reject_cross_site)])
     def tool_places(body: tools.PlacesRequest) -> dict:
