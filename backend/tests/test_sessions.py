@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+import shutil
+
 import pytest
 
-from app.sessions import new_sid, session_dir, valid_sid
+from app.sessions import new_sid, session_dir, sweep, valid_sid
 
 
 def test_new_sid_is_sixteen_hex_characters():
@@ -29,3 +32,103 @@ def test_session_dir_refuses_before_touching_the_filesystem(tmp_path, bad):
     with pytest.raises(ValueError):
         session_dir(tmp_path, bad)
     assert list(tmp_path.iterdir()) == []
+
+
+# --- sweep -----------------------------------------------------------------
+
+DAY = 86400
+NOW = 1_800_000_000.0
+
+
+def _make(root, sid, *, tour, age_days, files=("config.json",)):
+    d = root / sid
+    d.mkdir(parents=True)
+    names = list(files) + (["tour.json"] if tour else [])
+    for name in names:
+        (d / name).write_text("{}")
+        os.utime(d / name, (NOW - age_days * DAY,) * 2)
+    os.utime(d, (NOW - age_days * DAY,) * 2)
+    return d
+
+
+def _sweep(root):
+    return sweep(root, without_tour_days=1, with_tour_days=90, now=NOW)
+
+
+def test_sweep_removes_only_the_stale(tmp_path):
+    fresh = _make(tmp_path, "a" * 16, tour=False, age_days=0.5)
+    stale = _make(tmp_path, "b" * 16, tour=False, age_days=2)
+    assert _sweep(tmp_path) == ["b" * 16]
+    assert fresh.exists()
+    assert not stale.exists()
+
+
+def test_sweep_gives_a_tour_the_long_window(tmp_path):
+    kept = _make(tmp_path, "a" * 16, tour=True, age_days=89)
+    gone = _make(tmp_path, "b" * 16, tour=True, age_days=91)
+    assert _sweep(tmp_path) == ["b" * 16]
+    assert kept.exists()
+    assert not gone.exists()
+
+
+def test_sweep_does_not_give_a_directory_without_a_tour_the_long_window(tmp_path):
+    _make(tmp_path, "a" * 16, tour=False, age_days=30)
+    assert _sweep(tmp_path) == ["a" * 16]
+
+
+def test_sweep_measures_the_newest_file_not_the_directory(tmp_path):
+    d = _make(tmp_path, "a" * 16, tour=True, age_days=200, files=("config.json", "x.json"))
+    (d / "media").mkdir()
+    recent = d / "media" / "photo.jpg"
+    recent.write_text("x")
+    os.utime(recent, (NOW - DAY * 5,) * 2)
+    os.utime(d, (NOW - 200 * DAY,) * 2)
+    assert _sweep(tmp_path) == []
+    assert d.exists()
+
+
+def test_sweep_ignores_what_is_not_a_session_directory(tmp_path):
+    stray_file = tmp_path / ("a" * 16)
+    stray_file.write_text("x")
+    os.utime(stray_file, (NOW - 500 * DAY,) * 2)
+    other = tmp_path / "not-a-sid"
+    other.mkdir()
+    os.utime(other, (NOW - 500 * DAY,) * 2)
+    assert _sweep(tmp_path) == []
+    assert stray_file.exists() and other.exists()
+
+
+def test_sweep_of_a_missing_sessions_dir_is_empty(tmp_path):
+    assert _sweep(tmp_path / "nope") == []
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read anything")
+def test_sweep_survives_a_directory_it_cannot_read(tmp_path):
+    locked = _make(tmp_path, "a" * 16, tour=True, age_days=500)
+    stale = _make(tmp_path, "b" * 16, tour=False, age_days=5)
+    locked.chmod(0)
+    try:
+        assert _sweep(tmp_path) == ["b" * 16]
+        assert locked.exists()
+        assert not stale.exists()
+    finally:
+        locked.chmod(0o700)
+
+
+def test_sweep_survives_a_directory_vanishing_mid_sweep(tmp_path, monkeypatch):
+    _make(tmp_path, "a" * 16, tour=False, age_days=5)
+    real = shutil.rmtree
+
+    def vanish(path, *a, **kw):
+        real(path)
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(shutil, "rmtree", vanish)
+    assert _sweep(tmp_path) == ["a" * 16]
+
+
+def test_sweep_does_not_report_what_it_failed_to_remove(tmp_path, monkeypatch):
+    d = _make(tmp_path, "a" * 16, tour=False, age_days=5)
+    monkeypatch.setattr(shutil, "rmtree", lambda *a, **kw: None)
+    assert _sweep(tmp_path) == []
+    assert d.exists()

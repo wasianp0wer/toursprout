@@ -27,5 +27,14 @@ class Settings(BaseSettings):
     # no trace on disk.
     sessions_dir: Path = Path.home() / ".clio-wired" / "sessions"
 
+    # How long an untouched session directory is kept before it is swept.
+    # Two windows, because two kinds of directory: one with no tour.json holds
+    # no authored work and no recovery key anyone was shown (a cookieless
+    # request, or a creating route that failed, mints one that nothing can
+    # reach), so it goes quickly. One with a tour.json may have its recovery
+    # key on paper, so it is kept long.
+    session_retention_days_without_tour: int = 1
+    session_retention_days_with_tour: int = 90
+
 
 settings = Settings()

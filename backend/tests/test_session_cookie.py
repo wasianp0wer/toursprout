@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import zipfile
 
@@ -598,3 +599,49 @@ def test_reattach_is_refused_cross_site(client, cfg):
                     headers={"Sec-Fetch-Site": "cross-site"})
     assert r.status_code == 403
     assert "set-cookie" not in r.headers
+
+
+# --- the sweep, as the first mint triggers it -------------------------------
+
+
+def _stale_dir(cfg, sid="c" * 16):
+    d = cfg.sessions_dir / sid
+    d.mkdir(parents=True)
+    (d / "config.json").write_text("{}")
+    old = 1_000_000_000
+    os.utime(d / "config.json", (old, old))
+    os.utime(d, (old, old))
+    return d
+
+
+def test_the_first_mint_sweeps_an_abandoned_directory(cfg):
+    stale = _stale_dir(cfg)
+    with TestClient(create_app(cfg), base_url=HTTPS) as c:
+        assert c.get("/api/session").status_code == 200
+    assert not stale.exists()
+
+
+def test_only_the_first_mint_in_a_process_sweeps(cfg):
+    with TestClient(create_app(cfg), base_url=HTTPS) as c:
+        c.get("/api/session")
+        stale = _stale_dir(cfg)
+        TestClient(c.app, base_url=HTTPS).get("/api/session")
+        assert stale.exists()
+
+
+def test_a_session_that_resolves_does_not_sweep(cfg):
+    stale = _stale_dir(cfg)
+    with TestClient(create_app(cfg), base_url=HTTPS) as c:
+        c.cookies.set(SID_COOKIE, "d" * 16)
+        c.get("/api/session")
+    assert stale.exists()
+
+
+def test_a_failing_sweep_does_not_fail_the_request(cfg, monkeypatch):
+    def boom(*a, **kw):
+        raise RuntimeError("disk on fire")
+
+    monkeypatch.setattr("app.main.sweep", boom)
+    with TestClient(create_app(cfg), base_url=HTTPS) as c:
+        assert c.get("/api/session").status_code == 200
+        assert SID_COOKIE in c.cookies

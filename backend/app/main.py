@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 import shutil
@@ -42,7 +43,7 @@ from .loose_import import stage_loose_bundle
 from .media_store import MediaError, store_media
 from .publish import PublishError, build_site
 from .session import Session, SessionConflict
-from .sessions import COOKIE_MAX_AGE, SID_COOKIE, new_sid, session_dir, valid_sid
+from .sessions import COOKIE_MAX_AGE, SID_COOKIE, new_sid, session_dir, sweep, valid_sid
 
 # `FileResponse` (which answers the tour-data route below) and `StaticFiles`
 # (which serves the built frontend) both guess content types
@@ -268,6 +269,28 @@ def _set_sid_cookie(response: Response, sid: str) -> None:
     )
 
 
+def _sweep_once(app: FastAPI, cfg: Settings) -> None:
+    """Reclaim abandoned sessions, on the first mint this process sees.
+
+    Once per process, not per request: minting is the hot path of every first
+    page load and a sweep walks every session directory. It runs BEFORE the
+    new directory is made, so it never visits it. The flag is set first, so a
+    failing sweep is not retried on every request. `sweep` does not raise;
+    the guard here is for the settings lookup and anything unforeseen.
+    """
+    if getattr(app.state, "swept", False):
+        return
+    app.state.swept = True
+    try:
+        sweep(
+            cfg.sessions_dir,
+            without_tour_days=cfg.session_retention_days_without_tour,
+            with_tour_days=cfg.session_retention_days_with_tour,
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("session sweep failed")
+
+
 def mint_session(request: Request, response: Response) -> Session:
     """`current_session`, except that an absent session is created here.
 
@@ -286,6 +309,7 @@ def mint_session(request: Request, response: Response) -> Session:
     session = _session_for(cfg, request.cookies.get(SID_COOKIE))
     if session is not None:
         return session
+    _sweep_once(request.app, cfg)
     sid = new_sid()
     session = Session(session_dir(cfg.sessions_dir, sid))
     session.write_config(_viewer_config(cfg))
