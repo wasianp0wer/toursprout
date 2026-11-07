@@ -15,6 +15,7 @@ def test_new_sid_does_not_repeat():
 @pytest.mark.parametrize("bad", [
     "", ".", "..", "../etc", "a/b", "a\\b", "%2e%2e", "A" * 16, "abc",
     "0123456789abcdef0", "0123456789abcde", "0123456789abcdeg", " 0123456789abcdef",
+    "0123456789abcdef\n", "0123456789abcde\x00", "٠" * 16,
 ])
 def test_valid_sid_refuses(bad):
     assert valid_sid(bad) is False
