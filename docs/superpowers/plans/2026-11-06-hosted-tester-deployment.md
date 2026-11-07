@@ -705,7 +705,11 @@ git commit -m "Build, test and ship to the host on a push to main"
 
 **Files:**
 - Create: `docs/DEPLOY.md`, `docs/FOR-HISTORIANS.md`
-- Modify: `docs/UNVERIFIED.md`, `docs/ARCHITECTURE.md`, `README.md`
+- Modify: `docs/UNVERIFIED.md`, `docs/ARCHITECTURE.md`, `README.md`, `docs/HANDOFF.md`, `docs/CHANGING-THINGS.md`
+
+**`docs/HANDOFF.md` is load-bearing and currently broken as printed.** Its curl flow at lines 168-180 is the supported no-browser path, and it was the deciding evidence for the minting boundary in Task 6. Every `curl` invocation is a fresh cookieless client, so `new` followed by `export` now mints twice and 409s. Each line needs `-c cookies.txt -b cookies.txt` (or equivalent) so the session cookie persists across invocations, and the file should say in one line why that is needed now. Verify the corrected flow by actually running it against a local server rather than reasoning about it.
+
+**`docs/CHANGING-THINGS.md:470`** still points at `Settings.work_dir`, which no longer exists — it is `sessions_dir` plus a per-session directory now.
 
 `docs/DEPLOY.md` is the spec §6.6 runbook: numbered host-side steps, each saying what the author should see and what to paste back if they see something else. Cover creating the Python app, setting the Python version, Directory Privacy, AutoSSL, the first rsync, `tmp/restart.txt`, where session directories live, how to back them up, and how to read the Passenger log. First step is the egress diagnostic from Task 10.
 
