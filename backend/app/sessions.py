@@ -83,6 +83,13 @@ def sweep(
     `session.py` imports from this package's layer, and a plain `is_file`
     keeps this module free of it and says exactly what the policy depends on.
 
+    A stale `<sid>.incoming` is reclaimed too, on the short window: it is the
+    staging copy of an import (`bundle._swap_in`) that did not finish, so it
+    holds no reachable work. A `<sid>.outgoing` is deliberately NEVER touched:
+    it holds the tour an import was replacing, which is worth a human looking
+    inside before it goes. Both names fail `valid_sid`, so they are matched
+    here explicitly, and only when the stem is itself a valid sid.
+
     Never raises: anything unreadable, or gone mid-sweep, is skipped.
     """
     removed: list[str] = []
@@ -93,13 +100,20 @@ def sweep(
         return removed
     for entry in entries:
         try:
-            if not valid_sid(entry.name) or entry.is_symlink() or not entry.is_dir():
+            stem, dot, suffix = entry.name.partition(".")
+            is_incoming = dot == "." and suffix == "incoming" and valid_sid(stem)
+            if not (valid_sid(entry.name) or is_incoming):
+                continue
+            if entry.is_symlink() or not entry.is_dir():
                 continue
             path = Path(entry.path)
             newest = _newest_mtime(path)
             if newest is None:
                 continue
-            days = with_tour_days if (path / "tour.json").is_file() else without_tour_days
+            if is_incoming:
+                days = without_tour_days
+            else:
+                days = with_tour_days if (path / "tour.json").is_file() else without_tour_days
             if now - newest <= days * _DAY:
                 continue
             shutil.rmtree(path, ignore_errors=True)

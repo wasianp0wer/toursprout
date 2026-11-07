@@ -412,6 +412,21 @@ Two things to know about a backup:
   extraction preserves them. A backup older than 90 days restored without `-m`
   is deleted by the next sweep.
 
+Two other names can appear in the sessions directory, both left by an import
+(*Import bundle*, *Import files*, or opening an example) that was interrupted by
+a process death part-way through swapping the new tour in:
+
+- `<sid>.incoming` holds the **half-finished new tour** of an import that did
+  not complete. It is garbage. The sweep reclaims it once it is a day stale (the
+  same window as a directory with no `tour.json`), and you may delete it by hand.
+- `<sid>.outgoing` holds the **tour that was being replaced**. The sweep never
+  touches it. Look inside before you delete it: it may be the only copy of a
+  historian's earlier work, and `mv` it back to `<sid>` if the import left that
+  name missing.
+
+Both end up in a `tar` backup of the sessions directory, like everything else
+in it.
+
 Historians can also keep their own copy at any time: *Export bundle* in the
 editor downloads a `.zip`.
 

@@ -467,8 +467,9 @@ repository renders a page, so entries 19 to 22 of
 | the walking and arrival logic | `core/arrival.ts`, `core/tour-store.ts` |
 | the editor's undo, selection or dirty state | `editor/editor-store.ts` |
 | autosave timing or retry | `editor/autosave.ts` |
-| an upload limit or the media id scheme | `backend/app/media_store.py` |
-| import safety limits | `backend/app/bundle.py` (`MAX_TOTAL_BYTES`, `MAX_ENTRIES`) |
+| an upload limit | `backend/app/config.py` (`Settings.max_media_file_bytes`, `max_session_media_bytes`: the live values; `DEFAULT_MAX_FILE_BYTES` and `DEFAULT_MAX_SESSION_BYTES` in `backend/app/media_store.py` are only their defaults) |
+| the media id scheme | `backend/app/media_store.py` |
+| import safety limits | `backend/app/config.py` (`Settings.max_bundle_bytes`, `max_bundle_entries`: the live values; `DEFAULT_MAX_BUNDLE_BYTES` and `DEFAULT_MAX_ENTRIES` in `backend/app/bundle.py` are only their defaults) |
 | a route or its error status | `backend/app/main.py` |
 | where session directories live, how long they are kept, or a resource cap | `backend/app/config.py` (`Settings.sessions_dir`, `session_retention_days_*`, `max_*`); the sid and the sweep are in `backend/app/sessions.py` |
 | the seed tour | `content/source/stops.json`, `content/scripts/build_tour.py` (`make content`); `stops.json` has drifted and `make content` would revert the hand alignment, so see `HANDOFF.md` Outstanding item 2 first |

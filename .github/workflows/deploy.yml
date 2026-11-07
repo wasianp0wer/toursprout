@@ -91,6 +91,11 @@ jobs:
         run: |
           npm ci
           npx ng build
+      # Frontend tests (vitest + jsdom, no browser needed). `ng build` alone
+      # passes with broken behaviour; a failure here stops the deploy.
+      - name: Test the frontend
+        working-directory: frontend
+        run: npx ng test --watch=false
 
       # ---- 2. Backend lint and tests (a failure here stops the deploy) -------
       # Python 3.13: backend/pyproject.toml says `requires-python = ">=3.13"`

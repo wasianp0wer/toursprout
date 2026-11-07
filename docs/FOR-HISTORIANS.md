@@ -25,6 +25,9 @@ the shared password can open your tour, so treat it like a password. A tour
 you have not touched for three months is removed, so export anything you want
 to keep (below).
 
+If the old browser still has the tour open, close that tab: after recovering,
+both are editing the same tour and the last save wins.
+
 Use **one browser tab** for your tour. Two tabs share it, and whichever saves
 last wins.
 

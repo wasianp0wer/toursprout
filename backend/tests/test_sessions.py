@@ -98,6 +98,47 @@ def test_sweep_ignores_what_is_not_a_session_directory(tmp_path):
     assert stray_file.exists() and other.exists()
 
 
+def _staging(root, name, *, age_days):
+    d = root / name
+    d.mkdir()
+    f = d / "tour.json"
+    f.write_text("{}")
+    for p in (f, d):
+        os.utime(p, (NOW - age_days * DAY,) * 2)
+    return d
+
+
+def test_sweep_reclaims_a_stale_incoming_with_a_valid_sid_stem(tmp_path):
+    d = _staging(tmp_path, "a" * 16 + ".incoming", age_days=2)
+    assert _sweep(tmp_path) == ["a" * 16 + ".incoming"]
+    assert not d.exists()
+
+
+def test_sweep_reclaims_a_stale_incoming_on_the_short_window_despite_a_tour_json(tmp_path):
+    d = _staging(tmp_path, "a" * 16 + ".incoming", age_days=30)
+    assert (d / "tour.json").exists()
+    assert _sweep(tmp_path) == ["a" * 16 + ".incoming"]
+
+
+def test_sweep_keeps_a_fresh_incoming_so_a_running_import_survives(tmp_path):
+    d = _staging(tmp_path, "a" * 16 + ".incoming", age_days=0.5)
+    assert _sweep(tmp_path) == []
+    assert d.exists()
+
+
+def test_sweep_keeps_a_stale_outgoing_because_it_holds_a_replaced_tour(tmp_path):
+    d = _staging(tmp_path, "a" * 16 + ".outgoing", age_days=500)
+    assert _sweep(tmp_path) == []
+    assert d.exists()
+
+
+def test_sweep_leaves_an_incoming_whose_stem_is_not_a_sid(tmp_path):
+    odd = _staging(tmp_path, "not-a-sid.incoming", age_days=500)
+    short = _staging(tmp_path, "abc.incoming", age_days=500)
+    assert _sweep(tmp_path) == []
+    assert odd.exists() and short.exists()
+
+
 def test_sweep_of_a_missing_sessions_dir_is_empty(tmp_path):
     assert _sweep(tmp_path / "nope") == []
 
