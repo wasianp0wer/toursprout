@@ -26,19 +26,47 @@ concurrency:
   group: deploy
   cancel-in-progress: false
 
+# Configuration the author must create:
+#   Secrets:   SSH_PRIVATE_KEY, DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH, MAPILLARY_TOKEN
+#   Variables: DEPLOY_HOST_KEY (required), DEPLOY_PORT (optional, default 22)
+# DEPLOY_HOST_KEY is the host's PUBLIC key, which is not secret, hence a
+# variable: the "ssh-ed25519 AAAA..." part of `ssh-keyscan -t ed25519 <host>`
+# (the type and base64 blob, without the leading hostname field). Take it from
+# the host's own console or a network you trust, not from this pipeline.
+
 jobs:
   deploy:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      # Empty on a push, and on a dispatch that left the input blank: both mean
-      # production.
-      TARGET_INPUT: ${{ inputs.target }}
-      PROD_PATH: ${{ secrets.DEPLOY_PATH }}
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
     steps:
+      # Secrets are scoped to the steps that use them, not the job, so an npm
+      # lifecycle script or a test never sees them.
+      - name: Check configuration
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          MAPILLARY_TOKEN: ${{ secrets.MAPILLARY_TOKEN }}
+          DEPLOY_HOST_KEY: ${{ vars.DEPLOY_HOST_KEY }}
+        run: |
+          missing=0
+          for name in SSH_PRIVATE_KEY DEPLOY_HOST DEPLOY_USER DEPLOY_PATH MAPILLARY_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set."
+              missing=1
+            fi
+          done
+          if [ -z "$DEPLOY_HOST_KEY" ]; then
+            echo "::error::Repository variable DEPLOY_HOST_KEY is not set (the host's public key, e.g. 'ssh-ed25519 AAAA...'). It is a variable, not a secret."
+            missing=1
+          fi
+          [ "$missing" = 0 ] || exit 1
+
       - name: Choose the deploy target
+        env:
+          TARGET_INPUT: ${{ inputs.target }}
+          PROD_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           if [ -n "$TARGET_INPUT" ]; then
             echo "DEPLOY_DIR=$TARGET_INPUT" >> "$GITHUB_ENV"
@@ -72,7 +100,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - uses: astral-sh/setup-uv@v5
+      # uv comes from PyPI rather than a third-party action: this job later
+      # holds the SSH key, so it uses as few third-party actions as possible.
+      # Unpinned on purpose for now; pin `uv==X.Y.Z` once a version is known good.
+      - name: Install uv
+        run: python -m pip install uv
 
       # ---- 3. Resolve dependencies and export requirements.txt --------------
       # `uv sync` (not `--frozen`, not `uv lock --check`) because uv.lock is
@@ -95,18 +127,40 @@ jobs:
         run: uv export --no-dev --no-hashes --no-emit-project -o requirements.txt
 
       # ---- 4. Ship ----------------------------------------------------------
+      # The key is written only now, after build and test, so neither ever sees it.
+      # The host key is PINNED from a repository variable. Scanning it here
+      # (ssh-keyscan) would be trust on every use, not first use: the runner is
+      # fresh each time, so anything answering at that address would be
+      # trusted, receive the source and .env, and could report success.
       - name: Set up SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST_KEY: ${{ vars.DEPLOY_HOST_KEY }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
         run: |
           install -d -m 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          # Trust-on-first-use of the host key. Pin it in a secret instead if
-          # that matters more than one fewer thing to set up.
-          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
-          printf 'Host deploy-host\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/deploy_key\n  IdentitiesOnly yes\n' \
-            "$DEPLOY_HOST" "$DEPLOY_USER" > ~/.ssh/config
+          if [ "$DEPLOY_PORT" = 22 ]; then
+            printf '%s %s\n' "$DEPLOY_HOST" "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            printf '[%s]:%s %s\n' "$DEPLOY_HOST" "$DEPLOY_PORT" "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+          fi
+          cat > ~/.ssh/config <<CONFIG
+          Host deploy-host
+            HostName $DEPLOY_HOST
+            Port $DEPLOY_PORT
+            User $DEPLOY_USER
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            BatchMode yes
+            ServerAliveInterval 30
+            ServerAliveCountMax 4
+          CONFIG
 
       # NEVER add `--delete` (or --delete-excluded, --remove-source-files) to
       # these rsyncs. Historians' in-progress tours live in Settings.sessions_dir
@@ -130,7 +184,8 @@ jobs:
           $RSYNC frontend/dist/frontend/browser/ "deploy-host:$DEPLOY_DIR/frontend/dist/frontend/browser/"
           # content/work is the vestigial pre-sessions directory; it is
           # gitignored so absent from a checkout, and excluded as insurance.
-          $RSYNC --exclude 'work' content/ "deploy-host:$DEPLOY_DIR/content/"
+          # Anchored (/work) so it only matches content/work, nothing deeper.
+          $RSYNC --exclude '/work' content/ "deploy-host:$DEPLOY_DIR/content/"
 
       # ---- 5. The host's .env, from secrets ---------------------------------
       # Piped over stdin so the token never appears in a process listing or log.
@@ -144,9 +199,10 @@ jobs:
             | ssh deploy-host "umask 077 && cat > '$DEPLOY_DIR/backend/.env'"
 
       # ---- 6. Install dependencies on the host and restart Passenger --------
-      # CloudLinux keeps each app's virtualenv at ~/virtualenv/<app root
-      # relative to $HOME>/<python version>/. Needs DEPLOY_PATH under $HOME and
-      # the app already created in "Setup Python App" (see the runbook).
+      # UNPROVEN guess about the host: CloudLinux is believed to keep each app's
+      # virtualenv at ~/virtualenv/<app root relative to $HOME>/<python version>/.
+      # This needs DEPLOY_PATH under $HOME and the app already created in
+      # "Setup Python App". If the layout differs, this step fails loudly.
       - name: Install dependencies and restart
         run: |
           ssh deploy-host "bash -s" <<REMOTE
@@ -158,7 +214,10 @@ jobs:
             echo "No virtualenv under ~/virtualenv/\$REL: create the app in Setup Python App first." >&2
             exit 1
           fi
+          # Older virtualenv activate scripts read an unset \$PS1.
+          set +u
           . "\$ACTIVATE"
+          set -u
           pip install -r "\$DIR/backend/requirements.txt"
           mkdir -p "\$DIR/tmp"
           touch "\$DIR/tmp/restart.txt"
