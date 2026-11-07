@@ -6,6 +6,7 @@ import os
 import shutil
 import stat as stat_module
 import tempfile
+import time
 from dataclasses import asdict
 from email.utils import parsedate
 from pathlib import Path
@@ -269,26 +270,35 @@ def _set_sid_cookie(response: Response, sid: str) -> None:
     )
 
 
-def _sweep_once(app: FastAPI, cfg: Settings) -> None:
-    """Reclaim abandoned sessions, on the first mint this process sees.
+SWEEP_INTERVAL_SECONDS = 3600
+_monotonic = time.monotonic  # a seam, so tests move the clock instead of sleeping
 
-    Once per process, not per request: minting is the hot path of every first
-    page load and a sweep walks every session directory. It runs BEFORE the
-    new directory is made, so it never visits it. The flag is set first, so a
-    failing sweep is not retried on every request. `sweep` does not raise;
+
+def _sweep_once(app: FastAPI, cfg: Settings) -> None:
+    """Reclaim abandoned sessions, on a mint, at most once per interval.
+
+    Throttled, not per request: minting is the hot path of every first page
+    load and a sweep walks every session directory. Throttled, not once per
+    process: a long-lived worker would otherwise never sweep again, and the
+    short window would mean nothing. It runs BEFORE the new directory is
+    made, so it never visits it. The timestamp is set first, so a failing
+    sweep is not retried on the next request. `sweep` does not raise;
     the guard here is for the settings lookup and anything unforeseen.
     """
-    if getattr(app.state, "swept", False):
+    now = _monotonic()
+    last = getattr(app.state, "last_sweep", None)
+    if last is not None and now - last < SWEEP_INTERVAL_SECONDS:
         return
-    app.state.swept = True
+    app.state.last_sweep = now
     try:
         sweep(
             cfg.sessions_dir,
             without_tour_days=cfg.session_retention_days_without_tour,
             with_tour_days=cfg.session_retention_days_with_tour,
         )
-    except Exception:
-        logging.getLogger(__name__).exception("session sweep failed")
+    except Exception as exc:  # noqa: BLE001 - housekeeping must never reach a request
+        # Type only, never .exception(): messages and tracebacks can carry a sid.
+        logging.getLogger(__name__).error("session sweep failed: %s", type(exc).__name__)
 
 
 def mint_session(request: Request, response: Response) -> Session:

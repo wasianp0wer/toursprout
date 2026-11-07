@@ -132,3 +132,18 @@ def test_sweep_does_not_report_what_it_failed_to_remove(tmp_path, monkeypatch):
     monkeypatch.setattr(shutil, "rmtree", lambda *a, **kw: None)
     assert _sweep(tmp_path) == []
     assert d.exists()
+
+
+def test_sweep_keeps_a_directory_mid_save_with_a_fresh_temp_file(tmp_path):
+    d = _make(tmp_path, "a" * 16, tour=False, age_days=30)
+    tmp = d / ".tour.json.tmp"
+    tmp.write_text("{}")
+    os.utime(tmp, (NOW - 60,) * 2)
+    assert _sweep(tmp_path) == []
+    assert d.exists()
+
+
+def test_sweep_keeps_a_directory_dated_in_the_future(tmp_path):
+    d = _make(tmp_path, "a" * 16, tour=False, age_days=-10)
+    assert _sweep(tmp_path) == []
+    assert d.exists()

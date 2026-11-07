@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -33,8 +34,8 @@ class Settings(BaseSettings):
     # request, or a creating route that failed, mints one that nothing can
     # reach), so it goes quickly. One with a tour.json may have its recovery
     # key on paper, so it is kept long.
-    session_retention_days_without_tour: int = 1
-    session_retention_days_with_tour: int = 90
+    session_retention_days_without_tour: int = Field(default=1, gt=0)
+    session_retention_days_with_tour: int = Field(default=90, gt=0)
 
 
 settings = Settings()

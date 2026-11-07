@@ -1,8 +1,9 @@
 """Per-browser session ids: minted, validated, and mapped to directories.
 
 No FastAPI. Path building is pure; `sweep` is the one function that touches
-the filesystem. The sid is also a recovery key a historian may type back in, so it is 16 lowercase hex
-characters (64 bits). It names a directory, so it is validated before use.
+the filesystem. The sid is also a recovery key a historian may type back in,
+so it is 16 lowercase hex characters (64 bits). It names a directory, so it
+is validated before use.
 """
 
 from __future__ import annotations
@@ -104,8 +105,9 @@ def sweep(
             shutil.rmtree(path, ignore_errors=True)
         except OSError:
             pass
-        except Exception:  # noqa: BLE001 - housekeeping must never reach a request
-            _log.exception("session sweep failed on one entry")
+        except Exception as exc:  # noqa: BLE001 - housekeeping must never reach a request
+            # Type only, never .exception(): messages and tracebacks can carry a sid.
+            _log.error("session sweep failed on one entry: %s", type(exc).__name__)
         if not os.path.lexists(entry.path):
             removed.append(entry.name)
     return removed

@@ -621,12 +621,21 @@ def test_the_first_mint_sweeps_an_abandoned_directory(cfg):
     assert not stale.exists()
 
 
-def test_only_the_first_mint_in_a_process_sweeps(cfg):
+def test_a_second_mint_within_the_interval_does_not_sweep_but_one_after_does(
+        cfg, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr("app.main._monotonic", lambda: clock[0])
     with TestClient(create_app(cfg), base_url=HTTPS) as c:
         c.get("/api/session")
         stale = _stale_dir(cfg)
-        TestClient(c.app, base_url=HTTPS).get("/api/session")
+        c.cookies.clear()
+        clock[0] += 60
+        c.get("/api/session")
         assert stale.exists()
+        c.cookies.clear()
+        clock[0] += 3600
+        c.get("/api/session")
+        assert not stale.exists()
 
 
 def test_a_session_that_resolves_does_not_sweep(cfg):
@@ -645,3 +654,38 @@ def test_a_failing_sweep_does_not_fail_the_request(cfg, monkeypatch):
     with TestClient(create_app(cfg), base_url=HTTPS) as c:
         assert c.get("/api/session").status_code == 200
         assert SID_COOKIE in c.cookies
+
+
+def test_a_failing_sweep_logs_the_type_and_never_the_sid(cfg, monkeypatch, caplog):
+    sid = "e" * 16
+
+    def boom(*a, **kw):
+        raise RuntimeError(f"cannot read {sid}")
+
+    monkeypatch.setattr("app.main.sweep", boom)
+    with TestClient(create_app(cfg), base_url=HTTPS) as c:
+        c.get("/api/session")
+    assert "RuntimeError" in caplog.text
+    assert sid not in caplog.text
+
+
+def test_a_failing_entry_logs_the_type_and_never_the_sid(tmp_path, monkeypatch, caplog):
+    from app import sessions
+    sid = "f" * 16
+    (tmp_path / sid).mkdir()
+
+    def boom(*a, **kw):
+        raise RuntimeError(f"cannot read {sid}")
+
+    monkeypatch.setattr(sessions, "_newest_mtime", boom)
+    sessions.sweep(tmp_path, without_tour_days=1, with_tour_days=90)
+    assert "RuntimeError" in caplog.text
+    assert sid not in caplog.text
+
+
+@pytest.mark.parametrize("field", [
+    "session_retention_days_with_tour", "session_retention_days_without_tour"])
+@pytest.mark.parametrize("bad", [0, -1])
+def test_a_non_positive_retention_is_refused(tmp_path, field, bad):
+    with pytest.raises(ValueError):
+        Settings(content_dir=tmp_path, sessions_dir=tmp_path / "s", **{field: bad})
