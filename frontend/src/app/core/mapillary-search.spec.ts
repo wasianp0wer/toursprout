@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -81,7 +81,8 @@ describe('rankCandidates', () => {
       imageId: '9', isPano: true, capturedAt: 1700000000000, compassAngle: 123.5,
       thumbUrl: 'https://x/t.jpg',
     });
-    expect(c.distanceM).toBe(Math.round(c.distanceM * 10) / 10);
+    // 0.0001 degrees of longitude at 38.845N is 8.67 m: rounded, 8.7.
+    expect(c.distanceM).toBe(8.7);
   });
 });
 
@@ -123,6 +124,19 @@ describe('MapillarySearch', () => {
       { error: { message: 'Invalid OAuth access token.' } },
       { status: 400, statusText: 'Bad Request' });
     await expect(p).rejects.toThrow('Invalid OAuth access token.');
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('gives up after 15 seconds so the search button is not stuck', async () => {
+    vi.useFakeTimers();
+    config.set({ mapillaryToken: 't' } as never);
+    const p = search.panoramas(1, 2);
+    const assertion = expect(p).rejects.toThrow(/timed out/);
+    http.expectOne((r) => r.url === 'https://graph.mapillary.com/images');
+    await vi.advanceTimersByTimeAsync(14_999);
+    await vi.advanceTimersByTimeAsync(2);
+    await assertion;
   });
 
   it('says so when Mapillary cannot be reached', async () => {

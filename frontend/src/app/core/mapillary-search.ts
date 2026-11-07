@@ -1,9 +1,11 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout, TimeoutError } from 'rxjs';
 import { ConfigStore } from './config-store';
 
 const MAPILLARY_IMAGES = 'https://graph.mapillary.com/images';
+// A stalled connection must not leave the search button disabled until the browser gives up.
+const TIMEOUT_MS = 15_000;
 const FIELDS = 'id,computed_geometry,geometry,is_pano,captured_at,compass_angle,thumb_256_url';
 
 export interface PanoramaCandidate {
@@ -99,7 +101,7 @@ export class MapillarySearch {
     try {
       const res = await firstValueFrom(this.http.get<{ data?: unknown[] }>(MAPILLARY_IMAGES, {
         params: { access_token: token, bbox: bboxAround(lng, lat, radiusM), fields: FIELDS, limit: 500 },
-      }));
+      }).pipe(timeout(TIMEOUT_MS)));
       return rankCandidates(res?.data ?? [], lng, lat, panoOnly, limit);
     } catch (err) {
       throw new Error(mapillaryMessage(err));
@@ -108,6 +110,7 @@ export class MapillarySearch {
 }
 
 function mapillaryMessage(err: unknown): string {
+  if (err instanceof TimeoutError) return 'Mapillary timed out';
   if (err instanceof HttpErrorResponse) {
     if (err.status === 0) return 'could not reach Mapillary';
     const detail = (err.error as { error?: { message?: unknown } } | null)?.error?.message;
