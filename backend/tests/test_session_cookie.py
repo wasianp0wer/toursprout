@@ -550,6 +550,10 @@ def test_a_malformed_key_is_400(client, cfg, bad):
     assert r.status_code == 400
     assert r.json()["detail"] == "that is not a recovery key"
     assert "set-cookie" not in r.headers
+    # Checked BEFORE the GET below, which mints a directory of its own: a
+    # refused key must not have created any session, and `open` is False
+    # for a minted blank one too, so only the directory proves it.
+    assert not cfg.sessions_dir.exists() or list(cfg.sessions_dir.iterdir()) == []
     assert client.get("/api/session").json()["open"] is False
 
 

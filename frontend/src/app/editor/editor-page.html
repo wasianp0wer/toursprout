@@ -22,7 +22,9 @@
           Recovery key
           <input type="text" readonly size="16" aria-label="Recovery key" data-recovery-key [value]="key" (focus)="$any($event.target).select()" />
         </label>
-        <button type="button" class="copy-key" data-copy-recovery-key (click)="copyRecoveryKey()">Copy</button>
+        <button type="button" class="copy-key" data-copy-recovery-key [attr.data-copy-state]="copyState()" (click)="copyRecoveryKey()">{{
+          copyState() === 'copied' ? 'Copied' : copyState() === 'failed' ? 'Select the key and copy it' : 'Copy'
+        }}</button>
       }
       <button type="button" class="close-tour" data-close-tour (click)="askToClose()">Close tour</button>
     </header>

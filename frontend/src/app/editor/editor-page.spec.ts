@@ -38,6 +38,8 @@ describe('EditorPage', () => {
     // pending save would otherwise fire against a TestBed that has already
     // been torn down. A test that closed the tour has stopped it already.
     autosave.stop();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   /** The page's work is promise-based and the app is zoneless, so a
@@ -96,10 +98,33 @@ describe('EditorPage', () => {
     expect(field.readOnly).toBe(true);
 
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-    q('[data-copy-recovery-key]')!.click();
-    await settle();
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    vi.useFakeTimers();
+    const button = q('[data-copy-recovery-key]')!;
+    expect(button.getAttribute('data-copy-state')).toBe('idle');
+    button.click();
+    await vi.advanceTimersByTimeAsync(0);
+    fixture.detectChanges();
     expect(writeText).toHaveBeenCalledWith('0123456789abcdef');
+    expect(button.getAttribute('data-copy-state')).toBe('copied');
+    expect(button.textContent).toContain('Copied');
+
+    await vi.advanceTimersByTimeAsync(2000);
+    fixture.detectChanges();
+    expect(button.getAttribute('data-copy-state')).toBe('idle');
+  });
+
+  it('says so when the clipboard refuses, and leaves the field to copy by hand', async () => {
+    await mountOpen({ ...OPEN, recoveryKey: '0123456789abcdef' });
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    vi.useFakeTimers();
+    const button = q('[data-copy-recovery-key]')!;
+    button.click();
+    await vi.advanceTimersByTimeAsync(0);
+    fixture.detectChanges();
+    expect(button.getAttribute('data-copy-state')).toBe('failed');
+    expect((q('[data-recovery-key]') as HTMLInputElement).value).toBe('0123456789abcdef');
   });
 
   it('shows no recovery key when the backend sent none', async () => {

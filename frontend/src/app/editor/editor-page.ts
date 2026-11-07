@@ -110,13 +110,23 @@ export class EditorPage {
     this.open.set(true);
   }
 
+  /** What the Copy button last did, so success and failure are both visible:
+   * silent success is indistinguishable from silent failure, and this is a
+   * string the historian may have to retype on another laptop. */
+  protected readonly copyState = signal<'idle' | 'copied' | 'failed'>('idle');
+  private copyTimer: ReturnType<typeof setTimeout> | undefined;
+
   protected async copyRecoveryKey(): Promise<void> {
-    // Best effort: the field is selectable, so a browser that refuses the
-    // clipboard (an insecure context, a denied permission) still leaves the
-    // key copyable by hand.
     try {
       await navigator.clipboard.writeText(this.recoveryKey() ?? '');
-    } catch { /* copy it from the field */ }
+      this.copyState.set('copied');
+    } catch {
+      // Unavailable or blocked (an insecure context, a denied permission).
+      // The field is selectable, so the key can still be copied by hand.
+      this.copyState.set('failed');
+    }
+    clearTimeout(this.copyTimer);
+    this.copyTimer = setTimeout(() => this.copyState.set('idle'), 2000);
   }
 
   protected askToClose(): void {
