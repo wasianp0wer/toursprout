@@ -687,7 +687,9 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
                 )
             try:
                 media_id = store_media(
-                    session.path, staged.read_bytes(), file.filename or "",
+                    session.path,
+                    staged.read_bytes(),
+                    file.filename or "",
                     max_file_bytes=cfg.max_media_file_bytes,
                     max_session_bytes=cfg.max_session_media_bytes,
                 )

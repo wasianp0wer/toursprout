@@ -661,6 +661,24 @@ def test_the_route_hands_store_media_the_configured_caps(make_client):
     assert client.get("/api/session").json()["mediaCount"] == 1
 
 
+def test_the_route_hands_store_media_the_configured_file_cap(make_client, monkeypatch):
+    """The route's own pre-check shadows `store_media`'s file cap, so pin the
+    argument itself: a stub records what the route passes."""
+    seen: list[dict] = []
+
+    def stub(*a, **k):
+        seen.append(k)
+        return "x.jpg"
+
+    monkeypatch.setattr("app.main.store_media", stub)
+    client = make_client(max_media_file_bytes=len(JPEG) + 7,
+                         max_session_media_bytes=12345)
+    client.post("/api/session/new", json={"title": "T"})
+    assert client.post("/api/session/media",
+                       files={"file": ("a.jpg", JPEG)}).status_code == 200
+    assert seen == [{"max_file_bytes": len(JPEG) + 7, "max_session_bytes": 12345}]
+
+
 def test_the_file_cap_error_names_the_configured_limit(make_client):
     client = make_client(max_media_file_bytes=len(JPEG) - 1)
     client.post("/api/session/new", json={"title": "T"})

@@ -354,3 +354,16 @@ def test_post_example_refuses_cross_site(client):
                       headers={"Sec-Fetch-Site": "cross-site"})
     assert res.status_code == 403
     assert client.get("/api/session").json() == {"open": False}
+
+
+def test_open_example_honours_the_configured_bundle_caps(cfg, session):
+    """`open_example` goes through `replace_from` like an import does, so an
+    operator's lowered bundle caps apply to it too: no call site is left on
+    the defaults."""
+    from app.bundle import BundleError
+    tight = cfg.model_copy(update={"max_bundle_entries": 1})
+    with pytest.raises(BundleError, match="too many"):
+        open_example(session, tight, SYNTHETIC_ID)
+    small = cfg.model_copy(update={"max_bundle_bytes": 10})
+    with pytest.raises(BundleError, match="too large"):
+        open_example(session, small, SYNTHETIC_ID)
