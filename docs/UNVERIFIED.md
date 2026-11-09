@@ -21,7 +21,7 @@ highest-risk unverified assumption on that branch.** Start there if the
 panorama search does not work on the host.
 
 **The CGI deployment (ADR
-[0007](decisions/0007-serve-it-through-cgi.md)) added entries 37 to 39 and
+[0007](decisions/0007-serve-it-through-cgi.md)) added entries 37 to 40 and
 rewrote 33 and 34.** The host has no Passenger, so the application now runs as
 CGI behind an Apache front controller, and **entry 38 is the one to read
 first**: there is no Apache in the development environment, so the whole of
@@ -846,9 +846,19 @@ into it.*
   files and compares them, and it says so in its own docstring.
 - **What was done instead of running it:** `app/` and `tests/` were read for
   syntax and stdlib newer than 3.9 — PEP 695 generics, `match`, `StrEnum`,
-  `TaskGroup`, `datetime.UTC`, `tomllib`, `@override`, `itertools.batched`,
-  `TypeIs`, `ReadOnly`, `except*` — with no hits. Reading is not running, and
-  this says nothing about the installed dependencies' own floors.
+  `TaskGroup`, `datetime.UTC`, `@override`, `itertools.batched`, `TypeIs`,
+  `ReadOnly`, `except*` — with no hits. Reading is not running, and this says
+  nothing about the installed dependencies' own floors.
+- **One item was wrong and is corrected here**, because a false line in this
+  file is worse than a missing one: this list used to include `tomllib` among
+  the features scanned for and not found. **`tomllib` is used** —
+  `backend/tests/test_versions.py:11` imports it, and `:23` reads
+  `pyproject.toml` with it. The scan predated that file, which the same
+  floor-lowering task created, and was never re-run. No harm done: `tomllib`
+  is **3.11+**, so it is safe under a `>=3.12` floor, and an independent
+  re-scan over `app/`, `tests/` and `content/scripts` turned up nothing newer
+  than 3.9 (the only `.walk(` hit is `os.walk`). The entry stands as
+  unproven for the reason below, not because of this.
 - **Why not here:** the development sandbox has no network and so cannot
   build or fetch a 3.12 interpreter. The suite here runs on 3.14.
 - **Close it, in two steps:** first, **CI** — the deploy workflow's test job
@@ -925,11 +935,15 @@ looked at until it holds.*
     could brush the limit. The symptom would be **sporadic 500s or 508s
     under load**, not a steady failure, which is the hardest kind to
     recognise from a bug report.
-  - **0.36–0.40 s of process start on every dynamic request**, measured once
-    on this host with the app's own imports (ADR 0007's table,
-    `tests/round2/test3.txt`) — single-process and idle, which is the
-    optimistic case. Browsers parallelise, so a stop with a dozen media
-    files should be closer to a second than to five. Should.
+  - **0.35–0.46 s of process start on every dynamic request**, measured once
+    on this host (ADR 0007's table, `tests/round2/test3.txt`) — five runs of
+    the `fastapi` + `pydantic` import, single-process and idle, which is the
+    optimistic case on both counts. Plan around the **0.46 s** ceiling; the
+    tighter 0.36–0.40 s figure that used to stand here belongs to an
+    app-equivalent series that was never committed to a file, so this record
+    cannot vouch for it (ADR 0007 says so at length). Browsers parallelise,
+    so a stop with a dozen media files should be closer to a second than to
+    five. Should.
 - **Why not here:** the number depends on the host's own limits, which are
   not published to the account and cannot be read from a development
   machine. Nothing in the suite can simulate it.
@@ -940,6 +954,54 @@ looked at until it holds.*
   error log*) is where the difference shows. **Engineering around this
   before anyone has used the app would be guessing**, which is why nothing
   was built for it.
+
+## 40. `index.html` on the host has no `no-cache` header any more
+
+*This one is not a question the branch failed to answer; it is a behaviour the
+branch changed without noticing, found in review. It is recorded rather than
+fixed, and the reasoning for not fixing it is below.*
+
+- **What changed:** in development, `_SpaFiles._with_cache_headers`
+  (`backend/app/main.py`) sets `Cache-Control: no-cache, must-revalidate` on
+  `index.html`, and its comment says why: `index.html` names content-hashed
+  bundles, so a cached copy pins the whole application to an old build. That
+  is not hypothetical here — `docs/ENVIRONMENT.md`, *The browser cached
+  index.html and served stale bundles*, records it happening during
+  development and twice leading to wrong conclusions about where a bug was.
+  Under the front controller, rule 3 has **Apache** serve
+  `frontend/dist/frontend/browser/index.html` directly, and Python is never
+  started for it. `.htaccess` sets no `Header` or `Expires` directives, so the
+  file goes out with `ETag` and `Last-Modified` only and the browser applies
+  *heuristic* freshness — its own guess. The header the code deliberately adds
+  is simply absent on the host.
+- **Unproven:** what any real browser then does with it. Nobody has loaded
+  this site from this host, let alone loaded it, redeployed, and loaded it
+  again, which is the only way to see this.
+- **Why it is a watch item and not a fix.** Two accidents of the deploy defuse
+  most of it: `rsync -lt` carries CI's fresh build mtime, so
+  `Date - Last-Modified` is near zero and the heuristic freshness window with
+  it; and no rsync in the workflow passes `--delete`, so the hashed chunks an
+  old `index.html` names are **still on the host** — a stale client keeps
+  running a working older build instead of breaking on a missing chunk. The
+  obvious fix, a `<Files "index.html"> Header set Cache-Control ... </Files>`
+  block, needs `mod_headers`, and **whether this host permits `mod_headers` in
+  `.htaccess` is exactly as unknown as everything in entry 38** — while the
+  penalty for guessing wrong is the one ADR 0007 decision 3 warns about: a
+  directive Apache will not accept is **500 on every URL in the tree**, editor
+  and viewer and API together. A stale page is a worse-than-nothing outcome; a
+  500 tree is a worse-than-stale one. So: no directive.
+- **The symptom to recognise:** after a deploy, a historian sees the *old*
+  application — a fix or a new feature missing, the page otherwise working
+  normally — while someone on a fresh browser sees the new one. That pattern,
+  one person stale and another not, is this entry and not a failed deploy.
+  Check `frontend/dist/frontend/browser/index.html`'s mtime on the host first;
+  if it is new, the deploy worked and the browser is the problem.
+- **The remedy, in order:** a **hard reload** (Shift-reload, or Empty Cache
+  and Hard Reload in devtools) on the affected browser clears it immediately,
+  and that is the whole fix for a six-person tool. Only if it proves to be a
+  recurring, real nuisance is it worth adding the `mod_headers` block — and
+  then it is a step-7-style change: add it, `curl` the site at once, and keep
+  `mv .htaccess .htaccess.broken` on screen first.
 
 ---
 

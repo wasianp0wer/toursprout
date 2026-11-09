@@ -104,6 +104,34 @@ def test_a_percent_encoded_utf8_filename_survives_the_bridge():
         "/tour-data/media/façade one.jpg"
 
 
+def test_the_path_is_percent_decoded_once_and_only_once():
+    """A literal `%` in a filename must still be a literal `%` afterwards.
+
+    `_path_info`'s docstring claims the decoding happens "once and only once",
+    and until this test nothing held it to that: decoding twice left every
+    other test in this file green. The cost would not be a containment hole --
+    the `/tour-data` route resolves the path and re-checks it against the
+    session root, so a traversal 404s however many times it was decoded -- but
+    it would silently 404 a real file that a historian can easily produce.
+
+    The filename here is a literal `fa%C3%A7ade.jpg`: percent, C, 3 as
+    characters in the name, which is what you get by saving a file straight
+    off a web server that had already encoded it. Its URL encodes each `%`
+    again, so the raw path holds `%25`. One decode gives the filename back.
+    Two decodes turn it into `façade.jpg` -- a different, absent file, hence a
+    404 on the owner's own photo.
+
+    Note the trap in testing this: a `%` followed by something that is not two
+    hex digits (`50%25%20off.jpg` -> `50% off.jpg`) is *idempotent* under a
+    second decode, so it cannot catch the bug. The second decode has to find a
+    valid escape to eat.
+    """
+    env = cgi.cgi_environ(
+        {**CGI_ENV, "REQUEST_URI": "/tour-data/media/fa%25C3%25A7ade.jpg"})
+    assert env["PATH_INFO"].encode("latin-1").decode("utf-8") == \
+        "/tour-data/media/fa%C3%A7ade.jpg"
+
+
 def test_without_a_request_uri_path_info_is_left_alone():
     env = cgi.cgi_environ({**CGI_ENV, "PATH_INFO": "/api/health"})
     assert env["PATH_INFO"] == "/api/health"

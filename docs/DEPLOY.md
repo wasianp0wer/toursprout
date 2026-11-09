@@ -153,11 +153,21 @@ and not a long-running `uvicorn`:
 | a background process surviving logout | **no** — `200`, then `000` | nothing long-lived can be kept up | `tests/round1/test2.txt` |
 | `mod_proxy` in `.htaccess` | **no** — the whole site 500s | nothing can be proxied to a local port | `tests/round1/test4.png` |
 | CGI | **yes** — a one-line `t.cgi` printed `cgi ok` | this is the execution model | `tests/round1/test3.txt`, `tests/round1/test3.png` |
-| cold start, the app's own third-party imports | **0.36–0.40 s** over 8 runs | CGI is affordable, as long as Python stays off the static path (step 7) | `tests/round2/test3.txt` |
+| cold start, importing `fastapi` + `pydantic` | **0.35–0.46 s** over 5 runs | CGI is affordable, as long as Python stays off the static path (step 7). **Plan around 0.46 s**, the measured ceiling | `tests/round2/test3.txt` |
 
 The two negative rows are jointly decisive, which is worth knowing if anyone
 later proposes "just run `uvicorn`": the process would be reaped *and* Apache
 would not route to it. Neither can be worked around from inside the account.
+
+**On the cold-start row, because that number gets quoted.** The committed
+evidence is five runs of the `fastapi` + `pydantic` import, and its ceiling is
+0.46 s. An earlier version of this table said "0.36–0.40 s over 8 runs" and
+cited the same file: that range comes from a *second*, app-equivalent import
+series of three runs which was reported in conversation and **never committed**
+anywhere under `docs/tests/`, so it cannot be checked from this repository and
+should not be treated as measured. `docs/tests/README.md` describes both
+series and is the only place that tells them apart. Size anything you plan
+against **0.46 s per dynamic request**, not 0.40 s.
 
 **Three questions are still open, and only cPanel can answer them:**
 
@@ -361,7 +371,16 @@ ones:
   was not done for *this* target, or was done in a different directory. A
   `pip` build error is the other case: paste the whole error, because nothing
   about what `pip install -r requirements.txt` needs on this host is verified
-  beyond `fastapi` and `a2wsgi` installing (step 3).
+  beyond `fastapi` and `a2wsgi` installing (step 3). The surface is as small
+  as it can be made: `requirements.txt` is exported `--no-dev`, and
+  `uvicorn[standard]` — which nothing under `backend/app/` imports, and which
+  only `make serve` ever runs — **was moved out of the runtime dependencies
+  into the `dev` group** for exactly this reason. It used to ship, so every
+  deploy asked the host's pip 23.2.1 to resolve and build uvicorn, uvloop,
+  httptools, watchfiles, websockets and PyYAML for code the CGI path never
+  loads; any one of those missing a cp312 wheel on CloudLinux is a source
+  build, and a source build failing there stopped the whole deploy. What the
+  host installs now is what `app/` actually imports.
 
 Then check on the host, over SSH, that the two files Apache reads arrived with
 the modes it needs:
@@ -416,6 +435,22 @@ not.
 > That command takes the tree straight back to however the host served the
 > directory before, with no deploy and no cPanel. Renaming the file does the
 > same thing and keeps it to read.
+>
+> **Know what that undo costs, because it is not free.** "However the host
+> served the directory before" means: with no `.htaccess` there is no deny and
+> no rewrite, so the whole deploy tree is **statically browsable** — including
+> `backend/.env` with `MAPILLARY_TOKEN` in it, `backend/app/*.py`, `content/`,
+> `.venv/`, and `app.cgi` as text. That is precisely the condition check 6
+> below tells you to treat as a disclosure, and it is why the deploy workflow
+> copies the front controller *before* it writes the token. So: **if the tree
+> was reachable from outside for any length of time, treat the token as
+> disclosed — rotate it in Mapillary and re-write the host's `backend/.env` by
+> hand**, exactly as check 6 says. (The application itself is *not* reachable
+> while the file is gone — no rewrite, so no `/api` — so what is exposed is the
+> source tree and the token, not anyone's tour.) This is the reason to prefer
+> `mv .htaccess .htaccess.broken` and move it straight back: a rename you undo
+> within the minute keeps both the containment and step 8's Directory Privacy
+> password, where `rm -f` needs a redeploy (step 6) to restore either.
 
 **The blast radius, precisely, because the difference matters.** This
 `.htaccess` sits at the subdomain's document root, so what it can break is
@@ -681,7 +716,7 @@ deploys to `DEPLOY_PATH`. Once it is green:
    answer is the largest open risk: `UNVERIFIED.md` entry 32.)
 8. Open the editor with the Network tab recording and watch what a save and a
    media fetch cost. Every request under `/api` and `/tour-data` starts a
-   Python process, measured at **0.36–0.40 s** on this host (step 3); the
+   Python process, measured at **0.35–0.46 s** on this host (step 3); the
    JavaScript and CSS should show no such delay, because Apache answers those
    itself. If the static files *are* slow too, the front controller is not in
    force and step 7's checks were passing for some other reason.
@@ -711,7 +746,7 @@ then says "no Mapillary token is configured".
 | `MAX_BUNDLE_BYTES` | `536870912` (512 MB) | The largest **archive** accepted on import, counted uncompressed. Do not confuse it with the line above: one is per session, one is per archive. |
 | `MAX_BUNDLE_ENTRIES` | `5000` | The most files an imported archive may hold. |
 | `CONTENT_DIR` | derived from where `backend/` sits | Where the examples are read from. The deploy mirrors the repository's layout, so the default is right; do not set it without a reason. |
-| `FRONTEND_DIST` | derived from where `backend/` sits | Where the built frontend is. **Do not set this on the host.** It is read only by code the host never reaches — `_mount_frontend`, which `make serve` uses — because under CGI Apache answers for the bundle before Python is started. `.htaccess` finds the bundle at `%{DOCUMENT_ROOT}/frontend/dist/frontend/browser/`, a literal path that does **not** read this setting, so pointing `FRONTEND_DIST` somewhere else moves the bundle out from under the front controller's rule and nothing tests the two agreeing. The symptom would be `/` and every deep link serving the old bundle (or 500ing) while the API is fine. If the bundle must move, move the rewrite target in `.htaccess` with it — carefully, and see step 7. |
+| `FRONTEND_DIST` | derived from where `backend/` sits | Where the built frontend is. **Do not set this on the host** — and if you set it anyway, make sure it still names the real bundle, because **this setting is read on the host**. `GET /api/session/publish` passes it to `build_site` (`backend/app/main.py:798`), which refuses with `no built application at <dist>: run make build first` (`backend/app/publish.py:28-31`) and becomes a **409**. So the symptom of a wrong value is **Publish failing for every historian** — the end product the whole tool exists to produce — while `/` and every deep link keep working perfectly, because `.htaccess` finds the bundle at the literal `%{DOCUMENT_ROOT}/frontend/dist/frontend/browser/` and does **not** read this setting. Debug a 409 on Publish here, not in `.htaccess`. The two paths can therefore disagree and nothing tests them agreeing, so if the bundle must move, move it in **both** places: the rewrite target in `.htaccess` (carefully, and see step 7) *and* `FRONTEND_DIST`. (`_mount_frontend` is registered on the host too — the directory really is there — but Apache answers for static files first, so it is never reached *for the bundle*. It is still load-bearing: `_SpaFiles`'s `api/` guard is what makes an unmatched `/api/foo` a 404 instead of a 200 serving `index.html`. Do not delete the mount as dead code.) |
 
 The caps are positive-only, so a typo is an error at startup, not a server that
 refuses every upload. `Settings` ignores keys it does not know, so **a
@@ -897,8 +932,9 @@ Lowering `MAX_SESSION_MEDIA_BYTES` is the first remedy.
   confirmed here. If the host refuses it, the right answer is to ask for it:
   without ExecCGI and the `.cgi` handler, Apache serves `app.cgi` as text and
   publishes the one file that names the venv.
-- **Every dynamic request pays a process start: 0.36–0.40 s**, measured on
-  this host (step 3). Autosave, session polling and each media fetch pay it.
+- **Every dynamic request pays a process start: 0.35–0.46 s**, measured on
+  this host (step 3, which says what was and was not measured). Autosave,
+  session polling and each media fetch pay it.
   Browsers parallelise, so a stop with a dozen media files is closer to a
   second than to five. This is accepted for roughly six testers, and it is the
   whole reason Apache serves the bundle itself.

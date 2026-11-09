@@ -46,7 +46,28 @@ and [`../tests/round2/`](../tests/round2/).
 | a background process surviving logout | **no** — `200`, then `000` | nothing long-lived can be kept up | `round1/test2.txt` |
 | `mod_proxy` in `.htaccess` | **no** — the whole site 500s | nothing can be proxied to a local port | `round1/test4.png` |
 | CGI | **yes** — a one-line `t.cgi` printed `cgi ok` | this is the execution model | `round1/test3.txt`, `round1/test3.png` |
-| cold start, the app's own third-party imports | **0.36–0.40 s** over 8 runs | CGI is affordable, if Python stays off the static path | `round2/test3.txt` |
+| cold start, importing `fastapi` + `pydantic` | **0.35–0.46 s** over 5 runs | CGI is affordable, if Python stays off the static path. **0.46 s is the ceiling to plan around** | `round2/test3.txt` |
+
+**The cold-start row is narrower than this document first claimed, and the
+correction is worth spelling out, because that number is load-bearing: it is
+the entire basis for "CGI is affordable."** What is committed is
+`docs/tests/round2/test3.txt`, five lines — `0.35s 0.46s 0.38s 0.38s 0.35s` —
+and that series is the **`fastapi` + `pydantic`** import, not the
+application's full third-party import set. A second series *was* run for the
+app-equivalent set and reported at 0.36–0.40 s over **three** runs, but it
+was **never committed to a file**: it exists only in the conversation that
+produced it, and `docs/tests/README.md` is the only place in the repository
+that distinguishes the two series at all. The earlier "0.36–0.40 s over 8
+runs" in this row conflated them — it took the tighter range from the
+uncommitted series and the run count from neither.
+
+So, plainly: the app-equivalent figure is **unverifiable from this
+repository** and must not be quoted as measured evidence. The checkable
+evidence is five runs whose ceiling is **0.46 s**, 15% above the range this
+document used to quote, and 0.46 s is the number to size a media-heavy stop
+against. The conclusion survives — half a second of process start is still
+affordable for six testers, which is why decision 1 stands — but it survives
+on a looser margin than the old row implied.
 
 The PyPI row deserves its own emphasis, because it could have ended the
 project on this host: egress here is **selective**, not open. 0006's
@@ -88,8 +109,35 @@ same deep-link job `_SpaFiles` does in development.
 
 `_mount_frontend` and `_SpaFiles` stay in the code, untouched. They are what
 makes `make serve` work, and the published-static-site output relies on the
-same layout. Under CGI they are simply never reached, because Apache answers
-first.
+same layout. Under CGI they are never reached **for the bundle**, because
+Apache answers first.
+
+That last sentence needs its qualifier, because without it someone will read
+it as "this code is dead on the host" and delete it. Two ways it is not:
+
+- The mount *is* registered on the host — `frontend/dist/frontend/browser`
+  really exists there — and `_SpaFiles.get_response`'s
+  `path.startswith("api/")` guard is what makes an unmatched `/api/foo`
+  return a 404 rather than a 200 serving `index.html`. That guard is
+  load-bearing on the host even though the static fallback beside it never
+  fires there.
+- `cfg.frontend_dist` is read by the host, in `GET /api/session/publish`:
+  `build_site` needs the bundle to package it, and a wrong path is a **409
+  on Publish**, not a static-serving fault. See the settings table in
+  `docs/DEPLOY.md` — it is the one place `FRONTEND_DIST` matters on this
+  host, and it is not the one an operator would guess.
+
+One behaviour *is* genuinely lost by handing the bundle to Apache, and this
+decision did not notice it at the time: `_SpaFiles` sets `Cache-Control:
+no-cache, must-revalidate` on `index.html` — for a reason recorded in
+`docs/ENVIRONMENT.md`, where a cached `index.html` serving stale bundles was a
+real bug — and Apache serving the file directly sends no such header. It is
+recorded as `UNVERIFIED.md` entry 40, together with the reasoning for **not**
+restoring it with a `mod_headers` directive: `mod_headers` here is as unknown
+as everything else in `.htaccess`, and by decision 3's own warning a directive
+Apache will not accept is 500 on the whole tree. A stale page is the lesser
+failure, and the deploy's own habits (fresh mtimes, no `--delete`) make it
+lesser still.
 
 **`/tour-data/*` stays in Python, deliberately, although serving it
 statically would be faster.** The only thing separating one historian's media
@@ -260,13 +308,21 @@ deploy workflow, that it equals the floor, and that it is the version
 measured on the host.
 
 `app/` and `tests/` were scanned for syntax and stdlib newer than 3.9 — PEP
-695 generics, `match`, `StrEnum`, `TaskGroup`, `datetime.UTC`, `tomllib`,
-`@override`, `itertools.batched`, `TypeIs`, `ReadOnly`, `except*` — with no
-hits. **That is reading, not running.** The development environment has no
-network and cannot build a 3.12 interpreter, so nobody has executed this code
-on 3.12. CI on the pinned version is the first evidence and the host is the
-second, and until one of them is green this is a claim and not a fact
-(`UNVERIFIED.md` entry 37).
+695 generics, `match`, `StrEnum`, `TaskGroup`, `datetime.UTC`, `@override`,
+`itertools.batched`, `TypeIs`, `ReadOnly`, `except*` — with no hits. One
+correction to an earlier version of this list, which named `tomllib` among
+the not-found: **`tomllib` is used.** `backend/tests/test_versions.py` imports
+it to read `pyproject.toml`, and that file was added by this same floor-lowering
+work, after the scan was run and without the scan being re-run. It is fine on
+the merits — `tomllib` landed in **3.11**, below the 3.12 floor — and a later
+re-scan over `app/`, `tests/` and `content/scripts` found nothing newer than
+3.9. But a list of eleven items with one false entry is worth less than the
+ten true ones, so the item is removed rather than left to be discovered.
+**And in any case: that is reading, not running.** The development
+environment has no network and cannot build a 3.12 interpreter, so nobody has
+executed this code on 3.12. CI on the pinned version is the first evidence
+and the host is the second, and until one of them is green this is a claim
+and not a fact (`UNVERIFIED.md` entry 37).
 
 `backend/uv.lock` still records `requires-python = ">=3.13"` and has to be
 regenerated with network access. Until that happens, `make backend-test`
