@@ -100,8 +100,9 @@ jobs:
       # ---- 2. Backend lint and tests (a failure here stops the deploy) -------
       # Python 3.13: backend/pyproject.toml says `requires-python = ">=3.13"`
       # and that must stay. This value MUST match the interpreter the host's
-      # cPanel "Setup Python App" runs. As of writing the host's offered
-      # versions are UNCONFIRMED; check it and change this if it differs.
+      # $DEPLOY_DIR/.venv was built with, because requirements.txt is resolved
+      # here and installed there. As of writing the versions the host offers
+      # are UNCONFIRMED; check it and change this if it differs.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -179,11 +180,17 @@ jobs:
       # content_dir and frontend_dist from the backend's location.
       - name: Copy files to the host
         run: |
-          ssh deploy-host "mkdir -p '$DEPLOY_DIR/backend' '$DEPLOY_DIR/content' '$DEPLOY_DIR/frontend/dist/frontend/browser' '$DEPLOY_DIR/tmp'"
+          ssh deploy-host "mkdir -p '$DEPLOY_DIR/backend' '$DEPLOY_DIR/content' '$DEPLOY_DIR/frontend/dist/frontend/browser'"
           RSYNC="rsync -rlt --itemize-changes -e ssh"
           # --chmod is required: `rsync -rlt` carries no permissions, so
           # without it app.cgi arrives mode 644 and Apache 500s on it.
           $RSYNC --chmod=F755 app.cgi "deploy-host:$DEPLOY_DIR/"
+          # The front controller. It belongs at the document root, beside
+          # app.cgi, because it finds the bundle under %{DOCUMENT_ROOT} and
+          # Apache only reads it for the directory it is in and below. Mode
+          # 644 (whatever the host's umask gives) is right: Apache reads it,
+          # nothing executes it.
+          $RSYNC .htaccess "deploy-host:$DEPLOY_DIR/"
           $RSYNC \
             --exclude '.venv' --exclude '.env' --exclude '__pycache__' \
             --exclude '.pytest_cache' --exclude '.ruff_cache' --exclude 'uv.lock' \
@@ -209,27 +216,34 @@ jobs:
           printf 'MAPILLARY_TOKEN=%s\n' "$MAPILLARY_TOKEN" \
             | ssh deploy-host "umask 077 && if [ -e '$DEPLOY_DIR/backend/.env' ]; then cat > /dev/null; echo 'backend/.env already exists on the host: left alone (token and other settings NOT updated).'; else cat > '$DEPLOY_DIR/backend/.env' && echo 'backend/.env did not exist: created it.'; fi"
 
-      # ---- 6. Install dependencies on the host and restart Passenger --------
-      # UNPROVEN guess about the host: CloudLinux is believed to keep each app's
-      # virtualenv at ~/virtualenv/<app root relative to $HOME>/<python version>/.
-      # This needs DEPLOY_PATH under $HOME and the app already created in
-      # "Setup Python App". If the layout differs, this step fails loudly.
-      - name: Install dependencies and restart
+      # ---- 6. Install dependencies on the host -------------------------------
+      # The venv is at $DEPLOY_DIR/.venv. That is a DEPLOY CONTRACT, not a
+      # guess about the host's layout: app.cgi runs "$(dirname $0)/.venv/bin/
+      # python", the runbook (docs/DEPLOY.md step 4) creates the venv there by
+      # hand once, and the rsyncs above exclude .venv so a deploy never
+      # touches it. The step before this one only ever read a path cPanel's
+      # "Setup Python App" would have created -- a feature this host does not
+      # offer, which is the whole reason the app runs as CGI.
+      #
+      # Nothing is restarted. There is no resident process to restart: Apache
+      # executes app.cgi fresh on every request, so new files are live the
+      # moment rsync finishes. (The `tmp/restart.txt` this step used to touch
+      # was Passenger's signal, and `tmp/` is no longer created at all.)
+      - name: Install dependencies
         run: |
           ssh deploy-host "bash -s" <<REMOTE
           set -euo pipefail
           DIR='$DEPLOY_DIR'
-          REL="\${DIR#\$HOME/}"
-          ACTIVATE="\$(ls -d "\$HOME/virtualenv/\$REL"/*/bin/activate 2>/dev/null | head -n1 || true)"
-          if [ -z "\$ACTIVATE" ]; then
-            echo "No virtualenv under ~/virtualenv/\$REL: create the app in Setup Python App first." >&2
+          VENV="\$DIR/.venv"
+          if [ ! -x "\$VENV/bin/python" ]; then
+            echo "No interpreter at \$VENV/bin/python. Create the virtualenv once, by hand, as described in docs/DEPLOY.md step 4; the deploy installs into it but never creates it." >&2
             exit 1
           fi
-          # Older virtualenv activate scripts read an unset \$PS1.
-          set +u
-          . "\$ACTIVATE"
-          set -u
-          pip install -r "\$DIR/backend/requirements.txt"
-          mkdir -p "\$DIR/tmp"
-          touch "\$DIR/tmp/restart.txt"
+          "\$VENV/bin/pip" install -r "\$DIR/backend/requirements.txt"
+          # NOT redundant with the --chmod=F755 above: --chmod only applies to
+          # files rsync CREATES, so an app.cgi that is already on the host at
+          # mode 644 (an earlier deploy without --chmod, or a hand-edit
+          # through the file manager) would never be repaired, and Apache
+          # answers 500 for every request until it is. Cheap to do every time.
+          chmod 755 "\$DIR/app.cgi"
           REMOTE

@@ -1,0 +1,78 @@
+# The front controller: what Apache answers for, and what the application
+# answers for. This file must sit at the DOCUMENT ROOT of the subdomain, which
+# is the same directory as app.cgi and .venv (docs/DEPLOY.md). Both facts are a
+# deploy contract, not a guess about the host: app.cgi finds the interpreter
+# relative to its own path, and rule 2 below finds the bundle relative to
+# %{DOCUMENT_ROOT}.
+#
+# EDIT THIS FILE WITH CARE. A directive Apache cannot accept here does not
+# break this app; it returns 500 for EVERY page of the whole domain, including
+# the parts that have nothing to do with this deploy. If a change does that,
+# rename the file over SSH or in the cPanel file manager and the domain comes
+# back. Apache 2.4 is assumed (EasyApache 4 has no 2.2 any more), which is what
+# `Require all denied` needs.
+#
+# Options and AddHandler are the one pair that could 500 the domain on a host
+# whose AllowOverride is narrower than cPanel's usual `All`: +ExecCGI needs
+# `AllowOverride Options`, and then the directive itself is the failure, not
+# anything it does. If that happens, ask the host to allow it rather than
+# dropping the line -- without ExecCGI and the handler, app.cgi is served to
+# the browser as text, which would publish the one file that names the venv.
+# -Indexes is defence in depth: rule 3 already means no directory listing is
+# ever generated, but a listing of the deploy tree is exactly the thing this
+# file exists to prevent.
+Options +ExecCGI -Indexes
+AddHandler cgi-script .cgi
+
+# backend/.env holds the Mapillary token. Rule 3 already keeps it off the web,
+# so this block is the belt behind that brace: it still denies the file if the
+# rewrites are ever disabled, reordered, or shadowed by a deeper .htaccess.
+# <Files> in .htaccess applies to this directory AND everything below it, so
+# one block at the document root covers backend/.env.
+<Files ".env">
+  Require all denied
+</Files>
+
+RewriteEngine On
+
+# mod_rewrite in .htaccess context runs this whole ruleset AGAIN on the path a
+# rule produced: [L] ends the current round, not the processing. ([END] would
+# end it outright, but a server that does not know that flag 500s the domain,
+# which is a worse failure than the one it prevents.) So this rule exists to
+# make the second pass a no-op for the two targets the rules below produce.
+# Without it, rule 3 matches `app.cgi` and every rewritten bundle path on the
+# way back round and turns both into index.html -- that is, no API and no
+# JavaScript, with a 200 on every request.
+#
+# It also means a browser can ask for a bundle file by its real path
+# (/frontend/dist/frontend/browser/main.js) as well as its public one
+# (/main.js), and can ask for /app.cgi directly. Both are harmless: the first
+# is the public bundle either way, and the second reaches the application with
+# REQUEST_URI=/app.cgi, which is just another unknown path to it. Nothing else
+# under the document root is matched here.
+RewriteRule ^(app\.cgi|frontend/dist/frontend/browser/) - [L]
+
+# 1. The application. No PATH_INFO is appended on purpose: app.cgi reads the
+#    path from REQUEST_URI, which survives any rewrite. /tour-data stays here
+#    rather than becoming a static alias because the sid in the URL is also
+#    the historian's recovery key: Apache would have to be told which
+#    session directory to serve, and the only way to tell it is to put the
+#    sid in the URL of every image the page loads. The application reads it
+#    from the cookie instead. Every path under these two prefixes pays a
+#    process start; nothing else does.
+RewriteRule ^(api|tour-data)(/|$) app.cgi [QSA,L]
+
+# 2. The built bundle, served by Apache -- the reason a JavaScript chunk does
+#    not pay a 0.4 s process start. The -f test is against the real file, so a
+#    path that is not in the bundle falls through to rule 3 instead of 404ing.
+RewriteCond %{DOCUMENT_ROOT}/frontend/dist/frontend/browser/$1 -f
+RewriteRule ^(.+)$ frontend/dist/frontend/browser/$1 [L]
+
+# 3. Every other path is a deep link into the single-page app -- the job
+#    _SpaFiles does in development. UNCONDITIONAL, which is also what keeps
+#    backend/, content/ and .venv/ off the web: every one of those paths
+#    exists on disk, so the common `RewriteCond %{REQUEST_FILENAME} !-f`
+#    idiom would serve the source and the token instead of the app. Nothing
+#    under the document root is served except the bundle and the two prefixes
+#    above.
+RewriteRule ^ frontend/dist/frontend/browser/index.html [L]
