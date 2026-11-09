@@ -1,10 +1,9 @@
 [project]
 name = "clio-wired-backend"
 version = "0.1.0"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "httpx>=0.28",
@@ -13,7 +12,14 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8.3", "ruff>=0.8"]
+# uvicorn is a development dependency, not a runtime one: nothing under
+# `app/` imports it. The only thing that runs it is the Makefile's `serve`
+# target, which goes through `uv run` and so gets this group by default.
+# Keeping it out of [project.dependencies] keeps uvicorn, uvloop, httptools,
+# watchfiles, websockets and PyYAML out of `uv export --no-dev`, and so off
+# the host, where the CGI path never loads any of them -- and where any one of
+# them lacking a cp312 wheel would build from source and fail the deploy.
+dev = ["pytest>=8.3", "ruff>=0.8", "uvicorn[standard]>=0.32"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

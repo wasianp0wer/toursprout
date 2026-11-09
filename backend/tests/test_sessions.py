@@ -5,7 +5,15 @@ import shutil
 
 import pytest
 
-from app.sessions import new_sid, session_dir, sweep, valid_sid
+from app.sessions import (
+    SWEEP_STAMP,
+    mark_swept,
+    new_sid,
+    session_dir,
+    sweep,
+    sweep_due,
+    valid_sid,
+)
 
 
 def test_new_sid_is_sixteen_hex_characters():
@@ -188,3 +196,55 @@ def test_sweep_keeps_a_directory_dated_in_the_future(tmp_path):
     d = _make(tmp_path, "a" * 16, tour=False, age_days=-10)
     assert _sweep(tmp_path) == []
     assert d.exists()
+
+
+# --- the sweep's throttle, which lives on a file ---------------------------
+
+
+def test_sweep_is_due_when_nothing_has_swept_yet(tmp_path):
+    assert sweep_due(tmp_path, interval_seconds=3600, now=NOW) is True
+
+
+def test_sweep_is_not_due_again_within_the_interval(tmp_path):
+    assert mark_swept(tmp_path, now=NOW) is True
+    assert sweep_due(tmp_path, interval_seconds=3600, now=NOW + 60) is False
+    assert sweep_due(tmp_path, interval_seconds=3600, now=NOW + 3600) is True
+
+
+def test_a_stamp_dated_in_the_future_does_not_suppress_the_sweep(tmp_path):
+    """A host whose clock steps back would otherwise never sweep again."""
+    assert mark_swept(tmp_path, now=NOW + DAY) is True
+    assert sweep_due(tmp_path, interval_seconds=3600, now=NOW) is True
+
+
+def test_marking_creates_the_sessions_dir_it_stamps(tmp_path):
+    assert mark_swept(tmp_path / "sessions", now=NOW) is True
+    assert (tmp_path / "sessions" / SWEEP_STAMP).stat().st_mtime == NOW
+
+
+def test_marking_an_existing_stamp_moves_it_forward(tmp_path):
+    assert mark_swept(tmp_path, now=NOW - DAY) is True
+    assert mark_swept(tmp_path, now=NOW) is True
+    assert (tmp_path / SWEEP_STAMP).stat().st_mtime == NOW
+
+
+def test_marking_reports_failure_instead_of_raising(tmp_path):
+    (tmp_path / "blocked").write_text("I am a file, not a directory")
+    assert mark_swept(tmp_path / "blocked", now=NOW) is False
+
+
+def test_the_stamps_name_cannot_be_mistaken_for_a_session():
+    """`sweep` skips it on `not is_dir()` whatever it is called, so this is
+    the invariant that actually carries weight: `test_session_cookie.py`'s
+    `session_dirs` helper tells the stamp from a session by this predicate
+    and nothing else, so a stamp named like a sid would be counted as one.
+    """
+    assert valid_sid(SWEEP_STAMP) is False
+
+
+def test_the_stamp_is_not_a_session_and_is_never_swept(tmp_path):
+    """It lives in sessions_dir and is older than every window."""
+    assert mark_swept(tmp_path, now=NOW - 400 * DAY) is True
+    _make(tmp_path, "b" * 16, tour=False, age_days=400)
+    assert _sweep(tmp_path) == ["b" * 16]
+    assert (tmp_path / SWEEP_STAMP).exists()

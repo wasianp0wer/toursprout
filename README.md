@@ -26,7 +26,7 @@ author in their own browser: `docs/DEPLOY.md` is the runbook for the host, and
 | Street-level imagery | Mapillary, CC-BY-SA 4.0 |
 | Archival photography | Library of Congress, public domain |
 | Narration | The committed tour's clips were synthesised on macOS and are labelled as synthetic; in the editor, narration is recorded from the microphone |
-| Backend | FastAPI, pydantic, Python 3.13 or newer (`requires-python`; CI and the deploy use 3.13) |
+| Backend | FastAPI, pydantic, Python 3.12 or newer (`requires-python`; CI and the deploy use 3.12) |
 | Frontend | Angular 22, Leaflet 1.9, mapillary-js 4 |
 
 OpenStreetMap has no street-level imagery of its own; that is what Mapillary

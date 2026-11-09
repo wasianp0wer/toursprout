@@ -766,3 +766,90 @@ kept-unchanged tests in Task 3 protect.
 point for Passenger (spec §4); no performance work beyond keeping Python off
 the static path; `_mount_frontend` and `_SpaFiles` stay exactly as they are,
 because `make serve` and the published-site output still use them.
+
+---
+
+## Task 7: A deploy must not remove the shared password
+
+Added after Task 5, which found it. cPanel's *Directory Privacy* protects a
+directory by writing `AuthType`, `AuthName`, `AuthUserFile` and
+`Require valid-user` into **that directory's `.htaccess`**. The directory to
+protect is the subdomain's document root, which is `$DEPLOY_DIR` — so it is
+*our* `.htaccess`, and Task 2's pipeline rsyncs over it unconditionally.
+
+**This branch introduces the regression.** The previous pipeline shipped no
+`.htaccess` at all, so Directory Privacy's file was never touched. As it
+stands, the first deploy after the password is set silently removes it, and
+nothing in the deploy log says so. The shared password is the only thing
+keeping strangers off the editor, where they would spend the Mapillary quota
+and fill the disk.
+
+So the deploy composes the file on the host instead of overwriting it: the
+repository's `.htaccess` plus whatever auth directives the host's copy
+already carries.
+
+**Files:**
+- Create: `deploy/merge-htaccess.sh` (mode 755)
+- Create: `backend/tests/test_merge_htaccess.py`
+- Modify: `.github/workflows/deploy.yml` (rsync `.htaccess` to `.htaccess.new`
+  and the script alongside it; call the script in the install step)
+- Modify: `docs/DEPLOY.md` (step 8 — the `grep` that determines which
+  behaviour this host has can stay, but the "re-check the 401s after every
+  deploy" instruction becomes "the deploy preserves it; here is how to
+  confirm")
+
+**Interfaces:**
+- `deploy/merge-htaccess.sh <dest> <new>`: writes `<dest>` as the contents of
+  `<new>` followed by any auth directives `<dest>` already had, atomically
+  (temp file plus `mv`), and removes `<new>`. Exit non-zero, changing nothing,
+  if `<new>` is missing or `<dest>` exists but cannot be read — losing the
+  password quietly is the failure this task exists to prevent, so it fails
+  loudly instead.
+
+**Why a shipped script rather than inline shell in the workflow:** it can be
+run by a test. A silent loss of access control is exactly the defect that
+should not rest on reasoning about a heredoc.
+
+- [ ] **Step 1: Write the failing tests** in `backend/tests/test_merge_htaccess.py`,
+      driving the script with `subprocess.run(["bash", SCRIPT, dest, new])`.
+
+```python
+CPANEL_AUTH = '''AuthType Basic
+AuthName "Protected"
+AuthUserFile "/home/u/.htpasswds/public_html/tours/passwd"
+Require valid-user
+'''
+
+
+def test_with_no_existing_file_the_repository_version_is_installed(tmp_path): ...
+def test_an_existing_file_without_auth_is_replaced_exactly(tmp_path): ...
+def test_cpanel_auth_directives_survive_a_deploy(tmp_path):
+    # Every one of the four lines, and the rest of the old file gone.
+def test_running_twice_does_not_duplicate_the_auth_block(tmp_path):
+    # The second run reads back the block the first appended.
+def test_indented_and_oddly_cased_directives_are_still_recognised(tmp_path): ...
+def test_an_unreadable_destination_fails_loudly_and_changes_nothing(tmp_path):
+    # chmod 000: non-zero exit, dest untouched, new still present.
+def test_a_missing_new_file_fails_loudly(tmp_path): ...
+def test_the_staging_file_is_removed_on_success(tmp_path): ...
+```
+
+- [ ] **Step 2: Run them to verify they fail** (the script does not exist).
+
+- [ ] **Step 3: Write `deploy/merge-htaccess.sh`.** `set -euo pipefail`;
+      recognise `AuthType`, `AuthName`, `AuthUserFile`, `AuthGroupFile` and
+      `Require valid-user`, case-insensitively, with leading whitespace, via
+      `grep -iE` guarded against a no-match exit; append under a comment
+      saying where the block came from and that the deploy re-reads it.
+
+- [ ] **Step 4: Run the tests to verify they pass**, and `chmod 755` the script.
+
+- [ ] **Step 5: Wire it into the workflow.** `.htaccess` rsyncs to
+      `.htaccess.new`; `deploy/merge-htaccess.sh` rsyncs with `--chmod=F755`;
+      the install step calls it before the `chmod 644`. Keep the `chmod 644`:
+      an `.htaccess` Apache cannot read is a 500 on every URL.
+
+- [ ] **Step 6: Update `docs/DEPLOY.md` step 8** and the Known limitations
+      entry Task 5 left about re-checking the 401s.
+
+- [ ] **Step 7: Full suite, lint, commit.**

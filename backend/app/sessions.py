@@ -1,9 +1,9 @@
 """Per-browser session ids: minted, validated, and mapped to directories.
 
-No FastAPI. Path building is pure; `sweep` is the one function that touches
-the filesystem. The sid is also a recovery key a historian may type back in,
-so it is 16 lowercase hex characters (64 bits). It names a directory, so it
-is validated before use.
+No FastAPI. Path building is pure; `sweep` and the two functions that
+throttle it are the only ones that touch the filesystem. The sid is also a
+recovery key a historian may type back in, so it is 16 lowercase hex
+characters (64 bits). It names a directory, so it is validated before use.
 """
 
 from __future__ import annotations
@@ -65,6 +65,62 @@ def _newest_mtime(path: Path) -> float | None:
     except OSError:
         return None
     return None if failed else newest
+
+
+SWEEP_STAMP = ".last-sweep"
+
+
+def sweep_due(sessions_dir: Path, *, interval_seconds: float, now: float) -> bool:
+    """Has `interval_seconds` passed since the last sweep was marked?
+
+    The clock lives in the filesystem, not in the process: under CGI every
+    request is a fresh interpreter, so a timestamp in memory is always unset
+    and would throttle nothing. It is the stamp's MTIME, not its contents:
+    there is nothing to parse and nothing to corrupt.
+
+    Wall clock, not `time.monotonic()`: the stamp outlives the process, and
+    monotonic time is measured from boot, so a stored value means nothing
+    after a restart. The cost is a host whose clock steps: a stamp dated in
+    the future would otherwise suppress every sweep for as long as the skew
+    lasts, so a negative age reads as due.
+
+    Due when the stamp is absent or unreadable: the sweep is housekeeping
+    that must still happen on a fresh deployment, and `mark_swept` is what
+    keeps an unwritable stamp from meaning a walk per request.
+    """
+    try:
+        age = now - (sessions_dir / SWEEP_STAMP).stat().st_mtime
+    except OSError:
+        return True
+    return not 0 <= age < interval_seconds
+
+
+def mark_swept(sessions_dir: Path, *, now: float) -> bool:
+    """Record `now` as the moment of the last sweep; False if it could not be.
+
+    The caller stamps BEFORE sweeping and skips the walk when this returns
+    False, so a sessions directory that cannot hold the stamp costs one
+    refused write per mint rather than a full walk per mint. `now` is passed
+    in rather than taken from the clock here so that the value compared by
+    `sweep_due` is the one the caller already read.
+
+    Creates `sessions_dir`: the first mint of a new deployment sweeps before
+    it makes the directory it is about to mint into.
+    """
+    try:
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        stamp = sessions_dir / SWEEP_STAMP
+        stamp.touch(exist_ok=True)
+        # A `touch` that lands and a `utime` that does not is reported as
+        # failure, and leaves a stamp dated now, so the caller skips this
+        # walk AND the next interval is suppressed as well. Deliberate, and
+        # not to be "fixed" into retrying: both halves fail towards sweeping
+        # less, which is the only safe direction near a historian's
+        # in-progress tour.
+        os.utime(stamp, (now, now))
+    except OSError:
+        return False
+    return True
 
 
 def sweep(
