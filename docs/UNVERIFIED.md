@@ -20,6 +20,15 @@ cannot prove the pixels, and nothing below has a pixel-level proof.
 highest-risk unverified assumption on that branch.** Start there if the
 panorama search does not work on the host.
 
+**The CGI deployment (ADR
+[0007](decisions/0007-serve-it-through-cgi.md)) added entries 37 to 39 and
+rewrote 33 and 34.** The host has no Passenger, so the application now runs as
+CGI behind an Apache front controller, and **entry 38 is the one to read
+first**: there is no Apache in the development environment, so the whole of
+`.htaccess` — every rewrite, and the claim that the Mapillary token is not
+reachable by URL — rests on reasoning rather than on anything anyone has
+seen. Nothing below 38 can be reached in a browser until it holds.
+
 Only unproven things are listed. What was verified (the live Mapillary and
 loc.gov response shapes, the Overpass `[timeout:12]` query, the direct
 `tile.loc.gov` image path, the bootstrap procedure and the example's session
@@ -704,30 +713,102 @@ narration. Panorama search now runs in the browser: see entry 32.*
   server proxy is not one: the host cannot reach Mapillary. That is a design
   decision for the author, not a fix to make in passing.
 
-## 33. The WSGI bridge on the host
+## 33. The CGI path on the host
 
-- **Unproven:** that `passenger_wsgi.py` starts under Passenger. `a2wsgi`
-  cannot be installed in the development environment, so
-  `backend/tests/test_wsgi.py::test_the_wsgi_callable_serves_a_request` is
-  **skipped** here; it has never run. `a2wsgi` does not run the ASGI
-  lifespan, which is why `app.state.cfg` is set in `create_app`'s body.
-- **Close it:** `docs/DEPLOY.md` step 7: on the host, the test must show as
-  **passed, not skipped**.
+*Rewritten 2026-11-09. This entry used to say that `passenger_wsgi.py` had
+never started under Passenger and that `a2wsgi` could not be installed in the
+development environment. Both are out of date: there is no Passenger on this
+host (ADR [0007](decisions/0007-serve-it-through-cgi.md)), `passenger_wsgi.py`
+is gone, and `a2wsgi` **is** installed here now (`f708161`).*
+
+- **Proven here, which is new:** the bridge itself.
+  `backend/tests/test_cgi.py` runs on every `make backend-test` and exercises
+  the whole ASGI→WSGI→CGI path — `cgi_environ`'s reading of `REQUEST_URI`, a
+  request body, a historian's own media through `/tour-data`, a
+  percent-encoded and a malformed path, and a crash before the headers are
+  written. `a2wsgi` does not run the ASGI lifespan, which is why
+  `app.state.cfg` is set in `create_app`'s body.
+- **Unproven:** that Apache executes any of it. Specifically: that `app.cgi`
+  arrives and stays mode 755; that `AddHandler cgi-script .cgi` and
+  `Options +ExecCGI` are permitted, rather than 500ing the tree or serving
+  `app.cgi` to the browser as text (which would publish the one file that
+  names the venv); that the venv at `$DEPLOY_PATH/.venv` holds every
+  dependency the app imports; that `"$DIR/.venv/bin/python"` resolves from
+  `app.cgi`'s own `$0` under Apache's CGI invocation; and that the error log
+  the wrapper writes its tracebacks to can be found at all (where this host
+  puts it is unverified — `docs/DEPLOY.md`, *Reading the error log*).
+- **Why not here:** there is no Apache and no 3.12 interpreter in the
+  development sandbox. A test can run the Python; nothing here can run the
+  web server.
+- **Close it:** `docs/DEPLOY.md` step 7, checks 1 and 2.
+  `curl -s https://STAGING/api/health` must answer `{"status":"ok"}` and
+  `curl -s https://STAGING/api/session/examples` must answer the example
+  list — the second one is what proves the whole application imported, the
+  settings loaded and `content/` arrived. "Premature end of script headers",
+  a blank page, or `app.cgi`'s own source text in the response body are each a
+  different failure, and step 7 says which is which.
 
 ## 34. The deploy pipeline
 
+*Rewritten 2026-11-09 for the CGI pipeline. The CloudLinux virtualenv guess
+is gone: there is no "Setup Python App" on this host, so there is no
+`~/virtualenv/<app>/<version>/` to find. The venv is created by hand at
+`$DEPLOY_PATH/.venv` (`docs/DEPLOY.md` step 4) and the deploy only installs
+into it.*
+
 - **Unproven:** every step of `.github/workflows/deploy.yml`. It has never
-  run. Specific guesses: that the CloudLinux virtualenv lives at
-  `~/virtualenv/<app root relative to $HOME>/<python version>/`; that
-  `DEPLOY_PATH` is under `$HOME`; that the SSH port is 22 (or what
-  `DEPLOY_PORT` says); that the host's "Setup Python App" Python version is
-  3.13, which the workflow pins and nobody has confirmed; and that the
-  pinned host key is of a type the host offers. The first run should be a
-  rehearsal against a staging path (`workflow_dispatch` with a `target`).
+  run. Specific guesses:
+  - that the SSH port is 22 (or whatever `DEPLOY_PORT` says), and that the
+    pinned host key is of a type the host offers;
+  - that `DEPLOY_PATH` is under `$HOME`;
+  - that `app.cgi` arrives **executable** — `rsync -rlt` carries no
+    permissions, so this rests on `--chmod=F755` and on the explicit
+    `chmod 755` in the install step, neither of which has run;
+  - that the hand-created venv is where both the workflow and `app.cgi`
+    expect it, at `$DEPLOY_DIR/.venv`, and that
+    `"$VENV/bin/pip" install -r backend/requirements.txt` succeeds on the
+    host (PyPI is reachable from the shell — ADR 0007's table — which is not
+    the same as reachable from this step).
+  - **The document-root contract.** The subdomain's document root must be
+    `$DEPLOY_PATH` *itself*: `app.cgi` finds the interpreter relative to its
+    own path and `.htaccess` finds the bundle relative to
+    `%{DOCUMENT_ROOT}`. Whether cPanel will let the author *set* a document
+    root outside `public_html` is unconfirmed. If it refuses, step 4a's
+    fallback nests the deploy tree inside `public_html` — which gives the
+    tree a **second URL under the parent domain**, where `%{DOCUMENT_ROOT}`
+    is the parent's and rule 2's `-f` test therefore does not resolve. What
+    that second URL serves has not been reasoned through, let alone tested.
+  The first run should be a rehearsal against a staging path
+  (`workflow_dispatch` with a `target`).
+- **Also unproven: that a deploy does not remove the shared password.** This
+  branch introduced the risk — the old pipeline shipped no `.htaccess`, and
+  this one ships the file cPanel's Directory Privacy writes into — and
+  `deploy/merge-htaccess.sh` is the answer to it. Three separate things are
+  open:
+  - **Whether Directory Privacy writes into *this* `.htaccess` on this
+    host at all.** If it keeps the password somewhere else, the merge is a
+    harmless no-op and nothing below matters. `docs/DEPLOY.md` step 8's
+    `grep` is what answers it, and a result of "no `Auth*` lines" is a
+    finding to report, not a pass.
+  - **Whether the merge preserves a real password across a real deploy.**
+    The script's behaviour is pinned by
+    `backend/tests/test_merge_htaccess.py` against synthetic files; the
+    composition cPanel actually writes, and where in the file it writes it,
+    have not been observed here.
+  - **Its atomicity is only half-tested.** The test asserts that no temp
+    file is left beside the destination, which a plain non-atomic write to
+    `.htaccess` would satisfy just as well. The `mv` is what makes the swap
+    atomic — and an `.htaccess` that is half-written or briefly absent is
+    500 on every URL of the subdomain for as long as it lasts — but nothing
+    in the suite proves the `mv` is what happened.
 - **Also unproven:** that `uv sync` re-resolving in CI produces a working
-  environment, since `backend/uv.lock` is stale (it does not mention
-  `a2wsgi`).
-- **Close it:** `docs/DEPLOY.md` steps 3 to 6 (and step 10 for production).
+  environment. `backend/uv.lock` is stale in two ways now: it does not
+  mention `a2wsgi`, and it still records `requires-python = ">=3.13"` while
+  `pyproject.toml` says `>=3.12`. It must be regenerated with network access
+  (`docs/DEPLOY.md` step 2). Until then `make backend-test` fails offline
+  and CI re-resolves the whole dependency set on every run.
+- **Close it:** `docs/DEPLOY.md` steps 2 to 6 (and step 10 for production);
+  step 8's one-off check for the password.
 
 ## 35. Sessions across real browsers
 
@@ -754,6 +835,111 @@ narration. Panorama search now runs in the browser: see entry 32.*
   worker. If place search proves unusable on the host it goes the way
   panorama search did, into the browser, or goes.
 - **Close it:** `docs/DEPLOY.md` step 1.
+
+## 37. That the code runs on Python 3.12
+
+- **Unproven:** that this application works on 3.12. The floor was `>=3.13`,
+  chosen as a floor and not as a measured requirement (ADR 0006's last open
+  item). The host has 3.12.15, so `requires-python` is now `>=3.12`, CI pins
+  `3.12`, and `backend/tests/test_versions.py` fails if those two ever drift
+  apart. **That test proves consistency, not compatibility** — it reads two
+  files and compares them, and it says so in its own docstring.
+- **What was done instead of running it:** `app/` and `tests/` were read for
+  syntax and stdlib newer than 3.9 — PEP 695 generics, `match`, `StrEnum`,
+  `TaskGroup`, `datetime.UTC`, `tomllib`, `@override`, `itertools.batched`,
+  `TypeIs`, `ReadOnly`, `except*` — with no hits. Reading is not running, and
+  this says nothing about the installed dependencies' own floors.
+- **Why not here:** the development sandbox has no network and so cannot
+  build or fetch a 3.12 interpreter. The suite here runs on 3.14.
+- **Close it, in two steps:** first, **CI** — the deploy workflow's test job
+  on the pinned `3.12` must go green, which is the cheapest evidence
+  available and arrives on the next push. Then **the host**: `docs/DEPLOY.md`
+  step 7, check 2 (`/api/session/examples`) answering proves the whole
+  application imported under the host's own 3.12.15. If CI fails on a syntax
+  or stdlib feature the scan missed, the fix is in the code, not in the
+  floor — the host offers one interpreter.
+
+## 38. The `.htaccess` front controller — every rule in it
+
+*The highest-risk unverified assumption on the CGI branch, in the same way
+entry 32 is on the hosted-deployment branch. Nothing else on this host can be
+looked at until it holds.*
+
+- **Unproven:** that Apache does any of what `.htaccess` says. There is **no
+  Apache in the development environment**.
+  `backend/tests/test_htaccess.py` reads the file as text and pins the rule
+  order and the two routed prefixes; it cannot make a web server follow them.
+  Each rule is a separate claim:
+  - **The guard rule** (`^(app\.cgi$|frontend/dist/frontend/browser/)`) is
+    there because per-directory `mod_rewrite` re-runs the whole ruleset on a
+    rewritten path — `[L]` ends the round, not the processing. If that
+    understanding is wrong in either direction the result is bad: without
+    the behaviour the rule is harmless, but *with* it and without the rule,
+    rule 3 turns `app.cgi` and every bundle path into `index.html` — no API,
+    no JavaScript, and **HTTP 200 on everything**, which is the quietest
+    possible failure.
+  - **Rule 1**, that `/api` and `/tour-data` reach `app.cgi` with
+    `REQUEST_URI` intact through the rewrite.
+  - **Rule 2**, that `%{DOCUMENT_ROOT}` is the deploy directory and the `-f`
+    test therefore finds the bundle, so a hashed asset answers at its public
+    path.
+  - **Rule 3**, that an unknown path returns the single-page app rather than
+    a 404 — and, the same fact from the other side, **that
+    `/backend/.env` is not reachable by URL.** The fallback is unconditional
+    precisely because `backend/`, `content/`, `.venv/` and `backend/.env`
+    all exist on disk under the document root, so the usual
+    `RewriteCond %{REQUEST_FILENAME} !-f` idiom would publish the source and
+    the Mapillary token. The `<Files ".env">` deny is the belt behind that
+    brace. **Neither has been tested against a server**, and the thing at
+    stake is a credential.
+  - **`Options +ExecCGI`**, which needs `AllowOverride Options`. cPanel's
+    usual setting is `All`, unconfirmed here. If it is narrower, the
+    directive itself 500s the tree — not the route, the tree.
+  - **Inherited `FollowSymLinks`.** Per-directory `mod_rewrite` does not
+    work at all unless `FollowSymLinks` or `SymLinksIfOwnerMatch` is in
+    effect for the directory. Nothing in this repository can set it: the
+    `Options` line is written in the **`+`/`-` form** (`+ExecCGI -Indexes`)
+    specifically so that it *merges* with what the host inherits instead of
+    replacing it, which the bare form would do — and that is the whole of
+    the defence. A host that does not grant the symlink option 500s the
+    tree, or silently fails every rewrite, and the only fix is to ask the
+    host for it.
+- **Close it:** `docs/DEPLOY.md` step 7's six `curl` checks, in the order
+  given, each one narrowing what a failure can be. Run them against the
+  **staging** subdomain and before Directory Privacy (step 8), so no
+  credentials are involved. Check 6 (`curl -s https://STAGING/backend/.env`)
+  is the one to read with your own eyes: it must not contain
+  `MAPILLARY_TOKEN`. Step 7 also keeps the undo —
+  `ssh HOST 'rm -f .../.htaccess'` — on screen, because a file Apache
+  rejects takes the whole subdomain with it.
+
+## 39. CGI under concurrency, with several historians at once
+
+- **Unproven:** that a process per request holds up with roughly six people
+  using the editor. Two separate costs, neither measured under load:
+  - **CloudLinux caps concurrent entry processes**, and CGI spends one per
+    request. Keeping Python off the static path (ADR 0007, decision 2) keeps
+    the count low — a JavaScript chunk costs Apache nothing — but every
+    autosave, every session poll and every `/tour-data` media fetch is a
+    process. Several historians loading media-heavy stops at the same moment
+    could brush the limit. The symptom would be **sporadic 500s or 508s
+    under load**, not a steady failure, which is the hardest kind to
+    recognise from a bug report.
+  - **0.36–0.40 s of process start on every dynamic request**, measured once
+    on this host with the app's own imports (ADR 0007's table,
+    `tests/round2/test3.txt`) — single-process and idle, which is the
+    optimistic case. Browsers parallelise, so a stop with a dozen media
+    files should be closer to a second than to five. Should.
+- **Why not here:** the number depends on the host's own limits, which are
+  not published to the account and cannot be read from a development
+  machine. Nothing in the suite can simulate it.
+- **Close it:** watch it in use rather than testing for it. The first real
+  session with two or three historians in the editor at once is the
+  measurement. If 500s or 508s appear under load, that is this entry and not
+  a bug in the application, and the error log (`docs/DEPLOY.md`, *Reading the
+  error log*) is where the difference shows. **Engineering around this
+  before anyone has used the app would be guessing**, which is why nothing
+  was built for it.
 
 ---
 

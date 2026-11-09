@@ -271,10 +271,13 @@ def _set_sid_cookie(response: Response, sid: str) -> None:
         # The host serves HTTPS, and Chrome and Firefox accept a Secure
         # cookie on `http://localhost`, so `ng serve` still works. Deriving
         # it from the scheme looks more accommodating and is the worse
-        # trade: Passenger terminates TLS upstream, so the scheme this
-        # process sees can be "http" on a request the browser made over
-        # HTTPS, and the flag would then be dropped in production — exactly
-        # where it matters — to spare a local-development inconvenience.
+        # trade: the host's Apache terminates TLS and then starts the CGI
+        # process, so the scheme this process sees can be "http" on a
+        # request the browser made over HTTPS, and the flag would then be
+        # dropped in production — exactly where it matters — to spare a
+        # local-development inconvenience. (ADR 0006 gave Passenger as the
+        # reason; ADR 0007 corrects it. The decision is unchanged, and the
+        # scheme is still not to be trusted here.)
         httponly=True, secure=True, samesite="lax",
     )
 
@@ -366,9 +369,9 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="clio-wired")
     # In `create_app`'s body rather than a lifespan: `a2wsgi` never runs the
-    # ASGI lifespan, and state that silently does not get set under
-    # Passenger is worse than state that was never deferred. `app.state.cfg`
-    # is what the two session dependencies above read.
+    # ASGI lifespan, and state that silently does not get set behind the CGI
+    # bridge (`app/cgi.py`) is worse than state that was never deferred.
+    # `app.state.cfg` is what the two session dependencies above read.
     app.state.cfg = cfg
     app.add_middleware(
         CORSMiddleware,
@@ -727,8 +730,10 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     @app.get("/api/diagnostics/egress")
     def egress_diagnostic() -> dict:
         # Asks the application itself, from its own user context, which
-        # outside hosts it can reach: a cPanel shell is not the Passenger
-        # worker. Any HTTP response (even 403) proves the network path;
+        # outside hosts it can reach: a cPanel shell is not the process that
+        # serves requests, and the egress measurements in ADR 0007 were all
+        # taken in that shell. Any HTTP response (even 403) proves the
+        # network path;
         # only an exception means blocked. One host failing must never hide
         # the rest, so each is probed independently and in parallel.
         urls = [tools.MAPILLARY_PROBE_URL, tools.LOC_PROBE_URL, *tools.OVERPASS_MIRRORS]
