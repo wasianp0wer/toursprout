@@ -1,0 +1,1 @@
+Also confirmed that test3 continues to work after logging out of cpanel.

@@ -1,0 +1,6 @@
+[madelynh@area51 ~]$ python3.12 --version
+Python 3.12.15
+[madelynh@area51 ~]$ python3.12 -m venv ~/t12 && echo "venv: ok"
+venv: ok
+[madelynh@area51 ~]$ ~/t12/bin/python -m pip --version
+pip 23.2.1 from /home/madelynh/t12/lib64/python3.12/site-packages/pip (python 3.12)

@@ -1,0 +1,16 @@
+[madelynh@area51 toursprout]$ python3 --version
+Python 3.6.8
+[madelynh@area51 toursprout]$ compgen -c 'python3' | sort -u | head
+python3
+python3.12
+python3.6
+python3.6-config
+python3.6m
+python3.6m-config
+python3.6m-x86_64-config
+python3-config
+python3-html2text
+[madelynh@area51 toursprout]$ python3 -m venv --help >/dev/null 2>&1 && echo "venv: yes" || echo "venv: NO"
+venv: yes
+[madelynh@area51 toursprout]$ python3 -m pip --version
+pip 9.0.3 from /usr/lib/python3.6/site-packages (python 3.6)

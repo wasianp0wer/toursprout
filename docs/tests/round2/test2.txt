@@ -1,0 +1,4 @@
+[madelynh@area51 ~]$ ~/t12/bin/python -m pip install --no-input fastapi a2wsgi 2>&1 | tail -3
+
+[notice] A new release of pip is available: 23.2.1 -> 26.3
+[notice] To update, run: /home/madelynh/t12/bin/python -m pip install --upgrade pip

@@ -1,0 +1,5 @@
+[madelynh@area51 ~]$ nohup python3 -m http.server 8765 >/tmp/h.log 2>&1 & sleep 1; curl -s -o /dev/null -w 'while logged in: %{http_code}\n' localhost:8765
+[1] 74
+while logged in: 200
+[madelynh@area51 ~]$ curl -s -o /dev/null -w 'after logout: %{http_code}\n' localhost:8765
+after logout: 000
