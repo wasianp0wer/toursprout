@@ -183,7 +183,7 @@ jobs:
       # content_dir and frontend_dist from the backend's location.
       - name: Copy files to the host
         run: |
-          ssh deploy-host "mkdir -p '$DEPLOY_DIR/backend' '$DEPLOY_DIR/content' '$DEPLOY_DIR/frontend/dist/frontend/browser'"
+          ssh deploy-host "mkdir -p '$DEPLOY_DIR/backend' '$DEPLOY_DIR/content' '$DEPLOY_DIR/deploy' '$DEPLOY_DIR/frontend/dist/frontend/browser'"
           RSYNC="rsync -rlt --itemize-changes -e ssh"
           # --chmod is required: `rsync -rlt` carries no permissions, so
           # without it app.cgi arrives mode 644 and Apache 500s on it.
@@ -195,7 +195,27 @@ jobs:
           # given explicitly for the same reason app.cgi's is -- `rsync -rlt`
           # carries none -- and an .htaccess Apache cannot READ is 500 on
           # every URL in the tree, the same outage as a syntax error in it.
-          $RSYNC --chmod=F644 .htaccess "deploy-host:$DEPLOY_DIR/"
+          #
+          # STAGED as .htaccess.new, NOT written straight to .htaccess. The
+          # live file is the one cPanel's Directory Privacy writes the shared
+          # password into (docs/DEPLOY.md step 8) -- it protects a directory by
+          # putting AuthType/AuthName/AuthUserFile/Require valid-user in THAT
+          # directory's .htaccess, and the directory it protects here is the
+          # document root, which is this one. Overwriting it removes the only
+          # access control the deployment has, with nothing anywhere to say so,
+          # because the file is perfectly valid without those lines. The
+          # install step below merges the two instead.
+          #
+          # .htaccess.new is left on the host only if that merge fails; it is
+          # not served (rule 3 sends every unknown path to the bundle's
+          # index.html, and Apache's own config refuses ^\.ht anyway).
+          $RSYNC --chmod=F644 .htaccess "deploy-host:$DEPLOY_DIR/.htaccess.new"
+          # The merge script, which does that composing. F755 for consistency
+          # with app.cgi, but the install step invokes it through `bash` rather
+          # than relying on the bit: `--chmod` only applies to files rsync
+          # CREATES, so a copy already on the host with the wrong mode would
+          # never be repaired, and this is not a file to lose the password over.
+          $RSYNC --chmod=F755 deploy/merge-htaccess.sh "deploy-host:$DEPLOY_DIR/deploy/"
           $RSYNC \
             --exclude '.venv' --exclude '.env' --exclude '__pycache__' \
             --exclude '.pytest_cache' --exclude '.ruff_cache' --exclude 'uv.lock' \
@@ -245,6 +265,17 @@ jobs:
             exit 1
           fi
           "\$VENV/bin/pip" install -r "\$DIR/backend/requirements.txt"
+          # Install the front controller WITHOUT removing the shared password:
+          # .htaccess becomes the staged copy plus whatever auth directives the
+          # host's file already carried, written atomically and with the staged
+          # copy removed. The script exits non-zero and changes nothing if it
+          # cannot read either file, and `set -e` above turns that into a failed
+          # deploy -- deliberately, because the alternative is a deploy that
+          # reports success while having opened the editor to the internet.
+          # Run through `bash` so the script's mode on the host cannot matter.
+          # Tested in backend/tests/test_merge_htaccess.py; the reasoning, and
+          # what it does NOT preserve, is in the script's own header.
+          bash "\$DIR/deploy/merge-htaccess.sh" "\$DIR/.htaccess" "\$DIR/.htaccess.new"
           # NOT redundant with the --chmod flags above: --chmod only applies
           # to files rsync CREATES, so a file already on the host with the
           # wrong mode (an earlier deploy without --chmod, or a hand-edit
@@ -252,6 +283,11 @@ jobs:
           # costs the whole tree: an app.cgi Apache cannot execute and an
           # .htaccess it cannot read are both 500 on every URL. Cheap to do
           # on every deploy, so it is done on every deploy.
+          #
+          # The .htaccess line is now the belt behind merge-htaccess.sh's own
+          # brace -- it chmods the file it writes, because it is also run by
+          # hand during an incident -- and it stays here anyway: the cost is
+          # one syscall and the failure it covers is the whole subdomain.
           chmod 755 "\$DIR/app.cgi"
           chmod 644 "\$DIR/.htaccess"
           REMOTE

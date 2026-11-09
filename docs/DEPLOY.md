@@ -573,24 +573,56 @@ for the visitor; that is another reason this check matters.)
 controller.** cPanel's Directory Privacy normally works by writing
 `AuthType Basic`, `AuthName`, `AuthUserFile` and `Require valid-user` into the
 `.htaccess` of the directory you selected — and that is *this* `.htaccess`.
-Two consequences, neither of them verified on this host, and both cheap to
-check:
+Whether it does that on *this* host is still unverified, and cheap to check:
 
 ```sh
 ssh HOST 'grep -n -i "auth\|require" /home/USER/tours-staging/.htaccess'
 ```
 
-1. **The next deploy may remove the password.** The workflow `rsync`s the
-   repository's `.htaccess` over the host's on every run, unconditionally. If
-   cPanel's directives live in that file, a deploy wipes them and the editor
-   is open to the internet — with no error anywhere, because the file is
-   perfectly valid without them. **So re-run the three `curl` checks above
-   after every deploy**, and treat a `200` on the first line as an incident.
-   (If cPanel instead keeps the directives somewhere outside this file, the
-   `grep` finds nothing and this does not apply. Report which it is: the
-   author needs to know, because the durable fix — directives in the
-   repository's `.htaccess`, or a deploy that preserves them — is a change to
-   files this runbook does not own.)
+**You should see** the four directives, near the end of the file. (Two other
+lines match and are not the password: the `Require all denied` inside the
+repository's `<Files ".env">` block, and a comment above it that names the
+directive. The four `Auth*`/`Require valid-user` lines are the ones to look
+for.) If the `grep` finds them, the rest of this step applies. If it finds no
+`Auth*` lines at all, cPanel keeps the password somewhere outside this file on
+this host — **report that**, because the deploy is built around the other case
+and nothing below applies.
+
+1. **The deploy preserves it, and here is how to confirm.** The workflow no
+   longer `rsync`s the repository's `.htaccess` over the host's. It stages the
+   repository's copy as `.htaccess.new` and runs `deploy/merge-htaccess.sh` on
+   the host, which rewrites `.htaccess` as the staged copy followed by
+   whatever auth directives the live file carried, atomically, and removes the
+   staged copy. It re-reads the live file on *every* deploy, so a password set
+   between two deploys is picked up and running it twice does not stack the
+   block up. If it cannot read either file it exits non-zero and changes
+   nothing, which fails the deploy on purpose: a deploy that reported success
+   while removing the password is the defect this replaced. The behaviour is
+   pinned by `backend/tests/test_merge_htaccess.py`.
+
+   So this is a check to run **once**, after the first deploy that follows
+   this step — not after every deploy, which is what this runbook used to ask
+   for:
+
+   ```sh
+   ssh HOST 'grep -n -i "auth\|require" /home/USER/tours-staging/.htaccess'
+   curl -s -o /dev/null -w "%{http_code}\n" https://STAGING-HOST/
+   curl -s -o /dev/null -w "%{http_code}\n" https://STAGING-HOST/api/session
+   ```
+
+   **You should see** the four directives still there — now under a comment
+   block beginning `NOT FROM THE REPOSITORY`, which the deploy writes above
+   them — and `401`, `401`. A `200` on either `curl` is an incident: the
+   shared password is gone and the editor is open to the internet. **Paste
+   back** the `grep` output either way.
+
+   **Only the auth directives are preserved.** If you later add anything else
+   through cPanel that writes to this `.htaccess` — hotlink protection, an IP
+   deny, a redirect, a PHP handler line — the next deploy removes it, as
+   silently as the password used to go. Put such a rule in the repository's
+   `.htaccess` instead, where it is reviewed; the header of
+   `deploy/merge-htaccess.sh` says why appending the rest cannot be made to
+   work here.
 2. **It is one more edit to the file step 7 warns about.** If the whole
    subdomain starts returning 500 right after you turn Directory Privacy on,
    that is the cause, and step 7's undo command applies — with the cost that
@@ -627,8 +659,10 @@ deploys to `DEPLOY_PATH`. Once it is green:
    step 7 pass against production.
 2. Run step 1 again against production.
 3. The three Directory Privacy checks in step 8 still give `401`, `401`,
-   `200`. This is not a formality: the deploy you just ran overwrote
-   `.htaccess`, which may be where the password lives.
+   `200`. This is not a formality: the deploy you just ran rewrote
+   `.htaccess`, which may be where the password lives — it is meant to carry
+   the password across, and production is the first place that has ever been
+   true of.
 4. In a browser, sign in with the shared password and open `https://HOST/`. **You
    should see** the welcome screen, with *Old Town Fairfax* under "Open an
    example". Open it. You should land in the editor with six stops, and a
@@ -895,9 +929,16 @@ Lowering `MAX_SESSION_MEDIA_BYTES` is the first remedy.
   the part that needs Apache: that the rewrites fire, that CGI is permitted,
   and that the deploy's SSH half works at all. Steps 6 and 7 are where that
   changes.
-- **Directory Privacy may not survive a deploy** (step 8). If cPanel keeps the
-  password in the `.htaccess` the deploy overwrites, the password is removed
-  on every deploy with no error anywhere.
+- **Directory Privacy survives a deploy by being re-read, not by being
+  version-controlled** (step 8). The deploy greps the host's live `.htaccess`
+  for `Auth*` and `Require valid-user` and re-appends what it finds
+  (`deploy/merge-htaccess.sh`), so the password is never in the repository and
+  the host stays the source of truth. The limits of that: **only those
+  directives are kept** — anything else cPanel writes into this file is still
+  removed by a deploy, silently; a cPanel that wrote them into a `<Limit>` or
+  `<Files>` container, or into an included file, would not be matched; and
+  **none of it has run on the host yet**, so step 8's one-off check after the
+  first deploy is the first evidence that any of it works.
 - **The recorder has never run in a real browser,** and ships that way by the
   author's decision; historians are told where to report a failure.
 - **Whether a browser may call `graph.mapillary.com` directly** is unproven
