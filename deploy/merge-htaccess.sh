@@ -75,12 +75,23 @@ new=$2
 # would lose it. AuthGroupFile is here because protection by group writes it
 # instead of AuthUserFile.
 #
-# `Require` is matched ONLY as `Require valid-user`. See the note above: bare
-# `Require` would also match the `Require all denied` inside the repository's
-# own `<Files ".env">` block on every deploy after the first, and re-emit it at
-# the top level, where it is 403 on the whole subdomain.
+# `Require` is matched in exactly three forms -- `valid-user`, `user NAME` and
+# `group NAME` -- and never bare. Both halves of that matter:
+#
+#   Narrow enough: bare `Require` would also match the `Require all denied`
+#   inside the repository's own `<Files ".env">` block on every deploy after
+#   the first, and re-emit it at the TOP LEVEL, where it is 403 on the whole
+#   subdomain. None of the three forms below can reach that line, nor
+#   `Require ip`, `Require method`, `Require expr` or `Require not`.
+#
+#   Wide enough: a directory protected for one named account carries
+#   `Require user NAME` instead, and by group `Require group NAME`. Keeping
+#   the `Auth*` lines and dropping the `Require` is the worst outcome
+#   available -- under Apache 2.4 a directory with no `Require` has NO
+#   authorization, so the editor would be open while the file still looked
+#   protected to anyone grepping it for `Auth`.
 AUTH_RE='^[[:space:]]*(AuthType|AuthName|AuthUserFile|AuthGroupFile)[[:space:]]'
-AUTH_RE="$AUTH_RE"'|^[[:space:]]*Require[[:space:]]+valid-user[[:space:]]*$'
+AUTH_RE="$AUTH_RE"'|^[[:space:]]*Require[[:space:]]+(valid-user|user|group)([[:space:]]|$)'
 
 # ---- Refuse before touching anything ---------------------------------------
 
@@ -94,6 +105,19 @@ if [ ! -r "$new" ] || [ ! -s "$new" ]; then
   echo "merge-htaccess.sh: $new is unreadable or empty: refusing to touch $dest." >&2
   echo "  Installing it would leave a front controller with no rules at all." >&2
   exit 1
+fi
+
+# `-ef` is same device and inode, so a second path to the same file -- a
+# symlink, a repeated argument -- is caught too. Only a hand-run can get here,
+# which is precisely when it would hurt: the composed file is `mv`d over
+# <dest> and then <new> is removed, so if they are one file the deploy
+# directory ends up with NO .htaccess at all. That is 500 on every URL of the
+# subdomain, from a command that exited 0 and said nothing.
+if [ "$dest" -ef "$new" ]; then
+  echo "merge-htaccess.sh: <dest> and <new> are the same file ($dest)." >&2
+  echo "  Merging it with itself would install it and then delete it, leaving no" >&2
+  echo "  .htaccess at all. Nothing was changed." >&2
+  exit 2
 fi
 
 existing_auth=""

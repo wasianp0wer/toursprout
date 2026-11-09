@@ -181,20 +181,27 @@ jobs:
       #
       # Layout on the host mirrors the repository, because Settings derives
       # content_dir and frontend_dist from the backend's location.
-      - name: Copy files to the host
+      - name: Copy files to the host (front controller first)
         run: |
           ssh deploy-host "mkdir -p '$DEPLOY_DIR/backend' '$DEPLOY_DIR/content' '$DEPLOY_DIR/deploy' '$DEPLOY_DIR/frontend/dist/frontend/browser'"
           RSYNC="rsync -rlt --itemize-changes -e ssh"
-          # --chmod is required: `rsync -rlt` carries no permissions, so
-          # without it app.cgi arrives mode 644 and Apache 500s on it.
-          $RSYNC --chmod=F755 app.cgi "deploy-host:$DEPLOY_DIR/"
-          # The front controller. It belongs at the document root, beside
-          # app.cgi, because it finds the bundle under %{DOCUMENT_ROOT} and
-          # Apache only reads it for the directory it is in and below. 644,
-          # not 755: Apache reads this one, nothing executes it. The mode is
-          # given explicitly for the same reason app.cgi's is -- `rsync -rlt`
-          # carries none -- and an .htaccess Apache cannot READ is 500 on
-          # every URL in the tree, the same outage as a syntax error in it.
+          # THE FRONT CONTROLLER GOES FIRST, before app.cgi and before
+          # anything under backend/ or content/, and -- load-bearing, and
+          # invisible unless it is said here -- BEFORE THE `.env` STEP BELOW.
+          # Until .htaccess is in place the document root is UNCONTAINED: rule
+          # 3 is the only thing keeping backend/, content/ and .venv/ off the
+          # web, and the <Files ".env"> block is the only thing standing over
+          # the Mapillary token. On a steady-state deploy the file is already
+          # there and the order makes no difference; the order is for the two
+          # deploys where it is not -- the first one, and every redeploy after
+          # step 7's documented `rm -f .htaccess` escape hatch. Writing
+          # backend/.env while there is no .htaccess would publish
+          # MAPILLARY_TOKEN by URL for the length of a pip install.
+          #
+          # 644, not 755: Apache reads this one, nothing executes it. The mode
+          # is given explicitly for the same reason app.cgi's is below --
+          # `rsync -rlt` carries none -- and an .htaccess Apache cannot READ is
+          # 500 on every URL in the tree, the same outage as a syntax error.
           #
           # STAGED as .htaccess.new, NOT written straight to .htaccess. The
           # live file is the one cPanel's Directory Privacy writes the shared
@@ -203,19 +210,31 @@ jobs:
           # directory's .htaccess, and the directory it protects here is the
           # document root, which is this one. Overwriting it removes the only
           # access control the deployment has, with nothing anywhere to say so,
-          # because the file is perfectly valid without those lines. The
-          # install step below merges the two instead.
-          #
-          # .htaccess.new is left on the host only if that merge fails; it is
-          # not served (rule 3 sends every unknown path to the bundle's
-          # index.html, and Apache's own config refuses ^\.ht anyway).
+          # because the file is perfectly valid without those lines.
           $RSYNC --chmod=F644 .htaccess "deploy-host:$DEPLOY_DIR/.htaccess.new"
-          # The merge script, which does that composing. F755 for consistency
-          # with app.cgi, but the install step invokes it through `bash` rather
-          # than relying on the bit: `--chmod` only applies to files rsync
-          # CREATES, so a copy already on the host with the wrong mode would
-          # never be repaired, and this is not a file to lose the password over.
+          # The merge script, which composes the two. F755 for consistency with
+          # app.cgi, but it is invoked through `bash` below rather than relying
+          # on the bit: `--chmod` only applies to files rsync CREATES, so a copy
+          # already on the host with the wrong mode would never be repaired, and
+          # this is not a file to lose the password over.
           $RSYNC --chmod=F755 deploy/merge-htaccess.sh "deploy-host:$DEPLOY_DIR/deploy/"
+          # .htaccess becomes the staged copy plus whatever auth directives the
+          # host's file already carried, written atomically and with the staged
+          # copy removed. The script exits non-zero and changes nothing if it
+          # cannot read either file, which fails this step -- deliberately,
+          # because the alternative is a deploy that reports success while
+          # having opened the editor to the internet. Tested in
+          # backend/tests/test_merge_htaccess.py; the reasoning, and what it
+          # does NOT preserve, is in the script's own header.
+          #
+          # .htaccess.new is left on the host only if that merge fails. It is
+          # not served: rule 3 sends every unknown path to the bundle's
+          # index.html. (Apache's stock config also denies ^\.ht, but that is
+          # the host's setting, not something this repository has checked.)
+          ssh deploy-host "bash '$DEPLOY_DIR/deploy/merge-htaccess.sh' '$DEPLOY_DIR/.htaccess' '$DEPLOY_DIR/.htaccess.new'"
+          # --chmod is required: `rsync -rlt` carries no permissions, so
+          # without it app.cgi arrives mode 644 and Apache 500s on it.
+          $RSYNC --chmod=F755 app.cgi "deploy-host:$DEPLOY_DIR/"
           $RSYNC \
             --exclude '.venv' --exclude '.env' --exclude '__pycache__' \
             --exclude '.pytest_cache' --exclude '.ruff_cache' --exclude 'uv.lock' \
@@ -265,17 +284,6 @@ jobs:
             exit 1
           fi
           "\$VENV/bin/pip" install -r "\$DIR/backend/requirements.txt"
-          # Install the front controller WITHOUT removing the shared password:
-          # .htaccess becomes the staged copy plus whatever auth directives the
-          # host's file already carried, written atomically and with the staged
-          # copy removed. The script exits non-zero and changes nothing if it
-          # cannot read either file, and `set -e` above turns that into a failed
-          # deploy -- deliberately, because the alternative is a deploy that
-          # reports success while having opened the editor to the internet.
-          # Run through `bash` so the script's mode on the host cannot matter.
-          # Tested in backend/tests/test_merge_htaccess.py; the reasoning, and
-          # what it does NOT preserve, is in the script's own header.
-          bash "\$DIR/deploy/merge-htaccess.sh" "\$DIR/.htaccess" "\$DIR/.htaccess.new"
           # NOT redundant with the --chmod flags above: --chmod only applies
           # to files rsync CREATES, so a file already on the host with the
           # wrong mode (an earlier deploy without --chmod, or a hand-edit
@@ -284,8 +292,8 @@ jobs:
           # .htaccess it cannot read are both 500 on every URL. Cheap to do
           # on every deploy, so it is done on every deploy.
           #
-          # The .htaccess line is now the belt behind merge-htaccess.sh's own
-          # brace -- it chmods the file it writes, because it is also run by
+          # The .htaccess line is the belt behind merge-htaccess.sh's own brace
+          # -- that script chmods the file it writes, because it is also run by
           # hand during an incident -- and it stays here anyway: the cost is
           # one syscall and the failure it covers is the whole subdomain.
           chmod 755 "\$DIR/app.cgi"

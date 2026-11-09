@@ -579,7 +579,9 @@ Whether it does that on *this* host is still unverified, and cheap to check:
 ssh HOST 'grep -n -i "auth\|require" /home/USER/tours-staging/.htaccess'
 ```
 
-**You should see** the four directives, near the end of the file. (Two other
+**You should see** the four directives. *Where* in the file cPanel puts them
+has not been observed on this host, so do not expect a particular position —
+it does not matter, and the deploy moves them to the end anyway. (Two other
 lines match and are not the password: the `Require all denied` inside the
 repository's `<Files ".env">` block, and a comment above it that names the
 directive. The four `Auth*`/`Require valid-user` lines are the ones to look
@@ -931,14 +933,26 @@ Lowering `MAX_SESSION_MEDIA_BYTES` is the first remedy.
   changes.
 - **Directory Privacy survives a deploy by being re-read, not by being
   version-controlled** (step 8). The deploy greps the host's live `.htaccess`
-  for `Auth*` and `Require valid-user` and re-appends what it finds
-  (`deploy/merge-htaccess.sh`), so the password is never in the repository and
-  the host stays the source of truth. The limits of that: **only those
-  directives are kept** — anything else cPanel writes into this file is still
-  removed by a deploy, silently; a cPanel that wrote them into a `<Limit>` or
-  `<Files>` container, or into an included file, would not be matched; and
-  **none of it has run on the host yet**, so step 8's one-off check after the
-  first deploy is the first evidence that any of it works.
+  for `Auth*` and for `Require valid-user`, `Require user` and `Require group`,
+  and re-appends what it finds (`deploy/merge-htaccess.sh`), so the password is
+  never in the repository and the host stays the source of truth. The limits of
+  that:
+  - **Only those directives are kept.** Anything else cPanel writes into this
+    file — hotlink protection, an IP deny, a redirect, a PHP handler line — is
+    still removed by a deploy, silently. Put such a rule in the repository's
+    `.htaccess` instead.
+  - **Containers are not preserved, only their contents.** The match is
+    line-oriented, so auth directives cPanel put inside a `<Limit GET POST>`
+    or a `<Files>` block are carried over *without* the block, which makes the
+    protection apply more widely than it did — to every method, or to the whole
+    directory. Stricter, not looser, so it is not a hole; but it is a change
+    the deploy makes silently, and worth knowing if the `grep` in step 8 shows
+    a container.
+  - **Directives in an `Include`d file are not seen at all.** The script reads
+    only the one file it is given. If that is where the password lives, the
+    deploy neither keeps it nor needs to.
+  - **None of it has run on the host yet,** so step 8's one-off check after the
+    first deploy is the first evidence that any of it works.
 - **The recorder has never run in a real browser,** and ships that way by the
   author's decision; historians are told where to report a failure.
 - **Whether a browser may call `graph.mapillary.com` directly** is unproven

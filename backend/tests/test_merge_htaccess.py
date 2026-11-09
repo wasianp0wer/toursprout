@@ -175,6 +175,51 @@ def test_authgroupfile_survives_too(tmp_path):
     assert 'AuthGroupFile "/home/u/.htgroups"' in _lines(dest)
 
 
+def test_require_user_and_require_group_survive(tmp_path):
+    """`Require valid-user` is not the only form. A host protected for one
+    named account writes `Require user NAME`, and by group `Require group
+    NAME`. Keeping the three `Auth*` lines and dropping the `Require` would be
+    the worst outcome available: under Apache 2.4 a directory with no
+    `Require` has NO authorization, so the editor would be open -- silently,
+    which is this script's entire failure mode -- while the file still looked
+    protected to anyone grepping it for `Auth`."""
+    dest = tmp_path / ".htaccess"
+    new = tmp_path / ".htaccess.new"
+    dest.write_text(
+        "AuthType Basic\n"
+        'AuthName "Protected"\n'
+        'AuthUserFile "/home/u/.htpasswds/public_html/tours/passwd"\n'
+        "Require user historians\n"
+        "Require group staff\n"
+    )
+    new.write_text(REPO_HTACCESS)
+
+    result = _run(dest, new)
+
+    assert result.returncode == 0, result.stderr
+    merged = _lines(dest)
+    assert "Require user historians" in merged
+    assert "Require group staff" in merged
+    # And the widening still cannot reach the line it must never match.
+    assert dest.read_text().count("Require all denied") == 1
+
+
+def test_the_same_file_as_both_arguments_fails_loudly(tmp_path):
+    """Only reachable by a hand-run during an incident, which is exactly when
+    it would hurt: the merge `mv`s the composed file over <dest> and then
+    removes <new>, so if they are one file the result is NO `.htaccess` at all
+    -- 500 on every URL of the subdomain -- from a command that exited 0."""
+    dest = tmp_path / ".htaccess"
+    original = REPO_HTACCESS + CPANEL_AUTH
+    dest.write_text(original)
+
+    result = _run(dest, dest)
+
+    _assert_refused(result, str(dest))
+    assert dest.exists(), "the front controller was deleted outright"
+    assert dest.read_text() == original
+
+
 def test_running_twice_does_not_duplicate_the_auth_block(tmp_path):
     """Idempotence, and the reason it is not free: the second run reads back
     the block the FIRST run appended. A script that appended the old file's
