@@ -5,11 +5,16 @@
 # relative to its own path, and rule 2 below finds the bundle relative to
 # %{DOCUMENT_ROOT}.
 #
-# EDIT THIS FILE WITH CARE. A directive Apache cannot accept here does not
-# break this app; it returns 500 for EVERY page of the whole domain, including
-# the parts that have nothing to do with this deploy. If a change does that,
-# rename the file over SSH or in the cPanel file manager and the domain comes
-# back. Apache 2.4 is assumed (EasyApache 4 has no 2.2 any more), which is what
+# EDIT THIS FILE WITH CARE. A directive Apache cannot accept here is not a
+# broken route; it is 500 on EVERY URL in this directory and below -- the
+# editor, the viewer, the API, the bundle, the lot -- because Apache rejects
+# the file as a whole rather than the line it objects to. This has happened to
+# this project before, with a `ProxyPass` line, though in the .htaccess at the
+# SITE root, which is a different file: that one took out the parent domain
+# too, and this one cannot. If a change does it, rename this file over SSH or
+# in the cPanel file manager and the tree comes straight back.
+#
+# Apache 2.4 is assumed (EasyApache 4 has no 2.2 any more), which is what
 # `Require all denied` needs.
 #
 # Options and AddHandler are the one pair that could 500 the domain on a host
@@ -50,7 +55,16 @@ RewriteEngine On
 # is the public bundle either way, and the second reaches the application with
 # REQUEST_URI=/app.cgi, which is just another unknown path to it. Nothing else
 # under the document root is matched here.
-RewriteRule ^(app\.cgi|frontend/dist/frontend/browser/) - [L]
+#
+# `app\.cgi$` is ANCHORED, and the anchor is load-bearing. This is the one
+# pattern in the file that exempts a path from rule 3, so a loose match here
+# is the difference between the application answering and the filesystem
+# answering -- and `AddHandler cgi-script .cgi` above keys on any
+# dot-separated .cgi component, so an `app.cgi.bak` dropped by an editor or a
+# hand-edit would not merely be served, it would be EXECUTED. Unanchored,
+# `^(app\.cgi|...)` exempts exactly that. Anchored, it falls through to rule 3
+# and the historian gets the app.
+RewriteRule ^(app\.cgi$|frontend/dist/frontend/browser/) - [L]
 
 # 1. The application. No PATH_INFO is appended on purpose: app.cgi reads the
 #    path from REQUEST_URI, which survives any rewrite. /tour-data stays here

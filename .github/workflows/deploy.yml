@@ -187,10 +187,12 @@ jobs:
           $RSYNC --chmod=F755 app.cgi "deploy-host:$DEPLOY_DIR/"
           # The front controller. It belongs at the document root, beside
           # app.cgi, because it finds the bundle under %{DOCUMENT_ROOT} and
-          # Apache only reads it for the directory it is in and below. Mode
-          # 644 (whatever the host's umask gives) is right: Apache reads it,
-          # nothing executes it.
-          $RSYNC .htaccess "deploy-host:$DEPLOY_DIR/"
+          # Apache only reads it for the directory it is in and below. 644,
+          # not 755: Apache reads this one, nothing executes it. The mode is
+          # given explicitly for the same reason app.cgi's is -- `rsync -rlt`
+          # carries none -- and an .htaccess Apache cannot READ is 500 on
+          # every URL in the tree, the same outage as a syntax error in it.
+          $RSYNC --chmod=F644 .htaccess "deploy-host:$DEPLOY_DIR/"
           $RSYNC \
             --exclude '.venv' --exclude '.env' --exclude '__pycache__' \
             --exclude '.pytest_cache' --exclude '.ruff_cache' --exclude 'uv.lock' \
@@ -240,10 +242,13 @@ jobs:
             exit 1
           fi
           "\$VENV/bin/pip" install -r "\$DIR/backend/requirements.txt"
-          # NOT redundant with the --chmod=F755 above: --chmod only applies to
-          # files rsync CREATES, so an app.cgi that is already on the host at
-          # mode 644 (an earlier deploy without --chmod, or a hand-edit
-          # through the file manager) would never be repaired, and Apache
-          # answers 500 for every request until it is. Cheap to do every time.
+          # NOT redundant with the --chmod flags above: --chmod only applies
+          # to files rsync CREATES, so a file already on the host with the
+          # wrong mode (an earlier deploy without --chmod, or a hand-edit
+          # through the file manager) would never be repaired. Either one
+          # costs the whole tree: an app.cgi Apache cannot execute and an
+          # .htaccess it cannot read are both 500 on every URL. Cheap to do
+          # on every deploy, so it is done on every deploy.
           chmod 755 "\$DIR/app.cgi"
+          chmod 644 "\$DIR/.htaccess"
           REMOTE
