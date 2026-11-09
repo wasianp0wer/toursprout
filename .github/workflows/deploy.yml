@@ -181,7 +181,9 @@ jobs:
         run: |
           ssh deploy-host "mkdir -p '$DEPLOY_DIR/backend' '$DEPLOY_DIR/content' '$DEPLOY_DIR/frontend/dist/frontend/browser' '$DEPLOY_DIR/tmp'"
           RSYNC="rsync -rlt --itemize-changes -e ssh"
-          $RSYNC passenger_wsgi.py "deploy-host:$DEPLOY_DIR/"
+          # --chmod is required: `rsync -rlt` carries no permissions, so
+          # without it app.cgi arrives mode 644 and Apache 500s on it.
+          $RSYNC --chmod=F755 app.cgi "deploy-host:$DEPLOY_DIR/"
           $RSYNC \
             --exclude '.venv' --exclude '.env' --exclude '__pycache__' \
             --exclude '.pytest_cache' --exclude '.ruff_cache' --exclude 'uv.lock' \
