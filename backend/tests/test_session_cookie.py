@@ -49,6 +49,16 @@ def client(cfg):
         yield c
 
 
+def session_dirs(cfg):
+    """The session directories, counted apart from the sweep's own stamp.
+
+    `.last-sweep` is a sibling of the sessions, not one of them: it records
+    when the sweep last ran. It fails `valid_sid`, which is also how `sweep`
+    passes it over, so that is what distinguishes it here too.
+    """
+    return [p for p in cfg.sessions_dir.iterdir() if valid_sid(p.name)]
+
+
 def session_path(client, cfg):
     """Where this client's session actually lives, read off its own cookie."""
     return cfg.sessions_dir / client.cookies[SID_COOKIE]
@@ -74,7 +84,7 @@ def test_two_clients_get_their_own_directories(cfg):
     a.get("/api/session")
     b.get("/api/session")
     assert a.cookies[SID_COOKIE] != b.cookies[SID_COOKIE]
-    assert len(list(cfg.sessions_dir.iterdir())) == 2
+    assert len(session_dirs(cfg)) == 2
 
 
 def test_a_second_clients_new_tour_does_not_touch_the_first(cfg):
@@ -111,7 +121,7 @@ def test_one_browser_one_session_directory(client, cfg):
     client.get("/api/session")
     client.get("/api/session")
     client.get("/api/session")
-    assert len(list(cfg.sessions_dir.iterdir())) == 1
+    assert len(session_dirs(cfg)) == 1
 
 
 def test_a_resolved_session_is_not_re_minted(client):
@@ -521,7 +531,7 @@ def test_reattaching_works_with_no_cookie_at_all(cfg):
     assert b.post("/api/session/reattach", json={"key": key}).status_code == 200
     assert b.get("/api/session").json()["title"] == "Lost"
     # It joined the existing directory; it did not mint another.
-    assert len(list(cfg.sessions_dir.iterdir())) == 1
+    assert len(session_dirs(cfg)) == 1
 
 
 def test_an_unknown_key_is_404_and_opens_nothing(client, cfg):
@@ -623,8 +633,8 @@ def test_the_first_mint_sweeps_an_abandoned_directory(cfg):
 
 def test_a_second_mint_within_the_interval_does_not_sweep_but_one_after_does(
         cfg, monkeypatch):
-    clock = [1000.0]
-    monkeypatch.setattr("app.main._monotonic", lambda: clock[0])
+    clock = [1_700_000_000.0]  # wall clock now, and after _stale_dir's 1_000_000_000
+    monkeypatch.setattr("app.main._now", lambda: clock[0])
     with TestClient(create_app(cfg), base_url=HTTPS) as c:
         c.get("/api/session")
         stale = _stale_dir(cfg)
@@ -636,6 +646,35 @@ def test_a_second_mint_within_the_interval_does_not_sweep_but_one_after_does(
         clock[0] += 3600
         c.get("/api/session")
         assert not stale.exists()
+
+
+def test_the_throttle_holds_across_processes_not_just_within_one(cfg, monkeypatch):
+    """Under CGI every request is a fresh interpreter, so a throttle in
+    `app.state` would sweep on every cookieless mint. A fresh `create_app`
+    per request is the closest this suite gets to that."""
+    clock = [1_700_000_000.0]
+    monkeypatch.setattr("app.main._now", lambda: clock[0])
+    with TestClient(create_app(cfg), base_url=HTTPS) as c:
+        c.get("/api/session")
+    stale = _stale_dir(cfg)
+    clock[0] += 60
+    with TestClient(create_app(cfg), base_url=HTTPS) as c:  # new app, new state
+        c.get("/api/session")
+    assert stale.exists()
+
+
+def test_a_stamp_that_cannot_be_written_does_not_sweep_on_every_request(
+        cfg, monkeypatch):
+    """Fail closed: if the stamp cannot be recorded, the walk is skipped
+    rather than repeated on every mint."""
+    monkeypatch.setattr("app.main.mark_swept", lambda *a, **kw: False)
+    called = []
+    monkeypatch.setattr("app.main.sweep", lambda *a, **kw: called.append(1))
+    with TestClient(create_app(cfg), base_url=HTTPS) as c:
+        for _ in range(2):
+            c.cookies.clear()
+            assert c.get("/api/session").status_code == 200
+    assert called == []
 
 
 def test_a_session_that_resolves_does_not_sweep(cfg):

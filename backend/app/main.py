@@ -44,7 +44,16 @@ from .loose_import import stage_loose_bundle
 from .media_store import MediaError, store_media
 from .publish import PublishError, build_site
 from .session import Session, SessionConflict
-from .sessions import COOKIE_MAX_AGE, SID_COOKIE, new_sid, session_dir, sweep, valid_sid
+from .sessions import (
+    COOKIE_MAX_AGE,
+    SID_COOKIE,
+    mark_swept,
+    new_sid,
+    session_dir,
+    sweep,
+    sweep_due,
+    valid_sid,
+)
 
 # `FileResponse` (which answers the tour-data route below) and `StaticFiles`
 # (which serves the built frontend) both guess content types
@@ -271,25 +280,31 @@ def _set_sid_cookie(response: Response, sid: str) -> None:
 
 
 SWEEP_INTERVAL_SECONDS = 3600
-_monotonic = time.monotonic  # a seam, so tests move the clock instead of sleeping
+_now = time.time  # a seam, so tests move the clock instead of sleeping
 
 
-def _sweep_once(app: FastAPI, cfg: Settings) -> None:
+def _sweep_once(cfg: Settings) -> None:
     """Reclaim abandoned sessions, on a mint, at most once per interval.
 
     Throttled, not per request: minting is the hot path of every first page
-    load and a sweep walks every session directory. Throttled, not once per
-    process: a long-lived worker would otherwise never sweep again, and the
-    short window would mean nothing. It runs BEFORE the new directory is
-    made, so it never visits it. The timestamp is set first, so a failing
-    sweep is not retried on the next request. `sweep` does not raise;
-    the guard here is for the settings lookup and anything unforeseen.
+    load and a sweep walks every session directory. Throttled on a FILE, not
+    in `app.state`: this process answers one request and exits, so an
+    in-memory timestamp is unset on every request and would throttle
+    nothing — a full walk per cookieless mint, which is the stat storm the
+    throttle exists to prevent. The stamp outlives the process, so the clock
+    has to be a wall clock; `sessions.sweep_due` carries the reasoning.
+
+    It runs BEFORE the new directory is made, so it never visits it. The
+    stamp is written first, so a failing sweep is not retried on the next
+    request, and a stamp that cannot be written skips the walk rather than
+    repeating it per request. `sweep` does not raise; the guard here is for
+    the settings lookup and anything unforeseen.
     """
-    now = _monotonic()
-    last = getattr(app.state, "last_sweep", None)
-    if last is not None and now - last < SWEEP_INTERVAL_SECONDS:
+    now = _now()
+    if not sweep_due(cfg.sessions_dir, interval_seconds=SWEEP_INTERVAL_SECONDS, now=now):
         return
-    app.state.last_sweep = now
+    if not mark_swept(cfg.sessions_dir, now=now):
+        return
     try:
         sweep(
             cfg.sessions_dir,
@@ -319,7 +334,7 @@ def mint_session(request: Request, response: Response) -> Session:
     session = _session_for(cfg, request.cookies.get(SID_COOKIE))
     if session is not None:
         return session
-    _sweep_once(request.app, cfg)
+    _sweep_once(cfg)
     sid = new_sid()
     session = Session(session_dir(cfg.sessions_dir, sid))
     session.write_config(_viewer_config(cfg))
