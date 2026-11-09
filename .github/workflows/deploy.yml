@@ -98,14 +98,17 @@ jobs:
         run: npx ng test --watch=false
 
       # ---- 2. Backend lint and tests (a failure here stops the deploy) -------
-      # Python 3.13: backend/pyproject.toml says `requires-python = ">=3.13"`
-      # and that must stay. This value MUST match the interpreter the host's
-      # $DEPLOY_DIR/.venv was built with, because requirements.txt is resolved
-      # here and installed there. As of writing the versions the host offers
-      # are UNCONFIRMED; check it and change this if it differs.
+      # Python 3.12: the host's interpreter measured at 3.12.15, and
+      # backend/pyproject.toml says `requires-python = ">=3.12"`. This value
+      # MUST match the interpreter $DEPLOY_DIR/.venv was built with, because
+      # requirements.txt is resolved here and installed there; if the host's
+      # minor version changes, change this and the floor together.
+      # backend/tests/test_versions.py fails if the two drift apart. That test
+      # pins only that they agree: that the code runs on 3.12 is shown by this
+      # job running on it, not by anything checked before the first run.
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.12"
       # uv comes from PyPI rather than a third-party action: this job later
       # holds the SSH key, so it uses as few third-party actions as possible.
       # Unpinned on purpose for now; pin `uv==X.Y.Z` once a version is known good.
