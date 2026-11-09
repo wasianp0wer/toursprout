@@ -181,6 +181,36 @@ jobs:
       #
       # Layout on the host mirrors the repository, because Settings derives
       # content_dir and frontend_dist from the backend's location.
+      # ---- 4a. Preflight: can this runner reach the host at all? ------------
+      # A bare `Connection timed out` from the first ssh says nothing about WHY,
+      # and the two causes need opposite responses: a DEPLOY_HOST that is a
+      # PROXIED DOMAIN (Cloudflare forwards HTTP and drops port 22, so SSH to it
+      # can never work) is a secret to correct, while a host that drops this
+      # runner's address is a support request. DEPLOY_HOST is masked in the log,
+      # which hides a trailing space or a wrong value, so this prints the address
+      # the runner actually resolved. That address is in public DNS and is not a
+      # secret; nothing else about the connection is printed.
+      - name: Check the host is reachable
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+        run: |
+          addrs="$(getent ahostsv4 "$DEPLOY_HOST" | awk '{print $1}' | sort -u)"
+          if [ -z "$addrs" ]; then
+            echo "::error::DEPLOY_HOST does not resolve from this runner. Check the secret for a typo, a scheme (https://), a user@ prefix, or trailing whitespace."
+            exit 1
+          fi
+          echo "DEPLOY_HOST resolves to: $(printf '%s ' $addrs)"
+          if printf '%s\n' $addrs | grep -qE '^(104\.(1[6-9]|2[0-7])\.|172\.(6[4-9]|7[01])\.|188\.114\.|162\.159\.|173\.245\.4[89]\.|108\.162\.)'; then
+            echo "::warning::That looks like a Cloudflare address, which means DEPLOY_HOST is a proxied domain rather than the server. SSH to it will always time out. Use the server's own hostname (docs/DEPLOY.md, the DEPLOY_HOST row)."
+          fi
+          if timeout 15 bash -c ": < /dev/tcp/$DEPLOY_HOST/$DEPLOY_PORT" 2>/dev/null; then
+            echo "TCP $DEPLOY_PORT is open from this runner."
+          else
+            echo "::error::Cannot open TCP $DEPLOY_PORT to DEPLOY_HOST from this runner. If that same address answers from your own machine, the host is dropping GitHub's runner addresses: that is a request to the host, not a change here. See docs/DEPLOY.md step 6."
+            exit 1
+          fi
+
       - name: Copy files to the host (front controller first)
         run: |
           ssh deploy-host "mkdir -p '$DEPLOY_DIR/backend' '$DEPLOY_DIR/content' '$DEPLOY_DIR/deploy' '$DEPLOY_DIR/frontend/dist/frontend/browser'"
