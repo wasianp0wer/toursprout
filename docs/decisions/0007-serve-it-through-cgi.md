@@ -94,9 +94,9 @@ proxy allowed and the process is still reaped. Neither can be worked around
 from inside the account, and anyone who later proposes "just run `uvicorn`"
 should be shown both rows, not one.
 
-What is left is CGI, which the host does have: a process per request,
-0.36–0.40 s of it spent on imports. For roughly six historians that is
-affordable. It is not affordable for a JavaScript chunk, which is decision 2.
+What is left is CGI, which the host does have: a process per request, with
+the measured range above — 0.35–0.46 s — spent on imports before any of our
+own code runs. For roughly six historians that is affordable. It is not affordable for a JavaScript chunk, which is decision 2.
 
 ### 2. Apache serves the bundle; CGI serves `/api` and `/tour-data`
 
