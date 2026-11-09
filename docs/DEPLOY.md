@@ -476,8 +476,11 @@ What each failure means:
 
 - **Check 1 answers `404`** (a FastAPI `{"detail":"Not Found"}`): the
   application ran and did not recognise the path. This is the
-  `SCRIPT_NAME`/`PATH_INFO` mistake the CGI design names (2026-11-09, §6.1).
-  The front
+  `SCRIPT_NAME`/`PATH_INFO` mistake. (The 2026-11-09 design named it in §6.1
+  but reasoned about it wrongly, which ADR 0007 decision 4 corrects: clearing
+  `SCRIPT_NAME` is not what prevents the 404s, since Starlette strips
+  `root_path` before matching routes. It is cleared so that URLs the
+  application *generates* do not acquire an `/app.cgi` prefix.) The front
   controller rewrites every dynamic URL to one script, so Apache sets
   `SCRIPT_NAME=/app.cgi` and leaves `PATH_INFO` empty; `app/cgi.py` takes the
   path from `REQUEST_URI` instead and clears `SCRIPT_NAME`. If this 404s,

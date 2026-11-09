@@ -831,8 +831,8 @@ into it.*
   (`GET /api/diagnostics/egress`) answers whether the application can reach
   all four Overpass mirrors; entries 27 and 28 are still open, so the mirrors
   beyond `overpass-api.de` have never been called, and the shell measurements
-  that led here were taken from the cPanel shell, which is not the Passenger
-  worker. If place search proves unusable on the host it goes the way
+  that led here were taken from the cPanel shell, which is not the process
+  that serves a request (a CGI process started by Apache, since entry 33). If place search proves unusable on the host it goes the way
   panorama search did, into the browser, or goes.
 - **Close it:** `docs/DEPLOY.md` step 1.
 
