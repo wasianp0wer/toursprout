@@ -285,7 +285,7 @@ Repository *Settings*, *Secrets and variables*, *Actions*. The two tabs matter.
 | Name | What it is |
 | --- | --- |
 | `SSH_PRIVATE_KEY` | A private key made for this and nothing else, authorised on the host. Make one with `ssh-keygen -t ed25519 -f deploy_key`, add `deploy_key.pub` in cPanel under *SSH Access*, *Import Key*, then *Manage*, *Authorize*, and paste the *private* file here. |
-| `DEPLOY_HOST` | The SSH hostname. |
+| `DEPLOY_HOST` | The SSH endpoint of the **server**, not the subdomain the app serves at. Find it with `hostname -f` in the cPanel terminal, or in cPanel's *Server Information* sidebar, or in your Reclaim welcome email; confirm it with `ssh -p PORT USER@CANDIDATE 'hostname -f; pwd'`, which should land in `/home/USER`. Your own domain usually resolves to the same server and is still the worse choice: it is a DNS alias, so putting a proxy in front of it or moving the DNS later breaks SSH and invalidates the pinned host key, in a deploy that has nothing to do with DNS. Use the same string for `ssh-keyscan` below — the pin is for this literal text. |
 | `DEPLOY_USER` | Your cPanel username. |
 | `DEPLOY_PATH` | The absolute path of the production deploy directory, which is the production subdomain's document root from step 4, e.g. `/home/USER/tours`. **Set it even if you only mean to rehearse**: the first workflow step refuses to run with any of these empty. A rehearsal does not use it — step 6's `target` input replaces it for that run. |
 | `MAPILLARY_TOKEN` | Written into `backend/.env` on the first deploy only. |
