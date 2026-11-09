@@ -7,7 +7,8 @@ import {
   type DisplayMode,
 } from './document-ops';
 import type { InWorldDisplay, OverlayKind } from '../core/tour.models';
-import { ToolsApi, type PanoramaCandidate, type PlaceCandidate } from '../core/tools-api';
+import { MapillarySearch, type PanoramaCandidate } from '../core/mapillary-search';
+import { ToolsApi, type PlaceCandidate } from '../core/tools-api';
 
 type Num = number | null;
 
@@ -27,6 +28,7 @@ type Num = number | null;
 export class InspectorPane {
   protected readonly store = inject(EditorStore);
   private readonly tools = inject(ToolsApi);
+  private readonly mapillary = inject(MapillarySearch);
 
   protected readonly overlay = this.store.selectedOverlay;
   protected readonly kinds = computed<OverlayKind[]>(() => {
@@ -150,7 +152,7 @@ export class InspectorPane {
     const s = this.stop();
     if (!s || this.searching()) return;
     await this.search(async () => ({
-      stopId: s.id, panoramas: await this.tools.panoramas(s.location.lng, s.location.lat),
+      stopId: s.id, panoramas: await this.mapillary.panoramas(s.location.lng, s.location.lat),
     }));
   }
 

@@ -402,7 +402,9 @@ The core change. Owns Review Focus items 1, 2 and 4.
 
 Four decisions this task implements, from spec §6.1:
 
-1. **Only `/api/session` mints.** It depends on `mint_session`. Every other route depends on `current_session` and answers from whatever is there — a cookieless `PUT /api/session/tour` gets the existing 409 "no tour is open", not a new session.
+1. **`/api/session` and the four creating routes mint; everything else resolves or fails.** `mint_session` goes on `GET /api/session`, `POST /api/session/new`, `POST /api/session/examples/{id}`, `POST /api/session/import` and `POST /api/session/import-files`. `current_session` (resolve-only) goes on `DELETE /api/session`, `PUT /api/session/tour`, `POST /api/session/media`, `GET /api/session/export` and `GET /api/session/publish` — so a cookieless `PUT /api/session/tour` gets the existing 409 "no tour is open", not a new session. `/tour-data` never mints.
+
+   The creating routes are included because a route that creates a tour but cannot mint has nowhere safe to write it: a fixed placeholder is the collision anti-goal restated, and an un-cookied `sid` path puts the tour where the author's browser can never reach it. It would also break `docs/HANDOFF.md:172`'s documented `curl -X POST .../api/session/new` first call. The concurrency rationale still holds — two of the three first-load requests are `/tour-data`, which never mints, and the creating routes are user-initiated after `/api/session` has answered. `_reject_cross_site` already guards all four, so minting on a POST opens no new attack path.
 2. **`/tour-data` stops being a static mount.** Replace `_mount_tour_data` with a route — `@app.get("/tour-data/{path:path}")` — that resolves the session from the cookie and serves from inside it. It must keep `X-Content-Type-Options: nosniff` and Range support (`main.py:583` records the narration audio as needing Range; recorded audio needs it as much). `FileResponse` provides Range; set the header explicitly. Refuse any `path` that escapes the session directory, using `Path.resolve()` and `is_relative_to`, as `examples.py:182-194`'s `_inside` does. No cookie, or an unknown `sid`, is **404** — never a mint.
 3. **The viewer config is written at mint time.** `main.py:142` writes it in the lifespan; with sessions created on demand, `mint_session` calls `session.write_config(_viewer_config(cfg))` instead. The routes that already re-write it after mutating (`new_session` :199, `import_example` :234, `import_bundle` :314, `import_files` :399) keep doing so.
 4. **The lifespan goes.** `a2wsgi` never runs it (Task 10), so `app.state.cfg = cfg` moves into `create_app`'s body and `app.state.session` disappears. Removing the lifespan entirely is deliberate: a lifespan that silently does not run under Passenger is worse than none. Tests may keep `with TestClient(...)`; it simply stops being load-bearing.
@@ -703,7 +705,11 @@ git commit -m "Build, test and ship to the host on a push to main"
 
 **Files:**
 - Create: `docs/DEPLOY.md`, `docs/FOR-HISTORIANS.md`
-- Modify: `docs/UNVERIFIED.md`, `docs/ARCHITECTURE.md`, `README.md`
+- Modify: `docs/UNVERIFIED.md`, `docs/ARCHITECTURE.md`, `README.md`, `docs/HANDOFF.md`, `docs/CHANGING-THINGS.md`
+
+**`docs/HANDOFF.md` is load-bearing and currently broken as printed.** Its curl flow at lines 168-180 is the supported no-browser path, and it was the deciding evidence for the minting boundary in Task 6. Every `curl` invocation is a fresh cookieless client, so `new` followed by `export` now mints twice and 409s. Each line needs `-c cookies.txt -b cookies.txt` (or equivalent) so the session cookie persists across invocations, and the file should say in one line why that is needed now. Verify the corrected flow by actually running it against a local server rather than reasoning about it.
+
+**`docs/CHANGING-THINGS.md:470`** still points at `Settings.work_dir`, which no longer exists — it is `sessions_dir` plus a per-session directory now.
 
 `docs/DEPLOY.md` is the spec §6.6 runbook: numbered host-side steps, each saying what the author should see and what to paste back if they see something else. Cover creating the Python app, setting the Python version, Directory Privacy, AutoSSL, the first rsync, `tmp/restart.txt`, where session directories live, how to back them up, and how to read the Passenger log. First step is the egress diagnostic from Task 10.
 

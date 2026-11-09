@@ -112,42 +112,41 @@ def test_an_existing_different_file_is_never_overwritten(tmp_path, monkeypatch):
     assert path.read_bytes() == JPEG_BYTES
 
 
-def test_an_oversized_file_is_refused(tmp_path, monkeypatch):
-    monkeypatch.setattr(ms, "MAX_FILE_BYTES", 40)
+def test_an_oversized_file_is_refused(tmp_path):
     work = _work(tmp_path)
     with pytest.raises(MediaError, match="limit"):
-        store_media(work, JPEG_BYTES + b"x" * 40, "big.jpg")
+        store_media(work, JPEG_BYTES + b"x" * 40, "big.jpg", max_file_bytes=40)
     assert list((work / "media").iterdir()) == []
 
 
-def test_exceeding_the_directory_total_is_refused(tmp_path, monkeypatch):
-    monkeypatch.setattr(ms, "MAX_TOTAL_BYTES", len(JPEG_BYTES) * 2 + 5)
+def test_exceeding_the_directory_total_is_refused(tmp_path):
+    cap = len(JPEG_BYTES) * 2 + 5
     work = _work(tmp_path)
-    store_media(work, JPEG_BYTES, "a.jpg")
-    store_media(work, OTHER_JPEG_BYTES, "b.jpg")
+    store_media(work, JPEG_BYTES, "a.jpg", max_session_bytes=cap)
+    store_media(work, OTHER_JPEG_BYTES, "b.jpg", max_session_bytes=cap)
     with pytest.raises(MediaError, match="exceed"):
-        store_media(work, PNG_BYTES + b"z" * 40, "c.png")
+        store_media(work, PNG_BYTES + b"z" * 40, "c.png", max_session_bytes=cap)
     assert len(list((work / "media").iterdir())) == 2
 
 
-def test_repeated_uploads_cannot_exceed_the_total(tmp_path, monkeypatch):
+def test_repeated_uploads_cannot_exceed_the_total(tmp_path):
     cap = 400
-    monkeypatch.setattr(ms, "MAX_TOTAL_BYTES", cap)
     work = _work(tmp_path)
     for i in range(50):
         try:
-            store_media(work, b"\xff\xd8\xff" + bytes([i]) * 60, f"p{i}.jpg")
+            store_media(work, b"\xff\xd8\xff" + bytes([i]) * 60, f"p{i}.jpg",
+                        max_session_bytes=cap)
         except MediaError:
             pass
     total = sum(p.stat().st_size for p in (work / "media").rglob("*") if p.is_file())
     assert 0 < total <= cap
 
 
-def test_re_uploading_existing_content_at_the_cap_still_succeeds(tmp_path, monkeypatch):
-    monkeypatch.setattr(ms, "MAX_TOTAL_BYTES", len(JPEG_BYTES))
+def test_re_uploading_existing_content_at_the_cap_still_succeeds(tmp_path):
+    cap = len(JPEG_BYTES)
     work = _work(tmp_path)
-    a = store_media(work, JPEG_BYTES, "a.jpg")
-    assert store_media(work, JPEG_BYTES, "a.jpg") == a
+    a = store_media(work, JPEG_BYTES, "a.jpg", max_session_bytes=cap)
+    assert store_media(work, JPEG_BYTES, "a.jpg", max_session_bytes=cap) == a
 
 
 @pytest.mark.parametrize("kind", sorted(SAMPLES))

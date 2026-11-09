@@ -9,6 +9,7 @@ import { EditorStore } from './editor-store';
 import { InspectorPane } from './inspector-pane';
 import { OutlinePane } from './outline-pane';
 import { setTourDescription, setTourTitle } from './document-ops';
+import { ConfigStore } from '../core/config-store';
 import { SessionApi } from '../core/session-api';
 import { TourApi } from '../core/tour-api';
 
@@ -30,6 +31,7 @@ import { TourApi } from '../core/tour-api';
 export class EditorPage {
   private readonly sessionApi = inject(SessionApi);
   private readonly tourApi = inject(TourApi);
+  private readonly config = inject(ConfigStore);
   private readonly router = inject(Router);
   protected readonly store = inject(EditorStore);
   protected readonly autosave = inject(Autosave);
@@ -62,6 +64,9 @@ export class EditorPage {
    * dialog says comes from the live draft.
    */
   protected readonly mediaCount = signal(0);
+  /** The key that names this session on the server, shown so a historian
+   * can write it down and get back to the tour if the browser forgets them. */
+  protected readonly recoveryKey = signal<string | null>(null);
 
   constructor() {
     void this.init();
@@ -81,6 +86,7 @@ export class EditorPage {
         return;
       }
       this.mediaCount.set(summary.mediaCount ?? 0);
+      this.recoveryKey.set(summary.recoveryKey ?? null);
       await this.openDocument();
     } catch (err) {
       this.error.set(initFailureMessage(err));
@@ -90,10 +96,37 @@ export class EditorPage {
   }
 
   private async openDocument(): Promise<void> {
-    const tour = await this.tourApi.getTour();
+    // The editor is useful without a basemap, so a failed config request
+    // must not stop the document opening; the panes just see empty values.
+    const [config, tour] = await Promise.all([
+      this.tourApi.getConfig().catch(() => null),
+      this.tourApi.getTour(),
+    ]);
+    if (config) {
+      this.config.set(config);
+    }
     this.store.load(tour);
     this.autosave.start();
     this.open.set(true);
+  }
+
+  /** What the Copy button last did, so success and failure are both visible:
+   * silent success is indistinguishable from silent failure, and this is a
+   * string the historian may have to retype on another laptop. */
+  protected readonly copyState = signal<'idle' | 'copied' | 'failed'>('idle');
+  private copyTimer: ReturnType<typeof setTimeout> | undefined;
+
+  protected async copyRecoveryKey(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(this.recoveryKey() ?? '');
+      this.copyState.set('copied');
+    } catch {
+      // Unavailable or blocked (an insecure context, a denied permission).
+      // The field is selectable, so the key can still be copied by hand.
+      this.copyState.set('failed');
+    }
+    clearTimeout(this.copyTimer);
+    this.copyTimer = setTimeout(() => this.copyState.set('idle'), 2000);
   }
 
   protected askToClose(): void {

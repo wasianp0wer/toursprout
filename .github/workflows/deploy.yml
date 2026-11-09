@@ -1,0 +1,233 @@
+name: Deploy
+
+# Deliberately no `pull_request` trigger: nothing that runs here may be started
+# by a pull request, because this job holds the SSH key and the host's secrets.
+# (The repository is private, which removes the forked-PR path, but the trigger
+# is scoped anyway.)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: >-
+          Directory on the host to deploy into. Leave EMPTY for production
+          (the DEPLOY_PATH secret). Give a different path to rehearse the
+          pipeline against a staging directory or subdomain first.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# One deploy at a time: two rsyncs into the same tree must not interleave.
+# Never cancel one half-way through.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+# Configuration the author must create:
+#   Secrets:   SSH_PRIVATE_KEY, DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH, MAPILLARY_TOKEN
+#   Variables: DEPLOY_HOST_KEY (required), DEPLOY_PORT (optional, default 22)
+# DEPLOY_HOST_KEY is the host's PUBLIC key, which is not secret, hence a
+# variable: the "ssh-ed25519 AAAA..." part of `ssh-keyscan -t ed25519 <host>`
+# (the type and base64 blob, without the leading hostname field). Take it from
+# the host's own console or a network you trust, not from this pipeline.
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      # Secrets are scoped to the steps that use them, not the job, so an npm
+      # lifecycle script or a test never sees them.
+      - name: Check configuration
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          MAPILLARY_TOKEN: ${{ secrets.MAPILLARY_TOKEN }}
+          DEPLOY_HOST_KEY: ${{ vars.DEPLOY_HOST_KEY }}
+        run: |
+          missing=0
+          for name in SSH_PRIVATE_KEY DEPLOY_HOST DEPLOY_USER DEPLOY_PATH MAPILLARY_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set."
+              missing=1
+            fi
+          done
+          if [ -z "$DEPLOY_HOST_KEY" ]; then
+            echo "::error::Repository variable DEPLOY_HOST_KEY is not set (the host's public key, e.g. 'ssh-ed25519 AAAA...'). It is a variable, not a secret."
+            missing=1
+          fi
+          [ "$missing" = 0 ] || exit 1
+
+      - name: Choose the deploy target
+        env:
+          TARGET_INPUT: ${{ inputs.target }}
+          PROD_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          if [ -n "$TARGET_INPUT" ]; then
+            echo "DEPLOY_DIR=$TARGET_INPUT" >> "$GITHUB_ENV"
+            echo "Rehearsal deploy to the path given as input."
+          elif [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            # A manual run of some other branch must not reach production.
+            echo "::error::Production deploys run from main only; give a staging target to rehearse a branch."
+            exit 1
+          else
+            echo "DEPLOY_DIR=$PROD_PATH" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/checkout@v4
+
+      # ---- 1. Frontend build -------------------------------------------------
+      # Node 24 is pinned explicitly: Angular 22 rejects Node 25.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Build the frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npx ng build
+      # Frontend tests (vitest + jsdom, no browser needed). `ng build` alone
+      # passes with broken behaviour; a failure here stops the deploy.
+      - name: Test the frontend
+        working-directory: frontend
+        run: npx ng test --watch=false
+
+      # ---- 2. Backend lint and tests (a failure here stops the deploy) -------
+      # Python 3.13: backend/pyproject.toml says `requires-python = ">=3.13"`
+      # and that must stay. This value MUST match the interpreter the host's
+      # cPanel "Setup Python App" runs. As of writing the host's offered
+      # versions are UNCONFIRMED; check it and change this if it differs.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # uv comes from PyPI rather than a third-party action: this job later
+      # holds the SSH key, so it uses as few third-party actions as possible.
+      # Unpinned on purpose for now; pin `uv==X.Y.Z` once a version is known good.
+      - name: Install uv
+        run: python -m pip install uv
+
+      # ---- 3. Resolve dependencies and export requirements.txt --------------
+      # `uv sync` (not `--frozen`, not `uv lock --check`) because uv.lock is
+      # known to be STALE: pyproject.toml names a2wsgi but the lockfile was not
+      # regenerated (no network where it was written). Re-resolving is what makes
+      # this work. Once a regenerated uv.lock is committed, `--frozen` is the
+      # better choice here and on the export below; do not switch before then or
+      # the build breaks.
+      - name: Resolve dependencies
+        working-directory: backend
+        run: uv sync
+      - name: Lint
+        working-directory: backend
+        run: uv run ruff check app tests ../content/scripts
+      - name: Test
+        working-directory: backend
+        run: uv run pytest -q
+      - name: Export requirements.txt for the host (pip, not uv)
+        working-directory: backend
+        run: uv export --no-dev --no-hashes --no-emit-project -o requirements.txt
+
+      # ---- 4. Ship ----------------------------------------------------------
+      # The key is written only now, after build and test, so neither ever sees it.
+      # The host key is PINNED from a repository variable. Scanning it here
+      # (ssh-keyscan) would be trust on every use, not first use: the runner is
+      # fresh each time, so anything answering at that address would be
+      # trusted, receive the source and .env, and could report success.
+      - name: Set up SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST_KEY: ${{ vars.DEPLOY_HOST_KEY }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ "$DEPLOY_PORT" = 22 ]; then
+            printf '%s %s\n' "$DEPLOY_HOST" "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            printf '[%s]:%s %s\n' "$DEPLOY_HOST" "$DEPLOY_PORT" "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+          fi
+          cat > ~/.ssh/config <<CONFIG
+          Host deploy-host
+            HostName $DEPLOY_HOST
+            Port $DEPLOY_PORT
+            User $DEPLOY_USER
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            BatchMode yes
+            ServerAliveInterval 30
+            ServerAliveCountMax 4
+          CONFIG
+
+      # NEVER add `--delete` (or --delete-excluded, --remove-source-files) to
+      # these rsyncs. Historians' in-progress tours live in Settings.sessions_dir
+      # (default ~/.clio-wired/sessions), OUTSIDE the deploy tree so rsync cannot
+      # reach them: that is the first defence. Not deleting anything is the
+      # second. A deploy that destroys a tour is a failure condition, so the cost
+      # of this choice (a file removed from the repo lingers on the host until
+      # someone removes it by hand) is accepted on purpose.
+      #
+      # Layout on the host mirrors the repository, because Settings derives
+      # content_dir and frontend_dist from the backend's location.
+      - name: Copy files to the host
+        run: |
+          ssh deploy-host "mkdir -p '$DEPLOY_DIR/backend' '$DEPLOY_DIR/content' '$DEPLOY_DIR/frontend/dist/frontend/browser' '$DEPLOY_DIR/tmp'"
+          RSYNC="rsync -rlt --itemize-changes -e ssh"
+          $RSYNC passenger_wsgi.py "deploy-host:$DEPLOY_DIR/"
+          $RSYNC \
+            --exclude '.venv' --exclude '.env' --exclude '__pycache__' \
+            --exclude '.pytest_cache' --exclude '.ruff_cache' --exclude 'uv.lock' \
+            backend/ "deploy-host:$DEPLOY_DIR/backend/"
+          $RSYNC frontend/dist/frontend/browser/ "deploy-host:$DEPLOY_DIR/frontend/dist/frontend/browser/"
+          # content/work is the vestigial pre-sessions directory; it is
+          # gitignored so absent from a checkout, and excluded as insurance.
+          # Anchored (/work) so it only matches content/work, nothing deeper.
+          $RSYNC --exclude '/work' content/ "deploy-host:$DEPLOY_DIR/content/"
+
+      # ---- 5. The host's .env, from secrets ---------------------------------
+      # Piped over stdin so the token never appears in a process listing or log.
+      # Written ONLY WHEN ABSENT: backend/.env is host-owned state. The first
+      # deploy bootstraps it; later deploys leave it alone, so a SESSIONS_DIR or
+      # a lowered cap the operator added survives (rsync already excludes .env
+      # for the same reason). The cost: a rotated MAPILLARY_TOKEN secret is NOT
+      # picked up; edit backend/.env on the host. stdin is drained when skipping
+      # so the pipe never breaks.
+      - name: Write backend/.env (only if absent)
+        env:
+          MAPILLARY_TOKEN: ${{ secrets.MAPILLARY_TOKEN }}
+        run: |
+          printf 'MAPILLARY_TOKEN=%s\n' "$MAPILLARY_TOKEN" \
+            | ssh deploy-host "umask 077 && if [ -e '$DEPLOY_DIR/backend/.env' ]; then cat > /dev/null; echo 'backend/.env already exists on the host: left alone (token and other settings NOT updated).'; else cat > '$DEPLOY_DIR/backend/.env' && echo 'backend/.env did not exist: created it.'; fi"
+
+      # ---- 6. Install dependencies on the host and restart Passenger --------
+      # UNPROVEN guess about the host: CloudLinux is believed to keep each app's
+      # virtualenv at ~/virtualenv/<app root relative to $HOME>/<python version>/.
+      # This needs DEPLOY_PATH under $HOME and the app already created in
+      # "Setup Python App". If the layout differs, this step fails loudly.
+      - name: Install dependencies and restart
+        run: |
+          ssh deploy-host "bash -s" <<REMOTE
+          set -euo pipefail
+          DIR='$DEPLOY_DIR'
+          REL="\${DIR#\$HOME/}"
+          ACTIVATE="\$(ls -d "\$HOME/virtualenv/\$REL"/*/bin/activate 2>/dev/null | head -n1 || true)"
+          if [ -z "\$ACTIVATE" ]; then
+            echo "No virtualenv under ~/virtualenv/\$REL: create the app in Setup Python App first." >&2
+            exit 1
+          fi
+          # Older virtualenv activate scripts read an unset \$PS1.
+          set +u
+          . "\$ACTIVATE"
+          set -u
+          pip install -r "\$DIR/backend/requirements.txt"
+          mkdir -p "\$DIR/tmp"
+          touch "\$DIR/tmp/restart.txt"
+          REMOTE

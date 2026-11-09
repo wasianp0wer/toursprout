@@ -108,7 +108,7 @@ fields, new required fields, tightened validation.
 **Why a migration is then mandatory.** The model is strict (`extra="forbid"`)
 and `Tour.schema_version` is a `Literal`, so a document of the old shape
 simply stops validating. Old documents are not hypothetical: exported
-bundles live outside this repository, `content/work/` persists between runs,
+bundles live outside this repository, session directories persist between runs (and, on the host, between deploys),
 and the committed seed tour is a document too. Without a migration those are
 rejected. And `PUT /api/session/tour` does not migrate (`Session.write_tour`
 validates against the current schema only), so an old document that reaches
@@ -162,7 +162,7 @@ and `test_a_v1_bundle_is_migrated_on_import` in `backend/tests/test_bundle.py`;
 is left behind and no code uses the changed field; the schema's TypeScript
 mirror has no drift test (see "the third duplication" under entry 8). Also note
 that migration runs on **import**, not at startup: a stale `tour.json` already
-in `content/work/` is not migrated by restarting the backend. Re-import the
+in a session directory is not migrated by restarting the backend. Re-import the
 bundle.
 
 ## 4. Add an acquisition tool
@@ -170,23 +170,26 @@ bundle.
 1. `backend/app/tools.py`: the function (takes an `httpx.Client`, returns
    data, raises `ToolError` with the HTTP status the route should use, has an
    explicit timeout) and a request model beside the others
-   (`PanoramaRequest`, `ArchiveRequest`, …). All outbound HTTP is `httpx`, never
+   (`PlacesRequest`). All outbound HTTP is `httpx`, never
    `urllib` (`docs/ENVIRONMENT.md`).
 2. `backend/app/main.py`: a route under `/api/tools/…` inside `create_app`,
-   next to the existing four. It must carry
+   next to `places`, the one tool left. (Panorama search lives in the browser
+   in `core/mapillary-search.ts`, and archive search and narration were
+   removed: ADR 0006 says why. Check that the host can reach the service you
+   want to add before writing it as a server tool: `GET
+   /api/diagnostics/egress` reports what it can reach.) It must carry
    `dependencies=[Depends(_reject_cross_site)]`, be a plain `def` (blocking
    calls belong in the threadpool), map `ToolError` to
    `HTTPException(status_code=exc.status, …)`, and build its client with
    `_tool_client(timeout)` so tests can swap the transport. If the tool
    produces a file, store it with `store_media` and return the `mediaId`
-   (the client never names a file), as `tool_narrate` does.
+   (the client never names a file).
 3. `frontend/src/app/core/tools-api.ts`: a `ToolsApi` method that goes through
    the private `post` helper (which turns failures into messages).
 4. A consumer: `editor/inspector-pane.ts` (placing a stop) or
    `editor/outline-pane.ts` (adding content). If the result becomes document
    content, build it in a pure op in `editor/document-ops.ts`
-   (`archiveCredit` and `narrationSource` are the examples) and have the
-   component only call `store.apply`. Network first, document second: a
+   and have the component only call `store.apply`. Network first, document second: a
    failed call must leave the draft untouched.
 
 **Fails if incomplete:** `backend/tests/test_tools.py` (tests inject
@@ -464,10 +467,11 @@ repository renders a page, so entries 19 to 22 of
 | the walking and arrival logic | `core/arrival.ts`, `core/tour-store.ts` |
 | the editor's undo, selection or dirty state | `editor/editor-store.ts` |
 | autosave timing or retry | `editor/autosave.ts` |
-| an upload limit or the media id scheme | `backend/app/media_store.py` |
-| import safety limits | `backend/app/bundle.py` (`MAX_TOTAL_BYTES`, `MAX_ENTRIES`) |
+| an upload limit | `backend/app/config.py` (`Settings.max_media_file_bytes`, `max_session_media_bytes`: the live values; `DEFAULT_MAX_FILE_BYTES` and `DEFAULT_MAX_SESSION_BYTES` in `backend/app/media_store.py` are only their defaults) |
+| the media id scheme | `backend/app/media_store.py` |
+| import safety limits | `backend/app/config.py` (`Settings.max_bundle_bytes`, `max_bundle_entries`: the live values; `DEFAULT_MAX_BUNDLE_BYTES` and `DEFAULT_MAX_ENTRIES` in `backend/app/bundle.py` are only their defaults) |
 | a route or its error status | `backend/app/main.py` |
-| where the working directory lives | `backend/app/config.py` (`Settings.work_dir`) |
+| where session directories live, how long they are kept, or a resource cap | `backend/app/config.py` (`Settings.sessions_dir`, `session_retention_days_*`, `max_*`); the sid and the sweep are in `backend/app/sessions.py` |
 | the seed tour | `content/source/stops.json`, `content/scripts/build_tour.py` (`make content`); `stops.json` has drifted and `make content` would revert the hand alignment, so see `HANDOFF.md` Outstanding item 2 first |
 | a way of getting a tour into the session | entry 9; produce a bundle zip and hand it to `Session.replace_from`, never `store_media` |
 | what `/` decides, or a route | `frontend/src/app/app.routes.ts`, then entry 10 |

@@ -9,7 +9,8 @@ from app.main import create_app
 
 @pytest.fixture
 def client(tmp_path):
-    overrides = Settings(mapillary_token="MLY|test-token", content_dir=tmp_path)
+    overrides = Settings(mapillary_token="MLY|test-token", content_dir=tmp_path,
+                         sessions_dir=tmp_path / "sessions")
     with TestClient(create_app(overrides)) as c:
         yield c
 

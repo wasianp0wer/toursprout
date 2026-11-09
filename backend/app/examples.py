@@ -135,7 +135,11 @@ def open_example(session: Session, cfg: Settings, example_id: str) -> list[str]:
         stage_bundle_root(root, document, _media_streams(media_dir))
         zip_path = tmp / "example.zip"
         write_bundle(root, zip_path)
-        return session.replace_from(zip_path)
+        return session.replace_from(
+            zip_path,
+            max_bytes=cfg.max_bundle_bytes,
+            max_entries=cfg.max_bundle_entries,
+        )
 
 
 def _example_dir(cfg: Settings, example_id: str) -> Path:

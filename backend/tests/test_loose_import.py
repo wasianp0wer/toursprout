@@ -12,15 +12,39 @@ from app.bundle import BundleError
 from app.config import Settings
 from app.loose_import import _media_name
 from app.main import create_app
+from app.sessions import SID_COOKIE
 
 from .test_bundle import JPEG, _minimal_doc
 
 
 @pytest.fixture
+def make_client(tmp_path):
+    """A client whose `Settings` take overrides, for the caps. Closes every
+    client it made."""
+    stack: list[TestClient] = []
+
+    def make(**overrides):
+        cfg = Settings(content_dir=tmp_path, sessions_dir=tmp_path / "sessions",
+                       frontend_dist=tmp_path / "nodist",
+                       mapillary_token="test-token", **overrides)
+        c = TestClient(create_app(cfg), base_url="https://testserver")
+        c.__enter__()
+        stack.append(c)
+        return c
+
+    yield make
+    for c in stack:
+        c.__exit__(None, None, None)
+
+
+@pytest.fixture
 def client(tmp_path):
-    cfg = Settings(content_dir=tmp_path, frontend_dist=tmp_path / "nodist",
+    cfg = Settings(content_dir=tmp_path, sessions_dir=tmp_path / "sessions",
+                   frontend_dist=tmp_path / "nodist",
                    mapillary_token="test-token")
-    with TestClient(create_app(cfg)) as c:
+    # https, because the session cookie is `Secure` and a cookiejar will not
+    # send one over an insecure request — see test_session_cookie.py.
+    with TestClient(create_app(cfg), base_url="https://testserver") as c:
         yield c
 
 
@@ -44,7 +68,8 @@ def test_preserves_nested_media_paths(client, tmp_path):
         ("files", ("media/pano/p.jpg", JPEG, "image/jpeg")),
     ])
     assert res.status_code == 200
-    assert (tmp_path / "work" / "media" / "pano" / "p.jpg").is_file()
+    sid = client.cookies[SID_COOKIE]
+    assert (tmp_path / "sessions" / sid / "media" / "pano" / "p.jpg").is_file()
 
 
 def test_tour_json_may_arrive_after_the_media(client):
@@ -129,22 +154,21 @@ def test_refuses_a_drop_while_a_tour_is_open(client):
     assert client.get("/api/session").json()["title"] == "Keep me"
 
 
-def test_refuses_too_many_parts_before_staging_anything(client, monkeypatch):
+def test_refuses_too_many_parts_before_staging_anything(make_client, monkeypatch):
     """The count cap, and WHERE it is applied.
 
-    `read_bundle` already refuses more than `MAX_ENTRIES`, but only after
+    `read_bundle` already refuses more than `max_bundle_entries`, but only after
     `stage_loose_bundle` has copied the whole drop into a staging tree and
     deflated it into a zip — twice the drop's bytes written to $TMPDIR on
     the machine whose working directory is the author's only copy. The spy is
     the assertion that matters: the limits are checked off the parts list,
     before a byte is written.
 
-    The constants are patched rather than honoured so that the test does not
-    have to post five thousand parts; the route reads them as module
-    globals for exactly this reason.
+    The cap is lowered through `Settings` rather than honoured at its default
+    so that the test does not have to post five thousand parts.
     """
+    client = make_client(max_bundle_entries=2)
     staged: list[object] = []
-    monkeypatch.setattr(main, "MAX_ENTRIES", 2)
     monkeypatch.setattr(main, "stage_loose_bundle",
                         lambda *a, **k: staged.append(a))
     res = client.post("/api/session/import-files", files=[
@@ -158,13 +182,13 @@ def test_refuses_too_many_parts_before_staging_anything(client, monkeypatch):
 
 
 def test_the_count_cap_leaves_room_for_the_bundle_json_staging_adds(
-    client, monkeypatch,
+    make_client, monkeypatch,
 ):
     """The boundary, which is one lower than the part count suggests.
 
     `stage_bundle_root` writes a `bundle.json` beside the `tour.json` it was
-    given, so a drop of exactly `MAX_ENTRIES` parts becomes an archive of
-    `MAX_ENTRIES + 1` entries — which cleared a `>` early-out here and was
+    given, so a drop of exactly `max_bundle_entries` parts becomes an archive of
+    `max_bundle_entries + 1` entries — which cleared a `>` early-out here and was
     then refused by `read_bundle`, after the whole drop had been copied and
     deflated. `>=` is what keeps "refused before a byte is written" exact at
     the only count where it was not.
@@ -172,8 +196,8 @@ def test_the_count_cap_leaves_room_for_the_bundle_json_staging_adds(
     The detail is what distinguishes pass from fail: an archive refused the
     old way is a 400 too, just a later and more expensive one.
     """
+    client = make_client(max_bundle_entries=2)
     staged: list[object] = []
-    monkeypatch.setattr(main, "MAX_ENTRIES", 2)
     monkeypatch.setattr(main, "stage_loose_bundle",
                         lambda *a, **k: staged.append(a))
     res = client.post("/api/session/import-files", files=[
@@ -185,14 +209,14 @@ def test_the_count_cap_leaves_room_for_the_bundle_json_staging_adds(
     assert staged == []
 
 
-def test_refuses_an_oversized_drop_before_staging_anything(client, monkeypatch):
+def test_refuses_an_oversized_drop_before_staging_anything(make_client, monkeypatch):
     """The byte cap. The frontend's own `MAX_FILES` caps the count but not
     the size, and a folder of two thousand JPEGs is an ordinary thing for
     someone who moves photographs on USB sticks: it is well under 2000 files
     and far over 512 MB. Same spy, same reason.
     """
+    client = make_client(max_bundle_bytes=len(JPEG))
     staged: list[object] = []
-    monkeypatch.setattr(main, "MAX_TOTAL_BYTES", len(JPEG))
     monkeypatch.setattr(main, "stage_loose_bundle",
                         lambda *a, **k: staged.append(a))
     res = client.post("/api/session/import-files", files=[

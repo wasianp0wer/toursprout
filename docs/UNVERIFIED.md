@@ -5,11 +5,20 @@ the author's first session with a real browser.
 
 **No browser can launch in the development sandbox** (`docs/ENVIRONMENT.md`:
 Chromium dies at a Mach-port check, Firefox cannot spawn a content process).
-The editor, with its four surfaces, drag-to-place, inspector, media upload,
-microphone recording and acquisition tools, and now the front door, with its
-drop zone and its close dialog, have been built, tested against jsdom,
-reviewed, and **never once seen running**. The tests prove the logic. They
+**Corrected 2026-11-06.** This file used to say that the editor, the welcome
+screen, the drop zone, the close dialog and the microphone recorder had never
+been seen running. That overstated it. The author has since viewed the editor
+and the welcome screen, and believes the drop zone was exercised. What is
+still unseen is the **close dialog** (entries 11 and 12) and the **microphone
+recorder** (entries 7 to 9), and neither has been seen in a browser. Entries
+that cover the parts now seen are marked below rather than deleted, because
+"seen" was an eyeball check and not the pass/fail run each entry describes:
+none of it was recorded against its entry. The tests prove the logic. They
 cannot prove the pixels, and nothing below has a pixel-level proof.
+
+**The hosted deployment added entries 32 to 36, and entry 32 is the single
+highest-risk unverified assumption on that branch.** Start there if the
+panorama search does not work on the host.
 
 Only unproven things are listed. What was verified (the live Mapillary and
 loc.gov response shapes, the Overpass `[timeout:12]` query, the direct
@@ -41,6 +50,9 @@ and what was entry 9 (a published site) is now entry 19.
 
 ## 1. The front door, and the example that opens in one click
 
+*Partly seen: the author has viewed the welcome screen (2026-11-06). Whether
+the example's button lands in the editor with six stops was not recorded.*
+
 - **Unproven:** that `/` shows the welcome screen when nothing is open, that
   the shelf lists *Old Town Fairfax*, and that clicking it lands in the editor
   with the tour in it. This is what the whole front door was built for, and it
@@ -55,7 +67,7 @@ and what was entry 9 (a published site) is now entry 19.
   figures and the surviving `media/pano/` paths. What nobody has seen is the
   screen.
 - **Close it:** with nothing open — if a tour is open, close it first (entry
-  11) or `curl -X DELETE localhost:8000/api/session` — open
+  11) or `curl -c jar.txt -b jar.txt -X DELETE localhost:8000/api/session` — open
   <http://localhost:8000/>. Pass: a drop zone, a *New empty tour* box, *Old
   Town Fairfax* under "Open an example", and the five guide titles down the
   right, which do nothing by design. Click the example. Pass: you arrive at
@@ -69,6 +81,9 @@ and what was entry 9 (a published site) is now entry 19.
   which the viewer has no way to know.
 
 ## 2. The editor loads at all
+
+*Partly seen: the author has viewed the editor (2026-11-06). Whether the
+console was clean was not recorded.*
 
 - **Unproven:** that `/edit` renders. The lazy editor chunk, the four surfaces,
   and every template have only ever run under jsdom.
@@ -186,7 +201,7 @@ and what was entry 9 (a published site) is now entry 19.
 - **Close it:** in each of Chromium, Firefox and Safari, record one short clip
   in the editor and let it upload. If it is refused, the brand is the cause.
   Whether or not it is, take the first bytes of the clip you recorded
-  (`head -c 64 content/work/media/<clip> | xxd`, or the saved download) and
+  (`head -c 64 $SESSIONS_DIR/<sid>/media/<clip> | xxd`, where `<sid>` is the Recovery key shown in the editor, or the saved download) and
   commit them as fixtures in `backend/tests/test_media_store.py`, which today
   has only invented headers. If Safari's brand is refused, transcoding before
   `store_media` is the recorded answer (ADR 0004, deferred features).
@@ -247,7 +262,7 @@ and what was entry 9 (a published site) is now entry 19.
   thing that arms the gate, and you want the bundle before you destroy the
   working copy. Come back here and confirm: *Close and delete* is now live,
   pressing it lands you on the welcome screen, no "Save failed" appears a
-  second later, and `content/work/` is gone. Tick the acknowledgement instead
+  second later, and the session directory (`$SESSIONS_DIR/<sid>/`) is gone. Tick the acknowledgement instead
   of downloading, on a tour you do not mind losing, to check that half too.
 
 ## 12. The blob download out of the close dialog
@@ -284,6 +299,10 @@ and what was entry 9 (a published site) is now entry 19.
 
 ## 13. A real `.zip` dragged onto the drop zone
 
+*Entries 13 to 18 are the drop zone. The author believes it was exercised
+(2026-11-06) but did not record which of these gestures were tried, so they
+stay listed until each has a result written against it.*
+
 - **Unproven:** that dragging a bundle onto the dashed area imports it. The
   drop handler reads a single `.zip` straight out of `DataTransfer` and posts
   it to `/api/session/import` — without `force`, deliberately, so a drop onto
@@ -311,7 +330,7 @@ and what was entry 9 (a published site) is now entry 19.
   objects by hand, so every shape it walks is one this project invented and
   assumes a browser produces.
 - **Close it:** with nothing open (entry 13 left a tour open; close it with
-  entry 11 or `curl -X DELETE localhost:8000/api/session`), build the folder a
+  entry 11 or `curl -c jar.txt -b jar.txt -X DELETE localhost:8000/api/session`), build the folder a
   loose drop expects and drag it onto the zone:
 
   ```sh
@@ -321,18 +340,19 @@ and what was entry 9 (a published site) is now entry 19.
   ```
 
   Pass: 6 stops and 15 media files in the editor, and
-  `content/work/media/pano/` holding the six panoramas under their original
+  `$SESSIONS_DIR/<sid>/media/pano/` (the sid is the Recovery key) holding the six panoramas under their original
   names.
 
   **Drag that folder, not `content/` itself — and the reason is a trap, not a
   refusal.** Dragging `content/` is *accepted*: the frozen example's
   `content/examples/fairfax-old-town/tour.json` is the only `tour.json` in
-  there once nothing is open (`content/work/` does not exist — closing removes
-  the whole directory, and "open" *is* `content/work/tour.json` existing), and
+  there once nothing is open (the session directory does not exist or holds no
+  `tour.json` — closing removes the whole directory, and "open" *is* the
+  session's `tour.json` existing), and
   `content/media/` supplies the media, so the screen reports 6 stops and 15
   media files. That is character for character the pass criteria above, from a
   drop that tells you nothing about the folder you meant to test. The
-  duplicate-path refusal only arises with a `content/work/` present, which
+  duplicate-path refusal only arises with a session `tour.json` present, which
   cannot happen while the welcome screen is reachable at all. So check *which*
   folder you dropped, not only what the editor says afterwards.
 
@@ -355,7 +375,7 @@ components at all.*
 - **Why not here:** no browser, and no drag. Whether the browser's directory
   walk even reports them is the unproven half.
 - **Close it:** entry 14 left a tour open, so close it first (entry 11, or
-  `curl -X DELETE localhost:8000/api/session`) — every drop needs the welcome
+  `curl -c jar.txt -b jar.txt -X DELETE localhost:8000/api/session`) — every drop needs the welcome
   screen, which is only reachable with nothing open. Then `ls -a` the folder
   from entry 14 to see whether any sidecars exist; if none do, make one with
   real bytes so the backend's refusal is actually
@@ -404,7 +424,7 @@ components at all.*
 - **Why not here:** no browser, so no file picker. The spec feeds `File`
   objects with `webkitRelativePath` set by hand.
 - **Close it:** close whatever entry 15 left open (entry 11, or
-  `curl -X DELETE localhost:8000/api/session`), then click *choose a folder*,
+  `curl -c jar.txt -b jar.txt -X DELETE localhost:8000/api/session`), then click *choose a folder*,
   pick the folder from entry 14, and confirm the same result: 6 stops, 15
   media files, `media/pano/` intact. The flat *choose files* half below needs
   nothing open again, so close once more between the two.
@@ -554,14 +574,10 @@ to see it should not have to rediscover that.*
 
 *Not in any other list.*
 
-- **Unproven:** that a clip made by the `narrate` tool (macOS `say`, then
-  ffmpeg to AAC) plays in the editor and in a browser. The backend tool is
-  exercised here, since it needs no network; the audio has never been played
-  back from a page.
-- **Close it:** use the narration tool on a stop, then play the resulting
-  overlay in the editor and in the viewer. Pass: it plays and is audible in
-  both the editor and the published viewer from entry 19. Silence in either is
-  a failure; check the file's extension and the Network tab's response type.
+- **Superseded.** The `narrate` tool (macOS `say`, then ffmpeg) was removed
+  from the editor, because neither exists on the host or on a Windows laptop
+  (ADR 0006). What is still unproven is the same question for a clip the
+  historian records with the microphone: entries 7 to 9.
 
 ## 25. Media upload through the real file picker
 
@@ -578,16 +594,17 @@ to see it should not have to rediscover that.*
 
 ## 26. The acquisition tools, driven from the editor
 
-*The tools' backend shapes were live-checked once; their UI was not seen.*
+*The tools' backend shapes were live-checked once; their UI was not seen.
+Two of the four were removed on 2026-11-06 (ADR 0006): archive search and
+narration. Panorama search now runs in the browser: see entry 32.*
 
-- **Unproven:** the four tool panels in the editor: panorama picker (it must
-  set both the stop's panorama and the position the gate needs), places,
-  archive search with thumbnails and download, narration.
-- **Why not here:** no browser. The three network tools were run once, from a
+- **Unproven:** the two panels that remain: the panorama picker (it must set
+  both the stop's panorama and the position the gate needs) and places.
+- **Why not here:** no browser. The network tools were run once, from a
   script, against live services on 2026-10-25, never through the editor.
-- **Close it:** on a new stop, run the panorama tool near the courthouse
-  (needs `MAPILLARY_TOKEN` in `backend/.env`), pick a result, and confirm the
-  Derive button then works. Search the archive, download one result.
+- **Close it:** on a new stop, run the panorama search near the courthouse
+  (needs `MAPILLARY_TOKEN`), pick a result, and confirm the Derive button then
+  works. Run place search.
 
 ## 27. Overpass in practice
 
@@ -615,6 +632,10 @@ to see it should not have to rediscover that.*
   `elements` shape.
 
 ## 29. `archive-fetch` through a real redirect
+
+- **Superseded.** `archive-fetch` and archive search were removed because
+  `www.loc.gov` answers the host with 403 (ADR 0006). The entry below is kept
+  as the record of what was unproven when it went.
 
 - **Unproven:** the per-hop allowlist on a real loc.gov redirect. Unit-tested
   in both directions (allowed hop followed, disallowed hop refused). Real
@@ -652,6 +673,87 @@ to see it should not have to rediscover that.*
 - **Close it:** last, once 1 to 30 pass. Start from the welcome screen's *New
   empty tour*, use the tools and a recording, publish, and open the result as
   in entry 19.
+
+---
+
+## 32. Whether a browser may call `graph.mapillary.com` directly
+
+*The highest-risk unverified assumption on the hosted-deployment branch.*
+
+- **Unproven:** that `MapillarySearch` (`frontend/src/app/core/mapillary-search.ts`)
+  works. It is a plain Angular `HttpClient` GET to
+  `https://graph.mapillary.com/images`, with the token as an `access_token`
+  query parameter and no custom header, because the host cannot reach Mapillary
+  and the search had to move to the browser. The design leaned on the fact that
+  `mapillary-js` already calls Mapillary from the browser to render
+  panoramas. That is evidence about `mapillary-js`'s own requests, not about
+  this one: whether Mapillary's CORS headers let a page read the response to a
+  `fetch`/XHR of ours is a separate fact about their server.
+- **Why not here:** nothing in a unit test can show it. There is **no CSP
+  anywhere in the repository**, so nothing blocks the call from our side
+  (`grep` for `Content-Security-Policy` in `backend/app` and `frontend/src`
+  finds nothing), but a CORS refusal is the browser's decision, made at
+  runtime against Mapillary's response headers. The specs use a mocked
+  `HttpClient`.
+- **Close it:** open the editor on a real page with the Network tab and
+  console open and run the panorama search on a stop with a token configured.
+  Pass: a `200` from `graph.mapillary.com/images` and candidates listed. Fail:
+  the console says the request was blocked by CORS policy (the Network entry
+  shows no readable response), and the editor's message reads "could not reach
+  Mapillary". If it fails, panorama search needs a different route, and a
+  server proxy is not one: the host cannot reach Mapillary. That is a design
+  decision for the author, not a fix to make in passing.
+
+## 33. The WSGI bridge on the host
+
+- **Unproven:** that `passenger_wsgi.py` starts under Passenger. `a2wsgi`
+  cannot be installed in the development environment, so
+  `backend/tests/test_wsgi.py::test_the_wsgi_callable_serves_a_request` is
+  **skipped** here; it has never run. `a2wsgi` does not run the ASGI
+  lifespan, which is why `app.state.cfg` is set in `create_app`'s body.
+- **Close it:** `docs/DEPLOY.md` step 7: on the host, the test must show as
+  **passed, not skipped**.
+
+## 34. The deploy pipeline
+
+- **Unproven:** every step of `.github/workflows/deploy.yml`. It has never
+  run. Specific guesses: that the CloudLinux virtualenv lives at
+  `~/virtualenv/<app root relative to $HOME>/<python version>/`; that
+  `DEPLOY_PATH` is under `$HOME`; that the SSH port is 22 (or what
+  `DEPLOY_PORT` says); that the host's "Setup Python App" Python version is
+  3.13, which the workflow pins and nobody has confirmed; and that the
+  pinned host key is of a type the host offers. The first run should be a
+  rehearsal against a staging path (`workflow_dispatch` with a `target`).
+- **Also unproven:** that `uv sync` re-resolving in CI produces a working
+  environment, since `backend/uv.lock` is stale (it does not mention
+  `a2wsgi`).
+- **Close it:** `docs/DEPLOY.md` steps 3 to 6 (and step 10 for production).
+
+## 35. Sessions across real browsers
+
+- **Unproven:** the cookie flow in a browser: that `tour_sid` is set once and
+  survives a reload, that two browsers on the host get separate tours, that
+  *Copy* on the recovery key works (it uses `navigator.clipboard`, which
+  needs a secure context), and that typing the key into the welcome screen's
+  *Recover a tour* reattaches. The backend half is covered by tests and, for
+  the `curl` flow, run live (`HANDOFF.md`). Known: the cookie is always
+  `Secure`, so local development in Safari, which has historically refused a
+  `Secure` cookie on `http://localhost`, would mint a new session on every
+  request. That is untested here.
+- **Close it:** on the host over HTTPS, open the editor in two different
+  browsers; make a tour in one and confirm the other does not see it; clear
+  cookies in the first, then recover by key.
+
+## 36. Whether the host reaches Overpass, and whether the mirrors answer
+
+- **Unproven:** that place search works from the host. The egress diagnostic
+  (`GET /api/diagnostics/egress`) answers whether the application can reach
+  all four Overpass mirrors; entries 27 and 28 are still open, so the mirrors
+  beyond `overpass-api.de` have never been called, and the shell measurements
+  that led here were taken from the cPanel shell, which is not the Passenger
+  worker. If place search proves unusable on the host it goes the way
+  panorama search did, into the browser, or goes.
+- **Close it:** `docs/DEPLOY.md` step 1.
 
 ---
 

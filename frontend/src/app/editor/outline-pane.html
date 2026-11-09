@@ -12,8 +12,6 @@
     } @else {
       <button type="button" data-record [disabled]="!store.currentStop() || busy()" (click)="record()">Record audio</button>
     }
-    <button type="button" data-narrate [disabled]="!narration() || busy()" (click)="narrate()">Narrate this text</button>
-    <button type="button" data-archive-open [disabled]="!store.currentStop()" (click)="toggleArchive()">Search the archive</button>
     <input #imageInput type="file" hidden data-file-image accept="image/jpeg,image/png,image/webp" (change)="onFile('image', $event)" />
     <input #audioInput type="file" hidden data-file-audio accept="audio/*,.webm,.m4a,.mp3,.ogg,.wav" (change)="onFile('audio', $event)" />
     <button type="button" data-move-up [disabled]="!store.selectedStop()" (click)="move(-1)" aria-label="Move stop up">Up</button>
@@ -29,33 +27,6 @@
       <button type="submit" data-defaults-submit>Continue</button>
       <button type="button" data-defaults-cancel (click)="cancelDefaults()">Cancel</button>
     </form>
-  }
-  @if (archiveOpen()) {
-    <form class="archive" data-archive (submit)="$event.preventDefault(); searchArchive()">
-      <label>Search the Library of Congress
-        <input type="text" data-archive-query [value]="archiveQuery()" (input)="archiveQuery.set($any($event.target).value)" />
-      </label>
-      <button type="submit" data-archive-search [disabled]="busy()">Search</button>
-    </form>
-    @if (archiveResults(); as rs) {
-      @if (rs.length === 0) { <p class="note" data-archive-none>Nothing found.</p> }
-      <ul class="archive-results">
-        @for (r of rs; track r; let i = $index) {
-          <li [attr.data-archive-result]="i">
-            @if (r.thumbUrl) { <img [src]="r.thumbUrl" alt="" width="64" /> }
-            <strong>{{ r.title }}</strong>
-            @if (r.date) { <span>{{ r.date }}</span> }
-            @if (r.rights) {
-              <span class="rights">{{ r.rights }}</span>
-            } @else {
-              <span class="rights">No rights statement. Enter the licence you are adding it under:</span>
-              <input type="text" data-archive-license [value]="archiveLicenses()[i] ?? ''" (input)="setArchiveLicense(i, $any($event.target).value)" />
-            }
-            <button type="button" data-archive-insert [disabled]="busy() || !store.currentStop()" (click)="insertArchive(i)">Add to this stop</button>
-          </li>
-        }
-      </ul>
-    }
   }
   @if (recState() === 'recording') { <p class="note" data-recording role="status">Recording from your microphone…</p> }
   @if (recFormatNote(); as fn) { <p class="note warning" data-record-format>{{ fn }}</p> }

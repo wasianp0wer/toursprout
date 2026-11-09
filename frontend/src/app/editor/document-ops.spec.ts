@@ -4,7 +4,7 @@ import {
   deleteStop, deriveHeading, legalModesFor, moveStop, renumberStops,
   setOverlayKind, slugify, uniqueId, updateOverlay,
   creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
-  setStopLocation, selectPanorama, archiveCredit, narrationSource,
+  setStopLocation, selectPanorama,
   PLACEHOLDER_SUMMARY, setStopSummary, setTourDescription, setTourTitle,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
@@ -571,57 +571,17 @@ describe('stop location and panorama selection', () => {
   });
 });
 
-describe('sourced and narration credits', () => {
-  const found = {
-    title: 'Courthouse, 1920', creator: 'A. Photographer',
-    itemUrl: 'https://loc.gov/item/1/', imageUrl: 'https://tile.loc.gov/1.jpg',
-  };
-
-  it('archiveCredit builds a sourced credit from the result and its stated rights', () => {
-    expect(archiveCredit({ ...found, rights: 'No known restrictions' })).toEqual({
-      type: 'sourced', source: 'Library of Congress', url: 'https://loc.gov/item/1/',
-      license: 'No known restrictions', creator: 'A. Photographer',
-    });
-  });
-
-  it('with null rights the author must supply the licence; none is invented', () => {
-    expect(archiveCredit({ ...found, rights: null })).toBeNull();
-    expect(archiveCredit({ ...found, rights: null }, '  ')).toBeNull();
-    expect(archiveCredit({ ...found, rights: null }, 'Public domain')!.license).toBe('Public domain');
-  });
-
-  it('stated rights win over a typed licence', () => {
-    expect(archiveCredit({ ...found, rights: 'Stated' }, 'Typed')!.license).toBe('Stated');
-  });
-
-  it('archiveCredit falls back to the image url, and refuses with no url at all', () => {
-    expect(archiveCredit({ ...found, itemUrl: null, rights: 'R' })!).toMatchObject({ url: found.imageUrl });
-    expect(archiveCredit({ ...found, itemUrl: null, imageUrl: null, rights: 'R' })).toBeNull();
-  });
-
+describe('sourced credits', () => {
   it('addMediaOverlay uses a given credit and needs no tour defaults for it', () => {
     const t: Tour = { ...tour(), defaults: null };
-    const credit = archiveCredit({ ...found, rights: 'R' })!;
+    const credit = {
+      type: 'sourced', source: 'Library of Congress', url: 'https://loc.gov/item/1/',
+      license: 'R', creator: 'A. Photographer',
+    } as const;
     const out = addMediaOverlay(t, 's1', 'image', 'm-1.jpg', 'Courthouse', undefined, credit);
     expect(out.stops[0].overlays[0].credit).toEqual(credit);
     expect(out.defaults).toBeNull();
     expect(addMediaOverlay(t, 's1', 'image', 'm-1.jpg', 'Courthouse')).toBe(t);
-  });
-});
-
-describe('narrationSource', () => {
-  it('uses a stop summary or an overlay body, with the owning stop', () => {
-    const t = tour([stop('s1', 1, [overlay('o1', { body: 'Overlay words' })], { summary: 'Stop words' })]);
-    expect(narrationSource(t, 's1')).toMatchObject({ stopId: 's1', text: 'Stop words', title: expect.stringContaining('synthesised') });
-    expect(narrationSource(t, 'o1')).toMatchObject({ stopId: 's1', text: 'Overlay words' });
-  });
-
-  it('is null for nothing selected, a blank text, or an unknown id', () => {
-    const t = tour([stop('s1', 1, [overlay('o1', { body: null })], { summary: '  ' })]);
-    expect(narrationSource(t, 's1')).toBeNull();
-    expect(narrationSource(t, 'o1')).toBeNull();
-    expect(narrationSource(t, 'zz')).toBeNull();
-    expect(narrationSource(t, null)).toBeNull();
   });
 });
 
@@ -644,12 +604,9 @@ describe('naming and describing', () => {
     expect(JSON.stringify(x)).toBe(snap);
   });
 
-  it('a new stop carries the placeholder, and narration refuses to read it', () => {
+  it('a new stop carries the placeholder', () => {
     const t = addStop(tour(), 'Courthouse');
     const added = t.stops[t.stops.length - 1];
     expect(added.summary).toBe(PLACEHOLDER_SUMMARY);
-    expect(narrationSource(t, added.id)).toBeNull();
-    const written = setStopSummary(t, added.id, 'Built in 1800.');
-    expect(narrationSource(written, added.id)).toMatchObject({ text: 'Built in 1800.' });
   });
 });

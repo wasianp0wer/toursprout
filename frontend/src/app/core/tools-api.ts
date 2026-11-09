@@ -2,18 +2,6 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-export interface PanoramaCandidate {
-  imageId: string;
-  /** The CAMERA's own position, not the subject's. */
-  lng: number;
-  lat: number;
-  isPano?: boolean;
-  capturedAt: number | string | null;
-  compassAngle?: number | null;
-  thumbUrl: string | null;
-  distanceM: number;
-}
-
 export interface PlaceCandidate {
   name: string;
   osmRef: string;
@@ -22,54 +10,19 @@ export interface PlaceCandidate {
   lat: number;
 }
 
-export interface ArchiveResult {
-  title: string;
-  date: string | null;
-  creator: string | null;
-  thumbUrl: string | null;
-  imageUrl: string | null;
-  itemUrl: string | null;
-  /** Null when the archive states none: the author must supply a licence. */
-  rights: string | null;
-}
-
-export interface NarrationResult {
-  mediaId: string;
-  credit: { source: string; license: string; creator: string };
-}
-
 /**
  * The acquisition tools. A sibling of SessionApi rather than part of it:
  * SessionApi is the open document (read, write, upload), while these are
- * stateless searches over third parties (only narrate touches the session,
- * by storing audio). Every failure rejects with an Error carrying the
+ * stateless searches over third parties. Every failure rejects with an Error carrying the
  * backend's message, so a caller shows it verbatim and changes nothing.
  */
 @Injectable({ providedIn: 'root' })
 export class ToolsApi {
   private readonly http = inject(HttpClient);
 
-  async panoramas(lng: number, lat: number, radiusM?: number): Promise<PanoramaCandidate[]> {
-    const body = radiusM ? { lng, lat, radiusM } : { lng, lat };
-    return (await this.post<{ candidates: PanoramaCandidate[] }>('panoramas', body)).candidates;
-  }
-
   async places(lng: number, lat: number, name?: string): Promise<PlaceCandidate[]> {
     const body = name?.trim() ? { lng, lat, name: name.trim() } : { lng, lat };
     return (await this.post<{ places: PlaceCandidate[] }>('places', body)).places;
-  }
-
-  async archiveSearch(query: string): Promise<ArchiveResult[]> {
-    return (await this.post<{ results: ArchiveResult[] }>('archive-search', { query })).results;
-  }
-
-  /** Have the server download an archive image (loc.gov only) and store it. */
-  async archiveFetch(imageUrl: string, title: string): Promise<string> {
-    return (await this.post<{ mediaId: string }>('archive-fetch', { imageUrl, title })).mediaId;
-  }
-
-  async narrate(text: string): Promise<NarrationResult> {
-    return this.post<NarrationResult>('narrate', { text });
   }
 
   private async post<T>(tool: string, body: object): Promise<T> {

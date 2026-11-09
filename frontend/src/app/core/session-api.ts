@@ -11,6 +11,9 @@ export interface SessionSummary {
   mediaCount?: number;
   /** Media files on disk that no stop references. Present once a tour is open. */
   orphanCount?: number;
+  /** The 16 characters that name this session on the server. Present while a
+   * tour is open; the way back to it if the browser's cookie is lost. */
+  recoveryKey?: string;
 }
 
 /** A bundled example tour the welcome screen can offer. */
@@ -67,6 +70,13 @@ export class SessionApi {
    * nothing open. */
   newTour(title: string): Promise<SessionSummary> {
     return this.send(this.http.post<SessionSummary>('/api/session/new', { title }));
+  }
+
+  /** Points this browser at an existing tour by its recovery key. Rejects
+   * with the backend's message: not a key, no such tour, or a tour already
+   * open here (which a reattach never replaces). */
+  reattach(key: string): Promise<SessionSummary> {
+    return this.send(this.http.post<SessionSummary>('/api/session/reattach', { key }));
   }
 
   /**

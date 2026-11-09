@@ -11,6 +11,27 @@ from fastapi.testclient import TestClient
 from app import main as main_module
 from app.config import Settings
 from app.main import create_app
+from app.sessions import SID_COOKIE
+
+
+@pytest.fixture
+def make_client(tmp_path):
+    """A client whose `Settings` take overrides, for the resource caps.
+    https for the same reason as `client`. Closes every client it made."""
+    stack: list[TestClient] = []
+
+    def make(**overrides):
+        cfg = Settings(content_dir=tmp_path, sessions_dir=tmp_path / "sessions",
+                       frontend_dist=tmp_path / "nodist",
+                       mapillary_token="test-token", **overrides)
+        c = TestClient(create_app(cfg), base_url="https://testserver")
+        c.__enter__()
+        stack.append(c)
+        return c
+
+    yield make
+    for c in stack:
+        c.__exit__(None, None, None)
 
 
 @pytest.fixture
@@ -18,9 +39,12 @@ def client(tmp_path):
     # frontend_dist is pinned at a path that does not exist so these tests
     # never depend on whether `make build` has been run. The
     # publish-without-a-build test relies on this.
-    cfg = Settings(content_dir=tmp_path, frontend_dist=tmp_path / "nodist",
+    cfg = Settings(content_dir=tmp_path, sessions_dir=tmp_path / "sessions",
+                   frontend_dist=tmp_path / "nodist",
                    mapillary_token="test-token")
-    with TestClient(create_app(cfg)) as c:
+    # https, because the session cookie is `Secure` and a cookiejar will not
+    # send one over an insecure request — see test_session_cookie.py.
+    with TestClient(create_app(cfg), base_url="https://testserver") as c:
         yield c
 
 
@@ -42,8 +66,11 @@ def client_with_frontend(tmp_path):
     (frontend_dist / "index.html").write_text("<html>SPA shell</html>")
     (frontend_dist / "app.js").write_text("console.log('stub asset');")
     cfg = Settings(content_dir=tmp_path / "content",
+                   sessions_dir=tmp_path / "sessions",
                    frontend_dist=frontend_dist, mapillary_token="test-token")
-    with TestClient(create_app(cfg)) as c:
+    # https, because the session cookie is `Secure` and a cookiejar will not
+    # send one over an insecure request — see test_session_cookie.py.
+    with TestClient(create_app(cfg), base_url="https://testserver") as c:
         yield c
 
 
@@ -429,9 +456,14 @@ def test_publish_without_a_build_is_a_409(client):
 
 @pytest.fixture
 def media_dir(client_with_frontend, tmp_path):
-    """Opens a session and returns (client, its media directory)."""
+    """Opens a session and returns (client, its media directory).
+
+    Read off the client's own cookie: there is no longer one shared working
+    directory to name, and naming the wrong session's would make every
+    range and content-type test below 404 instead of failing honestly."""
     client_with_frontend.post("/api/session/new", json={"title": "My Tour"})
-    return client_with_frontend, tmp_path / "content" / "work" / "media"
+    sid = client_with_frontend.cookies[SID_COOKIE]
+    return client_with_frontend, tmp_path / "sessions" / sid / "media"
 
 
 @pytest.fixture
@@ -575,13 +607,14 @@ def test_upload_media_refuses_a_cross_site_request(client):
     assert client.get("/api/session").json()["mediaCount"] == 0
 
 
-def test_upload_media_oversize_is_400_and_leaves_no_temp_file(client, monkeypatch, tmp_path):
+def test_upload_media_oversize_is_400_and_leaves_no_temp_file(
+    make_client, monkeypatch, tmp_path,
+):
     import tempfile
 
-    import app.media_store as ms
     # Only the route's own check reads this; store_media is made to accept
     # the file so the 400 can only come from the route.
-    monkeypatch.setattr(ms, "MAX_FILE_BYTES", 10)
+    client = make_client(max_media_file_bytes=10)
     monkeypatch.setattr("app.main.store_media", lambda *a, **k: "x.jpg")
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "spool"))
     (tmp_path / "spool").mkdir()
@@ -605,13 +638,91 @@ def test_upload_media_spool_failure_is_400_and_leaves_no_temp_file(client, monke
     assert list((tmp_path / "spool").iterdir()) == []
 
 
-def test_upload_media_declared_oversize_is_413_before_parsing(client, monkeypatch):
-    import app.media_store as ms
-    monkeypatch.setattr(ms, "MAX_FILE_BYTES", 10)
+def test_upload_media_declared_oversize_is_413_before_parsing(make_client):
+    client = make_client(max_media_file_bytes=10)
     client.post("/api/session/new", json={"title": "T"})
     r = client.post("/api/session/media", content=b"x" * (2 * 1024 * 1024),
                     headers={"Content-Type": "multipart/form-data; boundary=b"})
     assert r.status_code == 413
+
+
+def test_the_route_hands_store_media_the_configured_caps(make_client):
+    """The per-session total is enforced inside `store_media`, which has no
+    `Settings`; only the route can hand it the configured cap. A route that
+    forgot would silently enforce the default instead."""
+    client = make_client(max_session_media_bytes=len(JPEG) + 5)
+    client.post("/api/session/new", json={"title": "T"})
+    assert client.post("/api/session/media",
+                       files={"file": ("a.jpg", JPEG)}).status_code == 200
+    other = JPEG[:-1] + b"K"
+    r = client.post("/api/session/media", files={"file": ("b.jpg", other)})
+    assert r.status_code == 400
+    assert f"{len(JPEG) + 5} bytes" in r.json()["detail"]
+    assert client.get("/api/session").json()["mediaCount"] == 1
+
+
+def test_the_route_hands_store_media_the_configured_file_cap(make_client, monkeypatch):
+    """The route's own pre-check shadows `store_media`'s file cap, so pin the
+    argument itself: a stub records what the route passes."""
+    seen: list[dict] = []
+
+    def stub(*a, **k):
+        seen.append(k)
+        return "x.jpg"
+
+    monkeypatch.setattr("app.main.store_media", stub)
+    client = make_client(max_media_file_bytes=len(JPEG) + 7,
+                         max_session_media_bytes=12345)
+    client.post("/api/session/new", json={"title": "T"})
+    assert client.post("/api/session/media",
+                       files={"file": ("a.jpg", JPEG)}).status_code == 200
+    assert seen == [{"max_file_bytes": len(JPEG) + 7, "max_session_bytes": 12345}]
+
+
+def test_the_file_cap_error_names_the_configured_limit(make_client):
+    client = make_client(max_media_file_bytes=len(JPEG) - 1)
+    client.post("/api/session/new", json={"title": "T"})
+    r = client.post("/api/session/media", files={"file": ("a.jpg", JPEG)})
+    assert r.status_code == 400
+    assert str(len(JPEG) - 1) in r.json()["detail"]
+
+
+def test_the_bundle_caps_are_the_configured_ones(make_client):
+    src = make_client()
+    src.post("/api/session/new", json={"title": "T"})
+    blob = src.get("/api/session/export").content
+
+    small = make_client(max_bundle_bytes=10)
+    r = small.post("/api/session/import", files={"file": ("t.zip", blob, "application/zip")})
+    assert r.status_code == 400
+    assert "too large" in r.json()["detail"]
+    assert "limit 10" in r.json()["detail"]
+
+    few = make_client(max_bundle_entries=1)
+    r = few.post("/api/session/import", files={"file": ("t.zip", blob, "application/zip")})
+    assert r.status_code == 400
+    assert "too many" in r.json()["detail"]
+
+    roomy = make_client()
+    r = roomy.post("/api/session/import", files={"file": ("t.zip", blob, "application/zip")})
+    assert r.status_code == 200
+
+
+def test_the_caps_default_to_the_values_they_had_as_constants():
+    cfg = Settings()
+    assert cfg.max_media_file_bytes == 64 * 1024 * 1024
+    assert cfg.max_session_media_bytes == 1024 * 1024 * 1024
+    assert cfg.max_bundle_bytes == 512 * 1024 * 1024
+    assert cfg.max_bundle_entries == 5000
+
+
+@pytest.mark.parametrize("field", [
+    "max_media_file_bytes", "max_session_media_bytes",
+    "max_bundle_bytes", "max_bundle_entries"])
+@pytest.mark.parametrize("bad", [0, -1])
+def test_a_non_positive_cap_is_refused(tmp_path, field, bad):
+    with pytest.raises(ValueError):
+        Settings(content_dir=tmp_path, sessions_dir=tmp_path / "s", **{field: bad})
 
 
 def test_tour_data_is_served_with_nosniff(client):

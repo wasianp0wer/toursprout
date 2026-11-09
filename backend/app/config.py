@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .bundle import DEFAULT_MAX_BUNDLE_BYTES, DEFAULT_MAX_ENTRIES
+from .media_store import DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_SESSION_BYTES
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 REPO_DIR = BACKEND_DIR.parent
@@ -15,9 +19,37 @@ class Settings(BaseSettings):
     content_dir: Path = REPO_DIR / "content"
     frontend_dist: Path = REPO_DIR / "frontend" / "dist" / "frontend" / "browser"
 
-    @property
-    def work_dir(self) -> Path:
-        return self.content_dir / "work"
+    # One directory per browser session, named by its sid, and deliberately
+    # OUTSIDE the deploy tree. This replaces `work_dir`, which was
+    # `content/work` — inside the repository, where an `rsync` deploy would
+    # overwrite or truncate a historian's in-progress tour. `$HOME` survives
+    # a deploy; the repository checkout does not. Override as `SESSIONS_DIR`
+    # in `backend/.env` when the host puts writable storage elsewhere.
+    #
+    # Created lazily, when a session is first minted: nothing makes this
+    # directory at import or startup, so a request that mints nothing leaves
+    # no trace on disk.
+    sessions_dir: Path = Path.home() / ".clio-wired" / "sessions"
+
+    # How long an untouched session directory is kept before it is swept.
+    # Two windows, because two kinds of directory: one with no tour.json holds
+    # no authored work and no recovery key anyone was shown (a cookieless
+    # request, or a creating route that failed, mints one that nothing can
+    # reach), so it goes quickly. One with a tour.json may have its recovery
+    # key on paper, so it is kept long.
+    session_retention_days_without_tour: int = Field(default=1, gt=0)
+    session_retention_days_with_tour: int = Field(default=90, gt=0)
+
+    # Resource caps. The defaults are the values these had as module
+    # constants, so nothing changes until the host's `.env` lowers one. Four
+    # limits, two of them easy to confuse: the media total is per SESSION
+    # (everything under one tour's media/), the bundle size is per ARCHIVE
+    # (uncompressed, on import). Positive-only, so a typo is an error at
+    # startup rather than a server that refuses every upload.
+    max_media_file_bytes: int = Field(default=DEFAULT_MAX_FILE_BYTES, gt=0)
+    max_session_media_bytes: int = Field(default=DEFAULT_MAX_SESSION_BYTES, gt=0)
+    max_bundle_bytes: int = Field(default=DEFAULT_MAX_BUNDLE_BYTES, gt=0)
+    max_bundle_entries: int = Field(default=DEFAULT_MAX_ENTRIES, gt=0)
 
 
 settings = Settings()

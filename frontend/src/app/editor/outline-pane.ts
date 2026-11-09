@@ -1,15 +1,14 @@
 import { Component, ElementRef, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
 import { EditorStore } from './editor-store';
 import {
-  addMediaOverlay, addStop, archiveCredit, narrationSource, addTextOverlay, deleteOverlay, deleteStop, defaultsAnswerValid, hasDefaults, mediaKindOf, moveStop,
+  addMediaOverlay, addStop, addTextOverlay, deleteOverlay, deleteStop, defaultsAnswerValid, hasDefaults, mediaKindOf, moveStop,
 } from './document-ops';
 import { SessionApi } from '../core/session-api';
-import { ToolsApi, type ArchiveResult } from '../core/tools-api';
 import type { Credit } from '../core/tour.models';
 import { ActiveRecording, RecordingError, formatWarning, startRecording } from './recorder';
 
 type MediaKind = 'image' | 'audio';
-type PromptKind = MediaKind | 'text' | 'record' | 'narrate';
+type PromptKind = MediaKind | 'text' | 'record';
 
 /** The tour as a list: stops in order, each with its overlays. Thin over EditorStore. */
 @Component({
@@ -20,7 +19,6 @@ type PromptKind = MediaKind | 'text' | 'record' | 'narrate';
 export class OutlinePane implements OnDestroy {
   protected readonly store = inject(EditorStore);
   private readonly api = inject(SessionApi);
-  private readonly tools = inject(ToolsApi);
 
   private readonly imageInput = viewChild<ElementRef<HTMLInputElement>>('imageInput');
   private readonly audioInput = viewChild<ElementRef<HTMLInputElement>>('audioInput');
@@ -120,8 +118,6 @@ export class OutlinePane implements OnDestroy {
     this.promptKind.set(null);
     if (kind === 'record') {
       void this.beginRecording();
-    } else if (kind === 'narrate') {
-      void this.runNarrate();
     } else if (kind === 'text') {
       const stopId = this.targetStopId ?? this.store.currentStop()?.id;
       this.targetStopId = null;
@@ -218,7 +214,7 @@ export class OutlinePane implements OnDestroy {
     await this.addUploaded(kind, file, stopId);
   }
 
-  /** The one upload-then-create path, shared by file choice, recording and the archive. */
+  /** The one upload-then-create path, shared by file choice and recording. */
   private async addUploaded(
     kind: MediaKind, file: File, knownStop?: string, extra?: { title?: string; credit?: Credit },
   ): Promise<void> {
@@ -240,7 +236,7 @@ export class OutlinePane implements OnDestroy {
   }
 
   /**
-   * The create half, for media already stored (uploaded, or narrated). Called
+   * The create half, for media already stored (uploaded or recorded). Called
    * only after the network has resolved, so a refusal here is the document's
    * and leaves it untouched.
    */
@@ -262,119 +258,6 @@ export class OutlinePane implements OnDestroy {
     }
     const added = after!.stops.find((s) => s.id === stopId)?.overlays.at(-1);
     if (added) this.store.select(added.id);
-  }
-
-  // --- narration -----------------------------------------------------------
-
-  /** What narrate would say right now: the selected stop's summary or overlay's body. */
-  protected readonly narration = computed(() => {
-    const doc = this.store.draft();
-    return doc ? narrationSource(doc, this.store.selectedId()) : null;
-  });
-
-  /**
-   * The author wrote the words, a synthesised voice reads them, so the credit
-   * is the tour's creator and licence (asked for once, like any add) and the
-   * title says the voice is synthesised.
-   */
-  protected narrate(): void {
-    const src = this.narration();
-    const doc = this.store.draft();
-    if (!src || !doc || this.busy()) return;
-    this.mediaError.set(null);
-    if (!hasDefaults(doc) && !this.store.pendingDefaults()) {
-      this.promptError.set(null);
-      this.promptKind.set('narrate');
-      return;
-    }
-    void this.runNarrate();
-  }
-
-  private async runNarrate(): Promise<void> {
-    const src = this.narration();
-    if (!src) return;
-    this.busy.set(true);
-    this.mediaError.set(null);
-    let result: Awaited<ReturnType<ToolsApi['narrate']>>;
-    try {
-      result = await this.tools.narrate(src.text);
-    } catch (err) {
-      this.mediaError.set(err instanceof Error ? err.message : 'narration failed');
-      this.busy.set(false);
-      return;
-    }
-    this.busy.set(false);
-    this.createFromMedia('audio', result.mediaId, src.title, src.stopId, undefined,
-      'The narration was generated but not added.');
-  }
-
-  // --- archive search ------------------------------------------------------
-
-  protected readonly archiveOpen = signal(false);
-  protected readonly archiveQuery = signal('');
-  protected readonly archiveResults = signal<ArchiveResult[] | null>(null);
-  /** Licences the author typed for results that state no rights, by result index. */
-  protected readonly archiveLicenses = signal<Record<number, string>>({});
-
-  protected toggleArchive(): void {
-    this.archiveOpen.update((v) => !v);
-  }
-
-  protected setArchiveLicense(i: number, v: string): void {
-    this.archiveLicenses.update((m) => ({ ...m, [i]: v }));
-  }
-
-  protected async searchArchive(): Promise<void> {
-    const query = this.archiveQuery().trim();
-    if (!query || this.busy()) return;
-    this.busy.set(true);
-    this.mediaError.set(null);
-    try {
-      this.archiveResults.set(await this.tools.archiveSearch(query));
-      this.archiveLicenses.set({});
-    } catch (err) {
-      this.mediaError.set(err instanceof Error ? err.message : 'the archive search failed');
-    } finally {
-      this.busy.set(false);
-    }
-  }
-
-  /**
-   * Download the result's image, upload it, then add it. Every network step
-   * precedes the document change, so any failure leaves the document as it was.
-   * The credit is settled first: with no stated rights and no licence from
-   * the author nothing is fetched at all.
-   */
-  protected async insertArchive(i: number): Promise<void> {
-    const result = this.archiveResults()?.[i];
-    const stopId = this.store.currentStop()?.id;
-    if (!result || !stopId || this.busy()) return;
-    this.mediaError.set(null);
-    const credit = archiveCredit(result, this.archiveLicenses()[i]);
-    if (!credit) {
-      this.mediaError.set(result.rights?.trim() || this.archiveLicenses()[i]?.trim()
-        ? 'This item has no web address to credit, so it cannot be added.'
-        : 'This item states no rights. Enter the licence it is under before adding it.');
-      return;
-    }
-    if (!result.imageUrl) {
-      this.mediaError.set('This item has no image to download.');
-      return;
-    }
-    // The server downloads it (loc.gov only, retried, checked to be an image)
-    // and stores it; the browser never contacts the archive for the image.
-    this.busy.set(true);
-    let mediaId: string;
-    try {
-      mediaId = await this.tools.archiveFetch(result.imageUrl, result.title);
-    } catch (err) {
-      this.mediaError.set(err instanceof Error ? err.message : 'the image could not be downloaded');
-      this.busy.set(false);
-      return;
-    }
-    this.busy.set(false);
-    this.createFromMedia('image', mediaId, result.title, stopId, credit,
-      'The image was downloaded but not added.');
   }
 
   ngOnDestroy(): void {

@@ -3,7 +3,6 @@ import { TestBed } from '@angular/core/testing';
 import { OutlinePane } from './outline-pane';
 import { EditorStore } from './editor-store';
 import { SessionApi } from '../core/session-api';
-import { ToolsApi, type ArchiveResult } from '../core/tools-api';
 import { overlay, stop, tour } from './test-builders';
 import { installRecording, uninstallRecording } from './recording-fakes';
 
@@ -34,6 +33,14 @@ describe('OutlinePane', () => {
     const ids = Array.from(el.querySelectorAll('[data-stop]')).map((n) => n.getAttribute('data-stop'));
     expect(ids).toEqual(['a', 'b']);
     expect(q('[data-overlay="o1"]')?.textContent).toContain('Note one');
+  });
+
+  it('offers no narrate button', () => {
+    expect(q('[data-narrate]')).toBeNull();
+  });
+
+  it('offers no archive search', () => {
+    expect(q('[data-archive-open]')).toBeNull();
   });
 
   it('clicking selects a stop or an overlay', () => {
@@ -417,173 +424,6 @@ describe('OutlinePane', () => {
     it('is disabled with no current stop', () => {
       store.select(null); fixture.detectChanges();
       expect((q('[data-record]') as HTMLButtonElement).disabled).toBe(true);
-    });
-  });
-
-  describe('archive search and narration', () => {
-    let upload: ReturnType<typeof vi.fn>;
-    let archiveSearch: ReturnType<typeof vi.fn>;
-    let narrate: ReturnType<typeof vi.fn>;
-    let archiveFetch: ReturnType<typeof vi.fn>;
-    const settle = async () => { await new Promise((r) => setTimeout(r, 5)); fixture.detectChanges(); };
-    const press = async (sel: string, i = 0) => {
-      (el.querySelectorAll(sel)[i] as HTMLElement).click(); await settle();
-    };
-    const typeInto = async (sel: string, value: string, i = 0) => {
-      const n = el.querySelectorAll(sel)[i] as HTMLInputElement;
-      n.value = value; n.dispatchEvent(new Event('input')); await settle();
-    };
-    const result = (over: Partial<ArchiveResult> = {}): ArchiveResult => ({
-      title: 'Courthouse, 1920', date: '1920', creator: 'A. Photographer',
-      thumbUrl: 'https://tile.loc.gov/t.jpg', imageUrl: 'https://tile.loc.gov/full.jpg',
-      itemUrl: 'https://www.loc.gov/item/123/', rights: 'No known restrictions', ...over,
-    });
-    const overlaysOf = () => store.draft()!.stops.find((s) => s.id === 'a')!.overlays;
-    const search = async (results: ArchiveResult[]) => {
-      archiveSearch.mockResolvedValue(results);
-      await press('[data-archive-open]');
-      await typeInto('[data-archive-query]', 'fairfax courthouse');
-      await press('[data-archive-search]');
-    };
-
-    beforeEach(() => {
-      upload = vi.fn();
-      archiveSearch = vi.fn();
-      narrate = vi.fn();
-      archiveFetch = vi.fn().mockResolvedValue('pic-1.jpg');
-      TestBed.resetTestingModule();
-      TestBed.configureTestingModule({
-        imports: [OutlinePane],
-        providers: [
-          { provide: SessionApi, useValue: { uploadMedia: upload } },
-          { provide: ToolsApi, useValue: { archiveSearch, narrate, archiveFetch } },
-        ],
-      });
-      store = TestBed.inject(EditorStore);
-      store.load(tour([stop('a', 1, [overlay('o1', { body: 'Overlay words' })], { summary: 'Stop words' })]));
-      fixture = TestBed.createComponent(OutlinePane);
-      el = fixture.nativeElement;
-      store.select('a');
-      fixture.detectChanges();
-    });
-    it('never fetches a third-party host from the browser', async () => {
-      const spy = vi.fn();
-      vi.stubGlobal('fetch', spy);
-      await search([result()]);
-      await press('[data-archive-insert]');
-      vi.unstubAllGlobals();
-      expect(spy).not.toHaveBeenCalled();
-    });
-
-    it('lists results with their rights', async () => {
-      await search([result()]);
-      expect(q('[data-archive-result="0"]')?.textContent).toContain('Courthouse, 1920');
-      expect(q('[data-archive-result="0"]')?.textContent).toContain('No known restrictions');
-      expect(archiveSearch).toHaveBeenCalledWith('fairfax courthouse');
-    });
-
-    it('inserts a result: the server downloads it, then a sourced image overlay is added', async () => {
-      await search([result()]);
-      await press('[data-archive-insert]');
-      expect(archiveFetch).toHaveBeenCalledWith('https://tile.loc.gov/full.jpg', 'Courthouse, 1920');
-      expect(upload).not.toHaveBeenCalled();
-      const added = overlaysOf().at(-1)!;
-      expect(added.mediaId).toBe('pic-1.jpg');
-      expect(added.title).toBe('Courthouse, 1920');
-      expect(added.credit).toEqual({
-        type: 'sourced', source: 'Library of Congress', url: 'https://www.loc.gov/item/123/',
-        license: 'No known restrictions', creator: 'A. Photographer',
-      });
-      expect(store.selectedId()).toBe(added.id);
-    });
-
-    it('works on a tour with no defaults: the archive credit needs none', async () => {
-      store.load({ ...tour([stop('a', 1)]), defaults: null }); store.select('a');
-      await search([result()]);
-      await press('[data-archive-insert]');
-      expect(q('[data-defaults-form]')).toBeNull();
-      expect(overlaysOf().length).toBe(1);
-    });
-
-    it('null rights: refuses to insert until the author supplies a licence, then uses it', async () => {
-      await search([result({ rights: null })]);
-      expect(q('[data-archive-result="0"]')?.textContent).toMatch(/no rights/i);
-      const before = store.draft();
-      await press('[data-archive-insert]');
-      expect(q('[data-outline-error]')?.textContent).toMatch(/licence/i);
-      expect(archiveFetch).not.toHaveBeenCalled();
-      expect(store.draft()).toBe(before);
-      await typeInto('[data-archive-license]', 'Public domain (author-verified)');
-      await press('[data-archive-insert]');
-      expect(overlaysOf().at(-1)!.credit).toMatchObject({ type: 'sourced', license: 'Public domain (author-verified)' });
-    });
-
-    it('a refused or failed server download changes nothing and shows its message', async () => {
-      archiveFetch.mockRejectedValue(new Error('the archive has no image at that address (HTTP 404)'));
-      await search([result()]);
-      const before = store.draft();
-      await press('[data-archive-insert]');
-      expect(q('[data-outline-error]')?.textContent).toContain('HTTP 404');
-      expect(store.draft()).toBe(before);
-      expect(store.dirty()).toBe(false);
-    });
-
-    it('a failed search shows the message and keeps the document', async () => {
-      archiveSearch.mockRejectedValue(new Error('the Library of Congress timed out'));
-      const before = store.draft();
-      await press('[data-archive-open]');
-      await typeInto('[data-archive-query]', 'x');
-      await press('[data-archive-search]');
-      expect(q('[data-outline-error]')?.textContent).toContain('the Library of Congress timed out');
-      expect(store.draft()).toBe(before);
-    });
-
-    it('narrates a stop summary into an audio overlay credited to the tour author, not the voice', async () => {
-      narrate.mockResolvedValue({
-        mediaId: 'nar-1.m4a', credit: { source: 's', license: 'Generated for this tour', creator: 'macOS voice Samantha' },
-      });
-      await press('[data-narrate]');
-      expect(narrate).toHaveBeenCalledWith('Stop words');
-      const added = overlaysOf().at(-1)!;
-      expect(added).toMatchObject({ kind: 'audio', mediaId: 'nar-1.m4a', display: { mode: 'marker' } });
-      expect(added.title).toMatch(/synthesised/);
-      expect(added.credit).toEqual({ type: 'original', creator: 'M. Harrington', license: 'CC-BY-4.0' });
-      expect(store.selectedId()).toBe(added.id);
-    });
-
-    it('narrating on a tour with no defaults asks for them first, then narrates', async () => {
-      store.load({ ...tour([stop('a', 1)]), defaults: null }); store.select('a'); fixture.detectChanges();
-      narrate.mockResolvedValue({ mediaId: 'nar-3.m4a', credit: { source: 's', license: 'L', creator: 'voice' } });
-      await press('[data-narrate]');
-      expect(q('[data-defaults-form]')).toBeTruthy();
-      expect(narrate).not.toHaveBeenCalled();
-      await typeInto('[data-defaults-creator]', 'Ada');
-      await typeInto('[data-defaults-license]', 'CC0');
-      await press('[data-defaults-submit]');
-      expect(narrate).toHaveBeenCalledTimes(1);
-      expect(overlaysOf().at(-1)!.credit).toEqual({ type: 'original', creator: 'Ada', license: 'CC0' });
-    });
-
-    it('narrates a selected overlay body into the same stop', async () => {
-      narrate.mockResolvedValue({ mediaId: 'nar-2.m4a', credit: { source: 's', license: 'L', creator: 'C' } });
-      store.select('o1'); fixture.detectChanges();
-      await press('[data-narrate]');
-      expect(narrate).toHaveBeenCalledWith('Overlay words');
-      expect(overlaysOf().length).toBe(2);
-    });
-
-    it('narrate is off when there is nothing to say', async () => {
-      store.load(tour([stop('a', 1, [], { summary: ' ' })])); store.select('a'); fixture.detectChanges();
-      expect((q('[data-narrate]') as HTMLButtonElement).disabled).toBe(true);
-    });
-
-    it('a failed narration shows its message and leaves the document half-way nowhere', async () => {
-      narrate.mockRejectedValue(new Error('speech synthesis is not available'));
-      const before = store.draft();
-      await press('[data-narrate]');
-      expect(q('[data-outline-error]')?.textContent).toContain('speech synthesis is not available');
-      expect(store.draft()).toBe(before);
-      expect(store.dirty()).toBe(false);
     });
   });
 });

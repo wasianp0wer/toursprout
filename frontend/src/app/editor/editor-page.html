@@ -14,6 +14,18 @@
       <a href="/view" data-preview>Preview</a>
       <a href="/api/session/export" download data-export>Export bundle</a>
       <a href="/api/session/publish" download data-publish>Publish site</a>
+      @if (recoveryKey(); as key) {
+        <!-- Always on screen, because the moment it is needed is the moment
+             the browser has forgotten everything else. Readonly rather than
+             text so it can be selected and copied but not mistyped over. -->
+        <label class="recovery">
+          Recovery key
+          <input type="text" readonly size="16" aria-label="Recovery key" data-recovery-key [value]="key" (focus)="$any($event.target).select()" />
+        </label>
+        <button type="button" class="copy-key" data-copy-recovery-key [attr.data-copy-state]="copyState()" (click)="copyRecoveryKey()">{{
+          copyState() === 'copied' ? 'Copied' : copyState() === 'failed' ? 'Select the key and copy it' : 'Copy'
+        }}</button>
+      }
       <button type="button" class="close-tour" data-close-tour (click)="askToClose()">Close tour</button>
     </header>
     @if (autosave.status() === 'error' && autosave.message()) {

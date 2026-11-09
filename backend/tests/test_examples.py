@@ -54,13 +54,17 @@ def _write_synthetic_example(content_dir: Path) -> dict:
 @pytest.fixture
 def cfg(tmp_path):
     _write_synthetic_example(tmp_path)
-    return Settings(content_dir=tmp_path, frontend_dist=tmp_path / "nodist",
+    return Settings(content_dir=tmp_path, sessions_dir=tmp_path / "sessions",
+                    frontend_dist=tmp_path / "nodist",
                     mapillary_token="test-token")
 
 
 @pytest.fixture
 def session(cfg):
-    return Session(cfg.work_dir)
+    """An explicit path: `Settings.work_dir` is gone, and a session is now
+    one directory per browser under `sessions_dir`. These tests drive
+    `open_example` directly, so any empty directory will do."""
+    return Session(cfg.sessions_dir / "0123456789abcdef")
 
 
 @pytest.fixture
@@ -69,20 +73,25 @@ def client(tmp_path):
     # `content_dir` first: that fixture pins `content_dir` at a temp directory,
     # which has no `content/examples/` of its own.
     _write_synthetic_example(tmp_path)
-    cfg = Settings(content_dir=tmp_path, frontend_dist=tmp_path / "nodist",
+    cfg = Settings(content_dir=tmp_path, sessions_dir=tmp_path / "sessions",
+                   frontend_dist=tmp_path / "nodist",
                    mapillary_token="test-token")
-    with TestClient(create_app(cfg)) as c:
+    # https, because the session cookie is `Secure` and a cookiejar will not
+    # send one over an insecure request — see test_session_cookie.py.
+    with TestClient(create_app(cfg), base_url="https://testserver") as c:
         yield c
 
 
 @pytest.fixture
 def real_cfg(tmp_path):
-    """The repository's real `content/`, with the working directory redirected
-    into `tmp_path`. `Settings.work_dir` is derived from `content_dir`, so the
-    session is constructed by hand below rather than from this; pointing a
-    Session at `REPO_CONTENT / "work"` would overwrite whatever the author
-    actually has open."""
-    return Settings(content_dir=REPO_CONTENT, frontend_dist=tmp_path / "nodist",
+    """The repository's real `content/`, with the session directory redirected
+    into `tmp_path`. The session is still constructed by hand below, because
+    these tests call `open_example` directly rather than through a request
+    that would have a cookie; pointing a Session anywhere inside
+    `REPO_CONTENT` would overwrite whatever the author actually has open."""
+    return Settings(content_dir=REPO_CONTENT,
+                    sessions_dir=tmp_path / "sessions",
+                    frontend_dist=tmp_path / "nodist",
                     mapillary_token="test-token")
 
 
@@ -102,7 +111,8 @@ def test_lists_the_fairfax_example(real_cfg):
 
 
 def test_lists_nothing_when_there_are_no_examples(tmp_path):
-    assert list_examples(Settings(content_dir=tmp_path)) == []
+    assert list_examples(Settings(content_dir=tmp_path,
+                                  sessions_dir=tmp_path / "sessions")) == []
 
 
 def test_listing_is_sorted_and_skips_a_directory_with_no_manifest(cfg):
@@ -260,8 +270,8 @@ def test_opening_the_fairfax_example_matches_the_recorded_figures(real_cfg, tmp_
     this feature exists: the figures HANDOFF.md recorded for the hand-authored
     tour, reached by a single call instead of a PUT and two `cp`s.
 
-    The session deliberately points inside `tmp_path`, never at
-    `REPO_CONTENT / "work"`, so running the suite cannot discard a tour the
+    The session deliberately points inside `tmp_path`, never anywhere
+    under `REPO_CONTENT`, so running the suite cannot discard a tour the
     author has open.
     """
     session = Session(tmp_path / "work")
@@ -344,3 +354,16 @@ def test_post_example_refuses_cross_site(client):
                       headers={"Sec-Fetch-Site": "cross-site"})
     assert res.status_code == 403
     assert client.get("/api/session").json() == {"open": False}
+
+
+def test_open_example_honours_the_configured_bundle_caps(cfg, session):
+    """`open_example` goes through `replace_from` like an import does, so an
+    operator's lowered bundle caps apply to it too: no call site is left on
+    the defaults."""
+    from app.bundle import BundleError
+    tight = cfg.model_copy(update={"max_bundle_entries": 1})
+    with pytest.raises(BundleError, match="too many"):
+        open_example(session, tight, SYNTHETIC_ID)
+    small = cfg.model_copy(update={"max_bundle_bytes": 10})
+    with pytest.raises(BundleError, match="too large"):
+        open_example(session, small, SYNTHETIC_ID)

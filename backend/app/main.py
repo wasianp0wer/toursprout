@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 import shutil
+import stat as stat_module
 import tempfile
-from contextlib import asynccontextmanager
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
+from email.utils import parsedate
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
+import httpx
 from fastapi import (
+    Body,
     Depends,
     FastAPI,
     Form,
@@ -19,13 +25,14 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import NotModifiedResponse
 
-from . import media_store, tools
+from . import tools
 from .bundle import (
-    MAX_ENTRIES,
-    MAX_TOTAL_BYTES,
     BundleError,
     missing_media,
     write_bundle,
@@ -37,8 +44,10 @@ from .loose_import import stage_loose_bundle
 from .media_store import MediaError, store_media
 from .publish import PublishError, build_site
 from .session import Session, SessionConflict
+from .sessions import COOKIE_MAX_AGE, SID_COOKIE, new_sid, session_dir, sweep, valid_sid
 
-# `StaticFiles` (used by the tour-data mount below) guesses content types
+# `FileResponse` (which answers the tour-data route below) and `StaticFiles`
+# (which serves the built frontend) both guess content types
 # from Python's stdlib `mimetypes` table, which disagrees with browsers for
 # two extensions this tour actually ships: `.m4a` comes back as
 # "audio/mp4a-latm" — an RTP/SDP payload name, not a browser-recognised
@@ -121,6 +130,35 @@ def _part_size(part: UploadFile) -> int:
         part.file.seek(here)
 
 
+def _not_modified(request_headers: Headers, response_headers: MutableHeaders) -> bool:
+    """Whether the client already has this exact file.
+
+    The same two comparisons `StaticFiles.is_not_modified` makes, written
+    out here because the tour-data route answers from `FileResponse`
+    directly and no longer has a `StaticFiles` instance to ask.
+
+    `If-None-Match` wins outright when it is present, and `If-Modified-Since`
+    is then ignored, which is what RFC 9110 §13.1.3 requires: a browser
+    holding both sends both, and the etag is the stronger of the two. The
+    header is a comma-separated list, and `W/` marks a weak validator —
+    which for a whole file is the same file, so the prefix is stripped
+    rather than treated as a mismatch.
+    """
+    if_none_match = request_headers.get("if-none-match")
+    if if_none_match:
+        etag = response_headers.get("etag")
+        return etag is not None and etag in [
+            tag.strip().removeprefix("W/") for tag in if_none_match.split(",")
+        ]
+    if_modified_since = parsedate(request_headers.get("if-modified-since", ""))
+    last_modified = parsedate(response_headers.get("last-modified", ""))
+    return (
+        if_modified_since is not None
+        and last_modified is not None
+        and if_modified_since >= last_modified
+    )
+
+
 def _viewer_config(cfg: Settings) -> dict:
     """What the viewer needs, identical in the editor and in a published site.
 
@@ -132,18 +170,191 @@ def _viewer_config(cfg: Settings) -> dict:
             "attribution": ATTRIBUTION}
 
 
+# --- which session a request is about ------------------------------------
+#
+# There used to be one `Session` on `app.state`, which on shared hosting
+# meant one open tour for all six historians and the last save winning.
+# These two dependencies are what replaced it. The minting boundary between
+# them is deliberate and is the whole of spec §6.1's first decision:
+#
+#   mint (resolve, or create and set the cookie):
+#       GET  /api/session                  — the frontend's first call
+#       POST /api/session/new              — \
+#       POST /api/session/examples/{id}    —  | the four routes that create
+#       POST /api/session/import           —  | a tour out of nothing
+#       POST /api/session/import-files     — /
+#   resolve only (answer from whatever is there, or refuse):
+#       DELETE /api/session, PUT /api/session/tour, POST /api/session/media,
+#       GET /api/session/export, GET /api/session/publish, GET /tour-data/*
+#
+# Not every route may mint, because `entry-page.ts` mounts the viewer
+# eagerly: a first page load fires `tour-data/config.json`,
+# `tour-data/tour.json` and `/api/session` CONCURRENTLY. Two of those three
+# are tour-data, which never mints, so that burst still creates exactly one
+# directory and races no `Set-Cookie` headers.
+#
+# The four creating routes mint because the alternative is unsafe, not
+# because it is convenient. They have to write the new tour somewhere, and
+# without a cookie there is nowhere safe: a fixed placeholder directory is
+# the collision this whole task exists to prevent, and a session directory
+# whose sid was never sent back is a historian's tour written where their
+# browser can never reach it again. They are never part of the first-load
+# burst — they are user-initiated from the welcome screen, after
+# `/api/session` has answered and set the cookie — so they mint only as a
+# fallback, and `docs/HANDOFF.md` documents exactly that fallback for an
+# author working from a terminal with no browser. `_reject_cross_site`
+# guards all four, so minting on a POST opens no door that `GET
+# /api/session` did not already open.
+
+
+def _session_for(cfg: Settings, sid: str | None) -> Session | None:
+    """The session `sid` names, or None when it names nothing usable.
+
+    `sid` is the `str` Starlette parsed out of the Cookie header, never raw
+    header bytes: `valid_sid` raises `TypeError` on `bytes` rather than
+    returning False, so handing it bytes would be a 500, not a refusal.
+
+    The sid is never logged. `session_dir` raises `ValueError(sid)`, which
+    puts caller-controlled text into an exception message; logging that
+    value would be a log-injection path, so it is checked here and the
+    value is simply dropped.
+    """
+    if sid is None or not valid_sid(sid):
+        return None
+    return Session(session_dir(cfg.sessions_dir, sid))
+
+
+def current_session(request: Request) -> Session:
+    """The session this request's cookie names. Resolves; never mints.
+
+    Raises nothing when there is no session: it returns a `Session` rooted
+    at a directory that does not exist, so `is_open` is false and each
+    route's existing guard refuses in the words it already used — a
+    cookieless `PUT /api/session/tour` gets its 409 "no tour is open", not a
+    new session.
+
+    That not-there path is a fresh sid rather than one fixed placeholder,
+    and the difference matters: a placeholder would be a single directory
+    that every cookieless caller shares, which is the collision this task
+    exists to remove. This path is never created and never sent back in a
+    cookie, so nothing can land in it or be read out of it.
+
+    It goes through `session_dir` like every other path, rather than being
+    joined by hand: `session_dir` is the one place that knows how a sid
+    becomes a directory, and a second spelling here would quietly stop
+    agreeing with it the day that layout changes.
+    """
+    cfg: Settings = request.app.state.cfg
+    session = _session_for(cfg, request.cookies.get(SID_COOKIE))
+    if session is None:
+        return Session(session_dir(cfg.sessions_dir, new_sid()))
+    return session
+
+
+def _set_sid_cookie(response: Response, sid: str) -> None:
+    response.set_cookie(
+        SID_COOKIE, sid, max_age=COOKIE_MAX_AGE, path="/",
+        # HttpOnly: no frontend code reads the sid, so script has no reason
+        # to see it. Lax, not Strict: a historian following a link to their
+        # own tour must arrive already attached to it.
+        #
+        # Secure unconditionally, rather than from `request.url.scheme`.
+        # The host serves HTTPS, and Chrome and Firefox accept a Secure
+        # cookie on `http://localhost`, so `ng serve` still works. Deriving
+        # it from the scheme looks more accommodating and is the worse
+        # trade: Passenger terminates TLS upstream, so the scheme this
+        # process sees can be "http" on a request the browser made over
+        # HTTPS, and the flag would then be dropped in production — exactly
+        # where it matters — to spare a local-development inconvenience.
+        httponly=True, secure=True, samesite="lax",
+    )
+
+
+SWEEP_INTERVAL_SECONDS = 3600
+_monotonic = time.monotonic  # a seam, so tests move the clock instead of sleeping
+
+
+def _sweep_once(app: FastAPI, cfg: Settings) -> None:
+    """Reclaim abandoned sessions, on a mint, at most once per interval.
+
+    Throttled, not per request: minting is the hot path of every first page
+    load and a sweep walks every session directory. Throttled, not once per
+    process: a long-lived worker would otherwise never sweep again, and the
+    short window would mean nothing. It runs BEFORE the new directory is
+    made, so it never visits it. The timestamp is set first, so a failing
+    sweep is not retried on the next request. `sweep` does not raise;
+    the guard here is for the settings lookup and anything unforeseen.
+    """
+    now = _monotonic()
+    last = getattr(app.state, "last_sweep", None)
+    if last is not None and now - last < SWEEP_INTERVAL_SECONDS:
+        return
+    app.state.last_sweep = now
+    try:
+        sweep(
+            cfg.sessions_dir,
+            without_tour_days=cfg.session_retention_days_without_tour,
+            with_tour_days=cfg.session_retention_days_with_tour,
+        )
+    except Exception as exc:  # noqa: BLE001 - housekeeping must never reach a request
+        # Type only, never .exception(): messages and tracebacks can carry a sid.
+        logging.getLogger(__name__).error("session sweep failed: %s", type(exc).__name__)
+
+
+def mint_session(request: Request, response: Response) -> Session:
+    """`current_session`, except that an absent session is created here.
+
+    Minting writes `config.json` — the viewer's Mapillary token and tile
+    URL. The lifespan used to write it at startup; `a2wsgi` never runs the
+    ASGI lifespan, so it is written when the session is made instead. The
+    routes that replace the working directory afterwards re-write it,
+    because `Session.new` and `replace_from` both swap the whole directory.
+
+    An existing, well-formed cookie is resolved and left alone: the sid is
+    also the recovery key a historian may have written down, so a visit
+    must not rotate it. A cookie whose DIRECTORY has since gone is still
+    resolved, not re-minted, for the same reason — it reads as closed.
+    """
+    cfg: Settings = request.app.state.cfg
+    session = _session_for(cfg, request.cookies.get(SID_COOKIE))
+    if session is not None:
+        return session
+    _sweep_once(request.app, cfg)
+    sid = new_sid()
+    session = Session(session_dir(cfg.sessions_dir, sid))
+    session.write_config(_viewer_config(cfg))
+    _set_sid_cookie(response, sid)
+    return session
+
+
+def _with_recovery_key(session: Session) -> dict:
+    """The session summary, plus the key to get back to it.
+
+    The directory name IS the sid (`session_dir` is the only thing that
+    builds it), and the sid is the recovery key by design, so the key is read
+    off the path rather than threaded through from the cookie. A closed
+    session has none: there is nothing to recover, and handing out a key for
+    an empty directory would invite someone to write down nothing.
+    """
+    summary = session.summary()
+    if summary["open"]:
+        summary["recoveryKey"] = session.path.name
+    return summary
+
+
+CurrentSession = Annotated[Session, Depends(current_session)]
+MintedSession = Annotated[Session, Depends(mint_session)]
+
+
 def create_app(settings_override: Settings | None = None) -> FastAPI:
     cfg = settings_override or default_settings
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        app.state.cfg = cfg
-        app.state.session = Session(cfg.work_dir)
-        if app.state.session.is_open:
-            app.state.session.write_config(_viewer_config(cfg))
-        yield
-
-    app = FastAPI(title="clio-wired", lifespan=lifespan)
+    app = FastAPI(title="clio-wired")
+    # In `create_app`'s body rather than a lifespan: `a2wsgi` never runs the
+    # ASGI lifespan, and state that silently does not get set under
+    # Passenger is worse than state that was never deferred. `app.state.cfg`
+    # is what the two session dependencies above read.
+    app.state.cfg = cfg
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:4200"],
@@ -168,7 +379,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
                 declared = int(request.headers.get("content-length", "0"))
             except ValueError:
                 declared = 0
-            if declared > media_store.MAX_FILE_BYTES + 1024 * 1024:
+            if declared > cfg.max_media_file_bytes + 1024 * 1024:
                 return Response(
                     content='{"detail":"that upload is too large"}',
                     status_code=413, media_type="application/json",
@@ -176,12 +387,44 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         return await call_next(request)
 
     @app.get("/api/session")
-    def get_session() -> dict:
-        return app.state.session.summary()
+    def get_session(session: MintedSession) -> dict:
+        return _with_recovery_key(session)
+
+    @app.post("/api/session/reattach", dependencies=[Depends(_reject_cross_site)])
+    def reattach_session(request: Request, response: Response,
+                         body: Annotated[Any, Body()] = None) -> dict:
+        """Point this browser at an existing tour, by its recovery key.
+
+        Neither session dependency fits: this route must not mint (an
+        unknown key opens nothing), and its job is to REPLACE what the cookie
+        names. So it reads the cookie itself.
+
+        An open tour is refused first, before the key is even looked at: the
+        only thing a reattach does to the caller is drop the cookie that
+        reaches their current session, and that is the one tour the caller
+        may not be able to get back. Neither refusal below echoes the key,
+        and nothing here logs it.
+        """
+        mine = _session_for(cfg, request.cookies.get(SID_COOKIE))
+        if mine is not None and mine.is_open:
+            raise HTTPException(
+                status_code=409,
+                detail="a tour is already open; export it first, or close it "
+                       "before using a recovery key",
+            )
+        key = body.get("key") if isinstance(body, dict) else None
+        if not isinstance(key, str) or not valid_sid(key):
+            raise HTTPException(status_code=400, detail="that is not a recovery key")
+        target = Session(session_dir(cfg.sessions_dir, key))
+        if not target.is_open:
+            raise HTTPException(
+                status_code=404, detail="there is no tour with that recovery key"
+            )
+        _set_sid_cookie(response, key)
+        return _with_recovery_key(target)
 
     @app.delete("/api/session", dependencies=[Depends(_reject_cross_site)])
-    def close_session() -> dict:
-        session = app.state.session
+    def close_session(session: CurrentSession) -> dict:
         try:
             session.close()
         except SessionConflict as exc:
@@ -189,15 +432,14 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         return session.summary()
 
     @app.post("/api/session/new", dependencies=[Depends(_reject_cross_site)])
-    def new_session(body: dict) -> dict:
+    def new_session(body: dict, session: MintedSession) -> dict:
         title = (body.get("title") or "Untitled tour").strip() or "Untitled tour"
         force = bool(body.get("force", False))
-        session = app.state.session
         try:
             session.new(title, force=force)
         except SessionConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        session.write_config(_viewer_config(app.state.cfg))
+        session.write_config(_viewer_config(cfg))
         return session.summary()
 
     @app.get("/api/session/examples")
@@ -206,12 +448,11 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         # welcome screen renders its shelf (empty, if that is the truth) rather
         # than an error. A malformed example is refused by the POST below,
         # where the author asked for that one by name.
-        return {"examples": [asdict(e) for e in list_examples(app.state.cfg)]}
+        return {"examples": [asdict(e) for e in list_examples(cfg)]}
 
     @app.post("/api/session/examples/{example_id}",
               dependencies=[Depends(_reject_cross_site)])
-    def import_example(example_id: str) -> dict:
-        session = app.state.session
+    def import_example(example_id: str, session: MintedSession) -> dict:
         # Guarded before anything is staged, for the same reason `Session.new`
         # refuses: opening an example replaces the working directory, and the
         # author's only copy of an unexported tour is in it.
@@ -224,19 +465,18 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
                 ),
             )
         try:
-            warnings = open_example(session, app.state.cfg, example_id)
+            warnings = open_example(session, cfg, example_id)
         except KeyError as exc:
             raise HTTPException(
                 status_code=404, detail=f"there is no example {example_id!r}"
             ) from exc
         except (ExampleError, BundleError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        session.write_config(_viewer_config(app.state.cfg))
+        session.write_config(_viewer_config(cfg))
         return {**session.summary(), "warnings": warnings}
 
     @app.put("/api/session/tour", dependencies=[Depends(_reject_cross_site)])
-    def put_tour(doc: dict) -> dict:
-        session = app.state.session
+    def put_tour(doc: dict, session: CurrentSession) -> dict:
         if not session.is_open:
             raise HTTPException(
                 status_code=409,
@@ -250,9 +490,9 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     @app.post("/api/session/import", dependencies=[Depends(_reject_cross_site)])
     async def import_bundle(
-        file: UploadFile, force: Annotated[bool, Form()] = False
+        file: UploadFile, session: MintedSession,
+        force: Annotated[bool, Form()] = False,
     ) -> dict:
-        session = app.state.session
         # Guarded before the upload is spooled, and the last of the four ways
         # in to be: replacing the working directory throws away the author's
         # only copy of an unexported tour, which is why `Session.new`, the
@@ -306,16 +546,20 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
                 status_code=400, detail=f"could not save the upload: {exc}"
             ) from exc
         try:
-            warnings = session.replace_from(staged)
+            warnings = session.replace_from(
+                staged,
+                max_bytes=cfg.max_bundle_bytes,
+                max_entries=cfg.max_bundle_entries,
+            )
         except BundleError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         finally:
             staged.unlink(missing_ok=True)
-        session.write_config(_viewer_config(app.state.cfg))
+        session.write_config(_viewer_config(cfg))
         return {**session.summary(), "warnings": warnings}
 
     @app.post("/api/session/import-files", dependencies=[Depends(_reject_cross_site)])
-    def import_files(files: list[UploadFile]) -> dict:
+    def import_files(files: list[UploadFile], session: MintedSession) -> dict:
         # A loose `tour.json` plus its media, for the author whose tour is
         # not zipped (the repository's own is not). Each part's filename is
         # its path relative to the bundle root. Staged into the same kind of
@@ -333,7 +577,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         # shows "Opening…" with nothing to cancel. Nothing here awaits:
         # `UploadFile.file` is a synchronous `SpooledTemporaryFile`, which is
         # what the staging helper wants anyway.
-        session = app.state.session
         # Guarded before anything is staged, exactly as `import_example` is
         # and for the identical reason: this replaces the working directory,
         # and the author's only copy of an unexported tour is in it. The
@@ -363,27 +606,27 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         #
         # `>=`, not `>`: `stage_bundle_root` adds a `bundle.json` beside the
         # `tour.json`, so N parts become an archive of N + 1 entries. At
-        # exactly `MAX_ENTRIES` a `>` test passed the drop through and
+        # exactly `max_bundle_entries` a `>` test passed the drop through and
         # `read_bundle` then refused it at 5001 — which is the expensive
         # refusal this check exists to avoid, at the one count where it was
         # still reachable.
-        if len(files) >= MAX_ENTRIES:
+        if len(files) >= cfg.max_bundle_entries:
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"too many files in the drop: {len(files)}, "
-                    f"limit {MAX_ENTRIES - 1} (the bundle's own "
+                    f"limit {cfg.max_bundle_entries - 1} (the bundle's own "
                     "bundle.json takes the last of the "
-                    f"{MAX_ENTRIES} entries an archive may hold)"
+                    f"{cfg.max_bundle_entries} entries an archive may hold)"
                 ),
             )
         total = sum(_part_size(f) for f in files)
-        if total > MAX_TOTAL_BYTES:
+        if total > cfg.max_bundle_bytes:
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"that drop is too large: {total} bytes, "
-                    f"limit {MAX_TOTAL_BYTES}"
+                    f"limit {cfg.max_bundle_bytes}"
                 ),
             )
         fd, tmp_name = tempfile.mkstemp(suffix=".zip")
@@ -391,7 +634,11 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         staged = Path(tmp_name)
         try:
             stage_loose_bundle([(f.filename or "", f.file) for f in files], staged)
-            warnings = session.replace_from(staged)
+            warnings = session.replace_from(
+                staged,
+                max_bytes=cfg.max_bundle_bytes,
+                max_entries=cfg.max_bundle_entries,
+            )
         except BundleError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except OSError as exc:
@@ -400,17 +647,16 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             ) from exc
         finally:
             staged.unlink(missing_ok=True)
-        session.write_config(_viewer_config(app.state.cfg))
+        session.write_config(_viewer_config(cfg))
         return {**session.summary(), "warnings": warnings}
 
     @app.post("/api/session/media", dependencies=[Depends(_reject_cross_site)])
-    def upload_media(file: UploadFile) -> dict:
+    def upload_media(file: UploadFile, session: CurrentSession) -> dict:
         # Plain `def`, so FastAPI runs this in the threadpool: a 64 MB copy,
         # a hash and directory scans must not stall the event loop (map
         # tiles, audio range requests). That is also what makes the lock in
         # `store_media` load-bearing: threadpool handlers genuinely overlap,
         # whereas `async` handlers happened to serialise each other.
-        session = app.state.session
         if not session.is_open:
             raise HTTPException(
                 status_code=409,
@@ -433,17 +679,21 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
                 raise HTTPException(
                     status_code=400, detail=f"could not save the upload: {exc}"
                 ) from exc
-            if staged.stat().st_size > media_store.MAX_FILE_BYTES:
+            if staged.stat().st_size > cfg.max_media_file_bytes:
                 raise HTTPException(
                     status_code=400,
                     detail=(
                         "that file is over the "
-                        f"{media_store.MAX_FILE_BYTES} byte limit"
+                        f"{cfg.max_media_file_bytes} byte limit"
                     ),
                 )
             try:
                 media_id = store_media(
-                    session.path, staged.read_bytes(), file.filename or ""
+                    session.path,
+                    staged.read_bytes(),
+                    file.filename or "",
+                    max_file_bytes=cfg.max_media_file_bytes,
+                    max_session_bytes=cfg.max_session_media_bytes,
                 )
             except MediaError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -459,16 +709,26 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     def _tool_client(timeout: float):
         return tools.make_client(getattr(app.state, "http_transport", None), timeout)
 
-    @app.post("/api/tools/panoramas", dependencies=[Depends(_reject_cross_site)])
-    def tool_panoramas(body: tools.PanoramaRequest) -> dict:
-        try:
-            with _tool_client(tools.MAPILLARY_TIMEOUT) as c:
-                found = tools.find_panoramas(
-                    c, app.state.cfg.mapillary_token, body.lng, body.lat,
-                    body.radiusM, body.panoOnly, body.limit)
-        except tools.ToolError as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
-        return {"candidates": found}
+    @app.get("/api/diagnostics/egress")
+    def egress_diagnostic() -> dict:
+        # Asks the application itself, from its own user context, which
+        # outside hosts it can reach: a cPanel shell is not the Passenger
+        # worker. Any HTTP response (even 403) proves the network path;
+        # only an exception means blocked. One host failing must never hide
+        # the rest, so each is probed independently and in parallel.
+        urls = [tools.MAPILLARY_PROBE_URL, tools.LOC_PROBE_URL, *tools.OVERPASS_MIRRORS]
+
+        def probe(c: httpx.Client, url: str) -> tuple[str, dict]:
+            host = httpx.URL(url).host
+            try:
+                return host, {"status": c.get(url).status_code}
+            except Exception as exc:  # noqa: BLE001 - report, never raise
+                return host, {"error": tools._describe(exc)}
+
+        with (_tool_client(tools.EGRESS_TIMEOUT) as c,
+              ThreadPoolExecutor(max_workers=len(urls)) as pool):
+            results = list(pool.map(lambda u: probe(c, u), urls))
+        return {"hosts": dict(results)}
 
     @app.post("/api/tools/places", dependencies=[Depends(_reject_cross_site)])
     def tool_places(body: tools.PlacesRequest) -> dict:
@@ -479,54 +739,8 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=exc.status, detail=exc.message) from exc
         return {"places": found}
 
-    @app.post("/api/tools/archive-search", dependencies=[Depends(_reject_cross_site)])
-    def tool_archive_search(body: tools.ArchiveRequest) -> dict:
-        try:
-            with _tool_client(tools.LOC_TIMEOUT) as c:
-                found = tools.search_archive(c, body.query, body.terms, body.excludePlaces)
-        except tools.ToolError as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
-        return {"results": found}
-
-    @app.post("/api/tools/archive-fetch", dependencies=[Depends(_reject_cross_site)])
-    def tool_archive_fetch(body: tools.ArchiveFetchRequest) -> dict:
-        session = app.state.session
-        if not session.is_open:
-            raise HTTPException(
-                status_code=409,
-                detail="no tour is open; call POST /api/session/new first",
-            )
-        try:
-            tools.check_archive_url(body.imageUrl)  # before any client is built
-            with _tool_client(tools.FETCH_TIMEOUT) as c:
-                data = tools.fetch_archive_image(c, body.imageUrl)
-            media_id = store_media(session.path, data, body.title or "archive")
-        except tools.ToolError as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
-        except MediaError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {**session.summary(), "mediaId": media_id}
-
-    @app.post("/api/tools/narrate", dependencies=[Depends(_reject_cross_site)])
-    def tool_narrate(body: tools.NarrateRequest) -> dict:
-        session = app.state.session
-        if not session.is_open:
-            raise HTTPException(
-                status_code=409,
-                detail="no tour is open; call POST /api/session/new first",
-            )
-        try:
-            audio = tools.synthesize(body.text)
-            media_id = store_media(session.path, audio, "narration")
-        except tools.ToolError as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
-        except MediaError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {**session.summary(), "mediaId": media_id, "credit": tools.NARRATION_CREDIT}
-
     @app.get("/api/session/export")
-    def export_bundle() -> Response:
-        session = app.state.session
+    def export_bundle(session: CurrentSession) -> Response:
         if not session.is_open:
             raise HTTPException(status_code=409, detail="no tour is open")
         # `_validate_tree` enforces "every referenced mediaId exists in
@@ -557,12 +771,11 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/api/session/publish")
-    def publish_site() -> Response:
-        session = app.state.session
+    def publish_site(session: CurrentSession) -> Response:
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "site.zip"
             try:
-                build_site(session.path, Path(app.state.cfg.frontend_dist), out)
+                build_site(session.path, Path(cfg.frontend_dist), out)
             except PublishError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
             data = out.read_bytes()
@@ -572,32 +785,81 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="{name}"'},
         )
 
-    _mount_tour_data(app, cfg)
+    # Registered BEFORE the frontend mount, which is a catch-all: an
+    # unmatched tour-data path must 404 rather than be swallowed into the
+    # SPA's index.html fallback.
+    @app.api_route("/tour-data/{path:path}", methods=["GET", "HEAD"],
+                   name="tour-data")
+    def tour_data(path: str, request: Request, session: CurrentSession) -> Response:
+        """Serve this session's directory at the same relative path a
+        published site uses, so the viewer has exactly one set of URLs and no
+        deployment detection.
+
+        This was a `StaticFiles` mount of one global working directory, which
+        on shared hosting served every historian every other historian's
+        media. It resolves the session from the cookie instead, and NEVER
+        mints: no cookie, or a cookie naming a session that is not there, is
+        a 404. Minting here would mean the eager viewer's two `tour-data/`
+        fetches each made a session on the first page load.
+
+        `FileResponse` keeps two of the three things the mount gave for
+        free: Range (the narration audio needed it; the historians' own
+        recorded audio needs it as much) and a content type from
+        `mimetypes`, including the two overrides pinned at the top of this
+        module. The third, 304 revalidation, it does NOT keep, so it is
+        restored by hand below. nosniff is set by hand too; it is defence in
+        depth for a polyglot file that slipped past the upload sniffing, and
+        a belt for the editor only, since a published static host sets its
+        own headers.
+        """
+        found = None
+        try:
+            # Resolved and checked before anything is opened, the way
+            # `examples.py`'s `_inside` does it. `session.path / path` is
+            # `/etc/passwd` outright when `path` is absolute, because
+            # pathlib discards the left side — so this guard, not the URL
+            # shape, is what refuses that. The session directories are
+            # siblings, so it is also what stops `../<other sid>/tour.json`.
+            root = session.path.resolve()
+            target = (session.path / path).resolve()
+            if target.is_relative_to(root):
+                # Stat ONCE, and hand the result to `FileResponse`, the way
+                # the `StaticFiles` mount did. Deciding with `is_file()` and
+                # letting `FileResponse` stat again left a window in which a
+                # file removed between the two turned into a `RuntimeError`
+                # — a 500 where the author should have had this 404.
+                st = target.stat()
+                if stat_module.S_ISREG(st.st_mode):
+                    found = (target, st)
+        except (OSError, ValueError):
+            # A path pathlib or the filesystem will not even look at (an
+            # embedded NUL, a component past NAME_MAX), or one that has just
+            # stopped existing. A 404, not a 500.
+            found = None
+        if found is None:
+            raise HTTPException(status_code=404)
+        target, st = found
+
+        response = FileResponse(target, stat_result=st,
+                                headers={"X-Content-Type-Options": "nosniff"})
+        # `FileResponse` advertises `ETag` and `Last-Modified` but ignores
+        # the validators a client sends back, so every editor reload
+        # re-transferred every panorama and audio clip in the tour. The
+        # `StaticFiles` mount answered 304 here. Advertising a validator and
+        # then ignoring it is silent waste, and this deploys to shared
+        # hosting with CPU and bandwidth limits.
+        if _not_modified(request.headers, response.headers):
+            # Starlette's own 304, so the header whitelist is the one the
+            # mount used; nosniff is re-added because the mount's wrapper
+            # put it on its 304s too, even though a bodyless response has
+            # nothing to sniff.
+            not_modified = NotModifiedResponse(response.headers)
+            not_modified.headers["X-Content-Type-Options"] = "nosniff"
+            return not_modified
+        return response
+
     _mount_frontend(app, cfg)
     return app
-
-
-def _mount_tour_data(app: FastAPI, cfg: Settings) -> None:
-    """Serve the working directory at the same relative path a published site
-    uses, so the viewer has exactly one set of URLs and no deployment
-    detection. StaticFiles handles Range, which the narration audio needs.
-
-    `check_dir=False` because the working directory legitimately does not
-    exist until a tour is opened; requests 404 until it does.
-    """
-    cfg.work_dir.mkdir(parents=True, exist_ok=True)
-    # nosniff is defence in depth for a polyglot file that slipped past the
-    # upload sniffing. It is a belt for the editor only: a published static
-    # host sets its own headers, so it guarantees nothing for the site.
-    class _NoSniffStaticFiles(StaticFiles):
-        async def get_response(self, path: str, scope):
-            response = await super().get_response(path, scope)
-            response.headers["X-Content-Type-Options"] = "nosniff"
-            return response
-
-    app.mount("/tour-data",
-              _NoSniffStaticFiles(directory=cfg.work_dir, check_dir=False),
-              name="tour-data")
 
 
 def _mount_frontend(app: FastAPI, cfg: Settings) -> None:
