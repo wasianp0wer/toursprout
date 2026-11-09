@@ -10,11 +10,23 @@ runs the interpreter with `-P`, so the document root stays off the import path
 and a file dropped beside the script cannot shadow a module. A `sys.path`
 insert in this file would quietly give that back.
 
-`BaseCGIHandler` rather than `CGIHandler`: the two are the same handler --
-`CGIHandler` is a subclass whose only job is to read `os.environ` and the real
-stdio for you. Passing the environ and the streams in is what makes every
-test in `tests/test_cgi.py` possible, and `main` supplies exactly what
-`CGIHandler` would have.
+`BaseCGIHandler` rather than `CGIHandler`, because an environ and three
+streams passed in are what make every test in `tests/test_cgi.py` possible,
+and under CGI `main` passes the same things `CGIHandler` would read for
+itself. It is not quite the same handler, though, and the difference is worth
+knowing:
+
+- `CGIHandler` sets `os_environ = {}` ("do not allow os.environ to leak
+  between requests"); `BaseCGIHandler` inherits `BaseHandler.os_environ`,
+  which is the whole process environment, and merges the passed environ over
+  it. In production that is the same dictionary twice -- Apache's CGI
+  environment *is* this process's environment -- but it means any ambient
+  `HTTP_*` variable in it arrives at the app as a request header, and it
+  means the test suite runs with the developer's shell environment merged
+  into every request.
+- `CGIHandler` also sets `wsgi_run_once = True`; here the app is told
+  `False`, which is pessimistic rather than wrong: nothing in this
+  application caches on the strength of being run again.
 """
 
 from __future__ import annotations
@@ -41,6 +53,32 @@ _INTERNAL_ERROR = (
 )
 
 
+def _path_info(path: str) -> str:
+    """One URL path, percent-decoded, in the form a2wsgi can carry.
+
+    Three hazards, in the order they bite:
+
+    `os.environ` surrogate-escapes any byte the filesystem encoding cannot
+    decode, so a client that sends a raw non-ASCII byte instead of
+    percent-encoding it puts a lone surrogate in `REQUEST_URI`.
+    `unquote_to_bytes` re-encodes a `str` as strict UTF-8, which raises on
+    that -- so the surrogates are undone first, back to the bytes the client
+    actually sent.
+
+    Then the percent-decoding, once and only once, on bytes.
+
+    Then the bytes have to come back as a `str` that a2wsgi can put through
+    `.encode("latin1").decode("utf8")` without raising, because it has no
+    error handler and a `UnicodeDecodeError` there is a 500 with a traceback
+    in the host's error log -- for a request anyone can send, in a log as
+    sensitive as `sessions_dir`. A path that is not UTF-8 cannot name
+    anything we store, so each bad sequence becomes U+FFFD and the request
+    goes on to be the router's ordinary 404.
+    """
+    raw = unquote_to_bytes(path.encode("utf-8", "surrogateescape"))
+    return raw.decode("utf-8", "replace").encode("utf-8").decode("latin-1")
+
+
 def cgi_environ(environ: Mapping[str, str]) -> dict[str, str]:
     """Rewrite a front-controller CGI environ into one that can be routed.
 
@@ -64,15 +102,18 @@ def cgi_environ(environ: Mapping[str, str]) -> dict[str, str]:
     .decode("utf8")`), which is the CGI convention, so a stop photo named
     `façade one.jpg` only survives the bridge if it is encoded this way.
 
-    Without a `REQUEST_URI` -- a server that is not the front controller, or a
-    test -- the environ is passed through, so the caller's `PATH_INFO` stands.
+    An *empty* `REQUEST_URI` is treated as an absent one. Apache always sets
+    it, so this only matters for some other server or a test -- but `""` is
+    falsy and not None, and rewriting the path to nothing 404s every route,
+    which is a confusing way to fail.
     """
     env = dict(environ)
     request_uri = env.get("REQUEST_URI")
-    if request_uri is None:
+    if not request_uri:
+        # No REQUEST_URI: not the front controller, or a test. Pass the
+        # environ through so the caller's own PATH_INFO stands.
         return env
-    path = request_uri.partition("?")[0]
-    env["PATH_INFO"] = unquote_to_bytes(path).decode("latin-1")
+    env["PATH_INFO"] = _path_info(request_uri.partition("?")[0])
     env["SCRIPT_NAME"] = ""
     return env
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from pathlib import Path
 from urllib.parse import quote
 
@@ -47,10 +48,11 @@ def _wsgi(tmp_path):
     return ASGIMiddleware(create_app(_cfg(tmp_path)))
 
 
-def _drive(wsgi_app, **overrides):
+def _drive(wsgi_app, request_body=b"", **overrides):
     """Run one request through the CGI handler; return (headers, body, stderr)."""
     out, err = io.BytesIO(), io.StringIO()
-    cgi.run(io.BytesIO(b""), out, err, {**CGI_ENV, **overrides}, wsgi_app=wsgi_app)
+    cgi.run(io.BytesIO(request_body), out, err,
+            {**CGI_ENV, **overrides}, wsgi_app=wsgi_app)
     head, _, body = out.getvalue().partition(b"\r\n\r\n")
     return head.decode("latin-1"), body, err.getvalue()
 
@@ -107,6 +109,26 @@ def test_without_a_request_uri_path_info_is_left_alone():
     assert env["PATH_INFO"] == "/api/health"
 
 
+def test_an_empty_request_uri_counts_as_no_request_uri():
+    # Apache always sets a non-empty REQUEST_URI; `is None` would nonetheless
+    # let "" through and rewrite the path to nothing, 404ing every route.
+    env = cgi.cgi_environ({**CGI_ENV, "REQUEST_URI": "", "PATH_INFO": "/api/health"})
+    assert env["PATH_INFO"] == "/api/health"
+
+
+@pytest.mark.parametrize("uri", [
+    "/tour-data/media/%FF.jpg",       # percent-encoded, but not UTF-8
+    "/tour-data/media/\udcff.jpg",    # a raw byte, as os.environ surrogate-escapes it
+])
+def test_a_byte_that_is_not_utf8_cannot_break_the_bridge(uri):
+    # a2wsgi does exactly this and has no error handler, so whatever
+    # `cgi_environ` produces must survive it: a path that cannot be UTF-8
+    # cannot name a file we hold, so it becomes U+FFFD and the router 404s.
+    env = cgi.cgi_environ({**CGI_ENV, "REQUEST_URI": uri})
+    assert env["PATH_INFO"].encode("latin-1").decode("utf-8") == \
+        "/tour-data/media/�.jpg"
+
+
 def test_the_incoming_environ_is_not_mutated():
     # `main` passes `os.environ`; rewriting it in place would be a surprise.
     source = {**CGI_ENV, "REQUEST_URI": "/api/health"}
@@ -122,6 +144,33 @@ def test_the_cgi_script_answers_a_dynamic_route(tmp_path):
     head, body, errors = _drive(_wsgi(tmp_path), REQUEST_URI="/api/health")
     assert head.startswith("Status: 200 OK")
     assert json.loads(body) == {"status": "ok"}
+    assert errors == ""
+
+
+@pytest.mark.parametrize("uri", [
+    "/tour-data/media/%FF.jpg",
+    "/tour-data/media/\udcff.jpg",
+])
+def test_a_malformed_path_is_a_404_not_a_crash(historian_media, uri):
+    """A client that sends a byte which is not UTF-8 gets the router's 404.
+    A 500 here would put a traceback in the host's error log -- which is as
+    sensitive as `sessions_dir` -- for a request anyone can send."""
+    app, _ = historian_media
+    head, _, errors = _drive(app, REQUEST_URI=uri)
+    assert head.startswith("Status: 404")
+    assert errors == ""
+
+
+def test_a_request_body_reaches_the_app(tmp_path):
+    # Every other end-to-end test here is a bodiless GET, so nothing else
+    # exercises `wsgi.input` and `CONTENT_LENGTH` through the handler.
+    payload = json.dumps({"title": "A tour that arrived in a body"}).encode()
+    head, body, errors = _drive(
+        _wsgi(tmp_path), request_body=payload,
+        REQUEST_METHOD="POST", REQUEST_URI="/api/session/new",
+        CONTENT_TYPE="application/json", CONTENT_LENGTH=str(len(payload)))
+    assert head.startswith("Status: 200 OK")
+    assert json.loads(body)["title"] == "A tour that arrived in a body"
     assert errors == ""
 
 
@@ -181,6 +230,23 @@ class _Stream(io.StringIO):
         self.buffer = io.BytesIO()
 
 
+def test_main_hands_the_handler_the_right_three_streams(monkeypatch):
+    """Transposing these is silent and ruinous: tracebacks would be written
+    into stdin and request bodies read from the error log."""
+    stdin, out, err = _Stream(), _Stream(), _Stream()
+    monkeypatch.setattr(cgi.sys, "stdin", stdin)
+    monkeypatch.setattr(cgi.sys, "stdout", out)
+    monkeypatch.setattr(cgi.sys, "stderr", err)
+    seen = {}
+    monkeypatch.setattr(cgi, "run", lambda *a, **k: seen.update(args=a, kwargs=k))
+
+    cgi.main()
+
+    # Bytes in, bytes out, text for the log -- and the process's own environ.
+    assert seen["args"] == (stdin.buffer, out.buffer, err, os.environ)
+    assert seen["kwargs"] == {}
+
+
 def test_a_crash_before_the_headers_reaches_the_browser_as_a_plain_500(monkeypatch):
     """A bad import on the host must not become "Premature end of script
     headers", and must not show the historian a traceback: a traceback can
@@ -221,6 +287,14 @@ def test_the_apache_entry_script_is_executable_and_names_the_venv():
     assert text.startswith("#!/bin/sh\n")
     assert ".venv/bin/python" in text
     assert "-m app.cgi" in text
+    # The whole invocation, in one piece. `-P` is why `app/cgi.py` can claim
+    # a file dropped beside this script cannot shadow a module -- without it
+    # `-m` prepends the document root to `sys.path` -- and without
+    # PYTHONPATH the module does not import at all. Asserted as one string
+    # rather than as separate substrings because the comment above the line
+    # also contains "-P", so a looser assertion passes without the flag.
+    assert 'PYTHONPATH="$DIR/backend" exec "$DIR/.venv/bin/python" -P -m app.cgi' \
+        in text
 
 
 # --- the egress diagnostic ----------------------------------------------
