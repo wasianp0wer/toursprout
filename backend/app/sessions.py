@@ -2,9 +2,8 @@
 
 No FastAPI. Path building is pure; `sweep` and the two functions that
 throttle it are the only ones that touch the filesystem. The sid is also a
-recovery key a historian may type back in,
-so it is 16 lowercase hex characters (64 bits). It names a directory, so it
-is validated before use.
+recovery key a historian may type back in, so it is 16 lowercase hex
+characters (64 bits). It names a directory, so it is validated before use.
 """
 
 from __future__ import annotations
@@ -112,6 +111,12 @@ def mark_swept(sessions_dir: Path, *, now: float) -> bool:
         sessions_dir.mkdir(parents=True, exist_ok=True)
         stamp = sessions_dir / SWEEP_STAMP
         stamp.touch(exist_ok=True)
+        # A `touch` that lands and a `utime` that does not is reported as
+        # failure, and leaves a stamp dated now, so the caller skips this
+        # walk AND the next interval is suppressed as well. Deliberate, and
+        # not to be "fixed" into retrying: both halves fail towards sweeping
+        # less, which is the only safe direction near a historian's
+        # in-progress tour.
         os.utime(stamp, (now, now))
     except OSError:
         return False

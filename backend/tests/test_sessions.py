@@ -233,6 +233,15 @@ def test_marking_reports_failure_instead_of_raising(tmp_path):
     assert mark_swept(tmp_path / "blocked", now=NOW) is False
 
 
+def test_the_stamps_name_cannot_be_mistaken_for_a_session():
+    """`sweep` skips it on `not is_dir()` whatever it is called, so this is
+    the invariant that actually carries weight: `test_session_cookie.py`'s
+    `session_dirs` helper tells the stamp from a session by this predicate
+    and nothing else, so a stamp named like a sid would be counted as one.
+    """
+    assert valid_sid(SWEEP_STAMP) is False
+
+
 def test_the_stamp_is_not_a_session_and_is_never_swept(tmp_path):
     """It lives in sessions_dir and is older than every window."""
     assert mark_swept(tmp_path, now=NOW - 400 * DAY) is True
