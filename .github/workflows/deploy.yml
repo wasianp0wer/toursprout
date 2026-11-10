@@ -204,6 +204,17 @@ jobs:
           if printf '%s\n' $addrs | grep -qE '^(104\.(1[6-9]|2[0-7])\.|172\.(6[4-9]|7[01])\.|188\.114\.|162\.159\.|173\.245\.4[89]\.|108\.162\.)'; then
             echo "::warning::That looks like a Cloudflare address, which means DEPLOY_HOST is a proxied domain rather than the server. SSH to it will always time out. Use the server's own hostname (docs/DEPLOY.md, the DEPLOY_HOST row)."
           fi
+          # This runner's OWN address, logged because it is the only thing that
+          # varies between a run that reaches the host and one that does not.
+          # Measured over 2026-11-09/10: six reachability checks, one success --
+          # run 42710242412 found TCP 22 open at 22:15 UTC, thirteen minutes
+          # after run 42708081819 timed out, with this file and every secret
+          # identical. So the host is not refusing GitHub as a whole; it is
+          # refusing most of the addresses GitHub happens to hand out, and
+          # which one a job gets is the variable nothing was recording.
+          # Retrying inside a job cannot help: the address is fixed for the
+          # job's lifetime, so only a fresh run draws a new one.
+          echo "This runner's egress address: $(curl -fsS --max-time 10 https://checkip.amazonaws.com || echo unknown)"
           if timeout 15 bash -c ": < /dev/tcp/$DEPLOY_HOST/$DEPLOY_PORT" 2>/dev/null; then
             echo "TCP $DEPLOY_PORT is open from this runner."
           else
