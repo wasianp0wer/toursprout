@@ -45,7 +45,7 @@
     <label>Latitude <input type="text" inputmode="decimal" data-field="stop-lat" [value]="s.location.lat" (change)="setLocation('lat', $any($event.target))" (keydown.enter)="setLocation('lat', $any($event.target))" /></label>
     <label>Address
       <span class="address-row">
-        <input #address type="text" data-address placeholder="Street address or place name"
+        <input #address type="text" data-address aria-label="Address" placeholder="Street address or place name"
           (keydown.enter)="$event.preventDefault(); lookUpAddress(address.value)" />
         <button type="button" data-lookup-address [disabled]="searching()" (click)="lookUpAddress(address.value)">Look up</button>
       </span>

@@ -465,6 +465,33 @@ describe('InspectorPane: placing a stop', () => {
     expect(q('[data-address-match]')).toBeNull();
   });
 
+  it("names the address field \"Address\" alone, not the Look up button inside its label", () => {
+    // The label wraps the button too, so its text would make the field's
+    // accessible name "Address Look up"; aria-label takes precedence.
+    expect(q('[data-address]')!.getAttribute('aria-label')).toBe('Address');
+  });
+
+  it('undoing a lookup drops the matched name with it', async () => {
+    geocode.mockResolvedValue([COURTHOUSE]);
+    panoramas.mockResolvedValue([]);
+    await lookUp('Fairfax Courthouse');
+    expect(q('[data-address-match]')).toBeTruthy();
+    store.undo();
+    await settle();
+    expect(store.selectedStop()!.location).toEqual(STOP_LOC);
+    expect(q('[data-address-match]')).toBeNull();
+  });
+
+  it("a hand-typed location drops the lookup's OSM reference: it names another place", async () => {
+    geocode.mockResolvedValue([COURTHOUSE]);
+    panoramas.mockResolvedValue([]);
+    await lookUp('Fairfax Courthouse');
+    expect(store.selectedStop()!.osmRef).toBe('way/123');
+    await commit('[data-field="stop-lat"]', '38.9');
+    expect(store.selectedStop()!.location.lat).toBe(38.9);
+    expect(store.selectedStop()!.osmRef).toBeNull();
+  });
+
   it('a blank address looks nothing up', async () => {
     await lookUp('   ');
     expect(geocode).not.toHaveBeenCalled();

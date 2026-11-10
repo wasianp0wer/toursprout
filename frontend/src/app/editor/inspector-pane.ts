@@ -168,20 +168,27 @@ export class InspectorPane {
     if (v !== null && v !== s.location[field]) {
       const next = { ...s.location, [field]: v };
       const before = this.store.draft();
-      this.store.apply((t) => setStopLocation(t, s.id, next.lng, next.lat));
-      if (this.store.draft() !== before) {
-        this.found.set(null); // "near here" no longer is
-        this.lookedUp.set(null); // nor is the matched address
-      }
+      // A typed coordinate is no longer the looked-up place, so its OSM
+      // reference goes too; the matched name hides itself (see addressMatch).
+      this.store.apply((t) => setStopLocation(t, s.id, next.lng, next.lat, null));
+      if (this.store.draft() !== before) this.found.set(null); // "near here" no longer is
     }
     input.value = String(this.stop()?.location[field] ?? input.value);
   }
 
-  /** What the last lookup found for a stop: the matched name, or null for no match. Keyed like `found`. */
-  private readonly lookedUp = signal<{ stopId: string; name: string | null } | null>(null);
+  /**
+   * What the last lookup found for a stop: the matched name, or null for no
+   * match. Keyed like `found`, and also on the location it left the stop at,
+   * so the note goes whenever the stop moves away from it: a typed
+   * coordinate, an undo of the lookup.
+   */
+  private readonly lookedUp = signal<
+    { stopId: string; lng: number; lat: number; name: string | null } | null
+  >(null);
   protected readonly addressMatch = computed(() => {
     const l = this.lookedUp();
-    return l && l.stopId === this.stop()?.id ? l : null;
+    const s = this.stop();
+    return l && s && l.stopId === s.id && l.lng === s.location.lng && l.lat === s.location.lat ? l : null;
   });
 
   /**
@@ -211,13 +218,13 @@ export class InspectorPane {
     }
     if (this.stop()?.id !== s.id) return;
     if (!top) {
-      this.lookedUp.set({ stopId: s.id, name: null });
+      this.lookedUp.set({ stopId: s.id, ...s.location, name: null });
       return;
     }
     const { lng, lat, osmRef } = top;
     this.store.apply((t) => setStopLocation(t, s.id, lng, lat, osmRef));
     this.found.set(null); // "near here" has moved
-    this.lookedUp.set({ stopId: s.id, name: top.name });
+    this.lookedUp.set({ stopId: s.id, lng, lat, name: top.name });
     await this.findPanoramas();
   }
 
