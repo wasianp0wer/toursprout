@@ -6,7 +6,7 @@ import { overlay, stop, tour } from './test-builders';
 import { MapillarySearch, type PanoramaCandidate } from '../core/mapillary-search';
 import { ToolsApi, type PlaceCandidate } from '../core/tools-api';
 import { vi } from 'vitest';
-import { deriveHeading } from './document-ops';
+import { deriveHeading, setOverlayAnchor, setStopLocation } from './document-ops';
 import type { Overlay } from '../core/tour.models';
 
 describe('InspectorPane', () => {
@@ -19,6 +19,11 @@ describe('InspectorPane', () => {
   const settle = async () => { fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges(); };
   const type = async (sel: string, value: string) => {
     const i = input(sel); i.value = value; i.dispatchEvent(new Event('input')); await settle();
+  };
+  /** A coordinate field commits on change (blur, or Enter), not per keystroke. */
+  const commit = async (sel: string, value: string) => {
+    const i = input(sel); i.value = value; i.dispatchEvent(new Event('input'));
+    i.dispatchEvent(new Event('change')); await settle();
   };
   const ov = (): Overlay => store.selectedOverlay()!;
   const ANCHOR = { type: 'geo' as const, lng: -77.3, lat: 38.841, altitudeM: 2 };
@@ -71,7 +76,7 @@ describe('InspectorPane', () => {
 
   it('writes numeric edits to the document', async () => {
     await start(inWorld());
-    await type('[data-field="lat"]', '38.9');
+    await commit('[data-field="lat"]', '38.9');
     expect(ov().anchor.lat).toBe(38.9);
     await type('[data-field="widthM"]', '7');
     await type('[data-field="opacity"]', '0.5');
@@ -92,8 +97,9 @@ describe('InspectorPane', () => {
 
   it('ignores an emptied numeric field rather than writing null', async () => {
     await start(overlay('o1'));
-    await type('[data-field="lng"]', '');
+    await commit('[data-field="lng"]', '');
     expect(ov().anchor.lng).toBe(-77.3);
+    expect(input('[data-field="lng"]').value).toBe('-77.3');
   });
 
   it('offers only the legal display modes for the kind', async () => {
@@ -220,14 +226,14 @@ describe('InspectorPane', () => {
 
   it('editing the anchor re-derives a derived heading', async () => {
     await start(inWorld());
-    await type('[data-field="lng"]', '-77.2995');
+    await commit('[data-field="lng"]', '-77.2995');
     expect(heading()).toBeCloseTo(deriveHeading(ov().anchor, PANO), 6);
   });
 
   it('editing the anchor leaves a manual heading alone', async () => {
     await start(inWorld());
     await type('[data-field="headingDeg"]', '45');
-    await type('[data-field="lng"]', '-77.2995');
+    await commit('[data-field="lng"]', '-77.2995');
     expect(heading()).toBe(45);
   });
 
@@ -279,6 +285,10 @@ describe('InspectorPane: placing a stop', () => {
   const type = async (sel: string, value: string) => {
     const i = q(sel) as HTMLInputElement; i.value = value; i.dispatchEvent(new Event('input')); await settle();
   };
+  const commit = async (sel: string, value: string) => {
+    const i = q(sel) as HTMLInputElement; i.value = value; i.dispatchEvent(new Event('input'));
+    i.dispatchEvent(new Event('change')); await settle();
+  };
   const click = async (sel: string, i = 0) => {
     qa(sel)[i].click(); await new Promise((r) => setTimeout(r)); await settle();
   };
@@ -313,9 +323,9 @@ describe('InspectorPane: placing a stop', () => {
 
   it('edits the stop location in the document', async () => {
     expect((q('[data-field="stop-lng"]') as HTMLInputElement).value).toBe('-77.5');
-    await type('[data-field="stop-lat"]', '38.9');
+    await commit('[data-field="stop-lat"]', '38.9');
     expect(store.selectedStop()!.location).toEqual({ lng: -77.5, lat: 38.9 });
-    await type('[data-field="stop-lng"]', '999');
+    await commit('[data-field="stop-lng"]', '999');
     expect(store.selectedStop()!.location.lng).toBe(-77.5);
   });
 
@@ -330,7 +340,7 @@ describe('InspectorPane: placing a stop', () => {
     panoramas.mockResolvedValue([A]);
     await click('[data-find-panoramas]');
     expect(qa('[data-candidate]').length).toBe(1);
-    await type('[data-field="stop-lat"]', '38.9');
+    await commit('[data-field="stop-lat"]', '38.9');
     expect(qa('[data-candidate]').length).toBe(0);
   });
 
@@ -404,4 +414,143 @@ describe('InspectorPane: placing a stop', () => {
     expect(q('[data-tool-error]')?.textContent).toContain('every Overpass mirror failed');
     expect(store.draft()).toBe(before);
   });
+});
+
+/**
+ * Coordinates are typed a character at a time, and most prefixes of a real
+ * coordinate ("-", "38.") are not numbers. These fields keep what is typed
+ * until it is committed (blur, or Enter), then show the document's value.
+ */
+describe('InspectorPane: coordinate fields', () => {
+  let store: EditorStore;
+  let el: HTMLElement;
+  let fixture: ReturnType<typeof TestBed.createComponent<InspectorPane>>;
+
+  const settle = async () => { fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges(); };
+  const field = (name: string) => el.querySelector(`[data-field="${name}"]`) as HTMLInputElement;
+  /** What a keystroke does: the text changes, and an input event fires. */
+  const typeInto = async (name: string, text: string) => {
+    const i = field(name); i.focus(); i.value = text; i.dispatchEvent(new Event('input')); await settle();
+  };
+  const blur = async (name: string) => {
+    const i = field(name); i.dispatchEvent(new Event('change')); i.blur(); await settle();
+  };
+  const enter = async (name: string) => {
+    field(name).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await settle();
+  };
+
+  const STOP_LOC = { lng: -77.5, lat: 38.7 };
+  const ANCHOR = { type: 'geo' as const, lng: -77.3, lat: 38.841, altitudeM: 2 };
+  const stopNow = () => store.selectedStop()!;
+  const ovNow = () => store.selectedOverlay()!;
+
+  const FIELDS = [
+    { name: 'stop-lng', select: 's1', read: () => stopNow().location.lng,
+      moveElsewhere: () => store.apply((t) => setStopLocation(t, 's1', -77.25, STOP_LOC.lat)),
+      movedTo: -77.25, outOfRange: '200' },
+    { name: 'stop-lat', select: 's1', read: () => stopNow().location.lat,
+      moveElsewhere: () => store.apply((t) => setStopLocation(t, 's1', STOP_LOC.lng, 38.75)),
+      movedTo: 38.75, outOfRange: '95' },
+    { name: 'lng', select: 'o1', read: () => ovNow().anchor.lng,
+      moveElsewhere: () => store.apply((t) => setOverlayAnchor(t, 'o1', { lng: -77.25 })),
+      movedTo: -77.25, outOfRange: '200' },
+    { name: 'lat', select: 'o1', read: () => ovNow().anchor.lat,
+      moveElsewhere: () => store.apply((t) => setOverlayAnchor(t, 'o1', { lat: 38.75 })),
+      movedTo: 38.75, outOfRange: '95' },
+    { name: 'altitudeM', select: 'o1', read: () => ovNow().anchor.altitudeM,
+      moveElsewhere: () => store.apply((t) => setOverlayAnchor(t, 'o1', { altitudeM: 7 })),
+      movedTo: 7, outOfRange: null },
+  ];
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [InspectorPane],
+      providers: [
+        { provide: ToolsApi, useValue: {} },
+        { provide: MapillarySearch, useValue: {} },
+      ],
+    });
+    store = TestBed.inject(EditorStore);
+    store.load(tour([stop('s1', 1, [overlay('o1', { anchor: ANCHOR })], { location: STOP_LOC })]));
+  });
+
+  const open = async (id: string) => {
+    store.select(id);
+    fixture = TestBed.createComponent(InspectorPane);
+    el = fixture.nativeElement;
+    await settle();
+  };
+
+  for (const f of FIELDS) {
+    describe(f.name, () => {
+      beforeEach(async () => open(f.select));
+
+      it('keeps "38." as typed, and commits 38 on blur', async () => {
+        const before = store.draft();
+        await typeInto(f.name, '38.');
+        expect(field(f.name).value).toBe('38.');
+        expect(store.draft()).toBe(before);
+        await blur(f.name);
+        expect(f.read()).toBe(38);
+        expect(field(f.name).value).toBe('38');
+      });
+
+      it('keeps a lone "-" as typed and changes nothing', async () => {
+        const before = store.draft();
+        await typeInto(f.name, '-');
+        expect(field(f.name).value).toBe('-');
+        expect(store.draft()).toBe(before);
+      });
+
+      it('keeps "-77.30" as typed until it is committed', async () => {
+        await typeInto(f.name, '-77.30');
+        expect(field(f.name).value).toBe('-77.30');
+        await enter(f.name);
+        expect(f.read()).toBe(-77.3);
+        expect(field(f.name).value).toBe('-77.3');
+      });
+
+      it('commits on Enter as well as blur', async () => {
+        await typeInto(f.name, '12.5');
+        await enter(f.name);
+        expect(f.read()).toBe(12.5);
+      });
+
+      it('a commit that is not a number leaves the document alone and shows its value again', async () => {
+        const before = store.draft();
+        const shown = field(f.name).value;
+        await typeInto(f.name, '-');
+        await blur(f.name);
+        expect(store.draft()).toBe(before);
+        expect(field(f.name).value).toBe(shown);
+      });
+
+      if (f.outOfRange) {
+        it('a refused value leaves the document alone and shows its value again', async () => {
+          const before = store.draft();
+          const shown = field(f.name).value;
+          await typeInto(f.name, f.outOfRange!);
+          await enter(f.name);
+          expect(store.draft()).toBe(before);
+          expect(store.canUndo()).toBe(false);
+          expect(field(f.name).value).toBe(shown);
+        });
+      }
+
+      it('committing the value it already has is not an edit', async () => {
+        const shown = field(f.name).value;
+        // A trailing zero after the point: different text, the same number.
+        await typeInto(f.name, shown + (shown.includes('.') ? '0' : '.0'));
+        await blur(f.name);
+        await enter(f.name);
+        expect(store.canUndo()).toBe(false);
+      });
+
+      it('shows a change made elsewhere while it is not focused', async () => {
+        f.moveElsewhere();
+        await settle();
+        expect(field(f.name).value).toBe(String(f.movedTo));
+      });
+    });
+  }
 });

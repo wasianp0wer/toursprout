@@ -13,11 +13,32 @@ import { ToolsApi, type PlaceCandidate } from '../core/tools-api';
 type Num = number | null;
 
 /**
+ * The number a coordinate field's text commits to, or null when it is not
+ * one. `Number`, not `parseFloat`: "38abc" is a typo, not 38. A blank field
+ * is null, not the 0 that `Number('')` would make of it.
+ */
+function parseCoordinate(text: string): number | null {
+  const t = text.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
  * Numeric and text fields for the selected stop or overlay. All document
  * changes are delegated to document-ops transforms via store.apply.
  *
  * The manual-heading marker lives on EditorStore (shared with the map's
  * rotation handle) and is never written to the document.
+ *
+ * Coordinate fields (lng, lat, altitude) are plain text inputs that commit
+ * on change (blur, or Enter), not on every keystroke. Most prefixes of a
+ * real coordinate ("-", "38.") are not numbers: a number input reports them
+ * as "" (so the document never hears them), and committing per keystroke
+ * made every prefix that was a number an edit of its own (an undo step, an
+ * autosave, a map move), while a refused one (lat 95) left text on screen
+ * that the document did not hold. After a commit the field always shows the
+ * document's value, so what is on screen is what is saved.
  */
 @Component({
   selector: 'app-inspector-pane',
@@ -60,11 +81,17 @@ export class InspectorPane {
     this.store.markHeadingManual(id, on);
   }
 
-  protected setAnchor(field: 'lng' | 'lat' | 'altitudeM', v: Num): void {
+  protected setAnchor(field: 'lng' | 'lat' | 'altitudeM', input: HTMLInputElement): void {
     const o = this.overlay();
-    if (!o || v === null) return;
-    this.store.apply((t) => setOverlayAnchorKeepingHeading(
-      t, o.id, { [field]: v as number }, this.fix(), this.store.manualHeadings()));
+    if (!o) return;
+    const v = parseCoordinate(input.value);
+    // Enter fires keydown and then change: the second commit sees the same
+    // value and must not become a second (empty) undo step.
+    if (v !== null && v !== o.anchor[field]) {
+      this.store.apply((t) => setOverlayAnchorKeepingHeading(
+        t, o.id, { [field]: v }, this.fix(), this.store.manualHeadings()));
+    }
+    input.value = String(this.overlay()?.anchor[field] ?? input.value);
   }
 
   protected setInWorld(field: 'widthM' | 'heightM' | 'opacity', v: Num): void {
@@ -140,12 +167,17 @@ export class InspectorPane {
     return f && f.stopId === this.stop()?.id ? f.places ?? null : null;
   });
 
-  protected setLocation(field: 'lng' | 'lat', v: Num): void {
+  protected setLocation(field: 'lng' | 'lat', input: HTMLInputElement): void {
     const s = this.stop();
-    if (!s || v === null) return;
-    const next = { ...s.location, [field]: v };
-    this.found.set(null); // "near here" no longer is
-    this.store.apply((t) => setStopLocation(t, s.id, next.lng, next.lat));
+    if (!s) return;
+    const v = parseCoordinate(input.value);
+    if (v !== null && v !== s.location[field]) {
+      const next = { ...s.location, [field]: v };
+      const before = this.store.draft();
+      this.store.apply((t) => setStopLocation(t, s.id, next.lng, next.lat));
+      if (this.store.draft() !== before) this.found.set(null); // "near here" no longer is
+    }
+    input.value = String(this.stop()?.location[field] ?? input.value);
   }
 
   protected async findPanoramas(): Promise<void> {
