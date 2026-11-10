@@ -147,6 +147,15 @@ export class EditMapPane {
     this.paintedLocation = { lng: loc.lng, lat: loc.lat };
     if (this.mountedStopId !== stop.id) {
       this.mountedStopId = stop.id;
+      // A stop already in view keeps the view. A just-added stop sits at the
+      // map centre but carries the previous stop's panorama, so its fix is
+      // the old camera: jumping there would also make it the next new
+      // stop's starting point.
+      if (map.getBounds().contains([loc.lat, loc.lng])) {
+        const c = map.getCenter();
+        this.store.setMapCenter({ lng: c.lng, lat: c.lat });
+        return;
+      }
       const focus = fix ?? selected?.anchor ?? stop.overlays[0]?.anchor ?? stop.location;
       map.setView([focus.lat, focus.lng], 19);
       // An animated setView reports moveend only once it lands; until then
