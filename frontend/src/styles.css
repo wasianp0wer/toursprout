@@ -29,8 +29,14 @@ body {
    component (Angular inlines a component's styles into its own string, so a
    shared file in styleUrls would be duplicated), and none of it counts
    against the per-component style budget. Every selector is wrapped in
-   :where() so its specificity stays at a single type selector: any rule a
-   pane writes for itself wins without !important. The map and panorama
+   :where() so the base rules weigh a single type selector (0,0,1), and a
+   pane's own rule, which Angular gives an attribute selector, beats them
+   without !important. The state rules below do not stay that light: each
+   pseudo-class adds (0,1,0), so :disabled and :focus-visible weigh (0,1,1),
+   enough to tie a pane's bare `button` rule, and :hover:not(:disabled)
+   weighs (0,2,1), enough to beat a pane's `.class` rule. A pane that
+   restyles one of those states needs a selector at least as specific
+   (repeat the state in it). The map and panorama
    panes and the close dialog are left out on purpose; their controls have a
    deliberate look of their own. */
 app-editor-page :where(header, app-outline-pane, app-inspector-pane) { color-scheme: dark; }

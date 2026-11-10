@@ -20,7 +20,11 @@ export interface GeocodeResult {
 export class ToolsApi {
   private readonly http = inject(HttpClient);
 
-  /** Through the backend, not straight to Nominatim: its usage policy wants an identifying User-Agent and one request a second, which only the server can keep to. */
+  /**
+   * Through the backend, not straight to Nominatim: its usage policy wants an
+   * identifying User-Agent and one request a second, which only the server
+   * can keep to.
+   */
   async geocode(query: string): Promise<GeocodeResult[]> {
     return (await this.post<{ results: GeocodeResult[] }>('geocode', { query })).results;
   }
