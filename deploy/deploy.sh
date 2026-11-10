@@ -16,8 +16,13 @@
 # remote command, so a failing test stops the deploy instead of being noticed
 # after half a tree has shipped.
 #
-# NEVER add `--delete` (or --delete-excluded, --remove-source-files) to the
-# rsyncs below. Historians' in-progress tours live in Settings.sessions_dir
+# NEVER add a deleting flag to the rsyncs below. The list is longer than it
+# looks and two of them do not contain the string "delete": `--delete`,
+# `--delete-before/during/after/delay/excluded`, `--del` (the documented short
+# form, and the one a person types), `--remove-source-files`,
+# `--remove-sent-files`, and `--force`, which removes a non-empty directory to
+# make way for a non-directory. backend/tests/test_deploy_script.py checks for
+# all of them by token rather than by substring, for that reason. Historians' in-progress tours live in Settings.sessions_dir
 # (default ~/.clio-wired/sessions), OUTSIDE the deploy tree so rsync cannot
 # reach them: that is the first defence. Not deleting anything is the second. A
 # deploy that destroys a tour is a failure condition, so the cost of this
@@ -44,6 +49,11 @@ set -euo pipefail
 # to git for the production gates, and where its own files live must not depend
 # on a git that is stubbed, shadowed or missing.
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# Where the operator typed the command, kept because `cd "$REPO_ROOT"` below
+# happens before the config file is looked for: without this, a relative
+# --config is resolved against the repository root and the refusal names a
+# path that does exist, just not from here.
+INVOCATION_CWD=$PWD
 
 usage() {
   echo "usage: deploy/deploy.sh [--target DIR] [--config FILE]" >&2
@@ -54,13 +64,28 @@ TARGET=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --target)
+      # `-ge 2` is satisfied by an EMPTY second argument, and an empty TARGET
+      # then falls through `${TARGET:-$DEPLOY_PATH}` to production while
+      # `[ -z "$TARGET" ]` re-arms the production gates -- so `--target ""`
+      # ships to the historians while the operator believes they are
+      # rehearsing. `--target "$STAGING"` with STAGING unset is how that gets
+      # typed. Refused here, with the absoluteness check, because every later
+      # test of TARGET reads an empty value as "no target given".
       [ "$#" -ge 2 ] || { echo "deploy.sh: --target needs a directory." >&2; usage; exit 2; }
+      case "$2" in
+        "") echo "deploy.sh: --target was given an empty directory, which would deploy to DEPLOY_PATH -- that is production. Omit --target to mean production." >&2; exit 2 ;;
+        /*) : ;;
+        *)  echo "deploy.sh: --target needs an ABSOLUTE path on the host (got '$2'). The host resolves it against the deploy user's home, which is not where the subdomain's document root is." >&2; exit 2 ;;
+      esac
       TARGET=$2
       shift 2
       ;;
     --config)
       [ "$#" -ge 2 ] || { echo "deploy.sh: --config needs a file." >&2; usage; exit 2; }
-      CONFIG=$2
+      case "$2" in
+        /*) CONFIG=$2 ;;
+        *)  CONFIG="$INVOCATION_CWD/$2" ;;
+      esac
       shift 2
       ;;
     *)
@@ -116,7 +141,12 @@ fi
 # and carrying on.
 read_config_mode() {
   local candidate
-  for flags in "-f %Lp" "-c %a"; do
+  # -L on both spellings: the BSD form reports the LINK's mode (always 0755)
+  # for a symlink, and `chmod 600` on a symlink changes its target, so without
+  # this a `deploy/deploy.env -> ~/secrets/clio.env` -- a reasonable way to
+  # keep the credential out of the repository directory -- is refused forever
+  # by a message insisting the fix is a chmod that cannot work.
+  for flags in "-Lf %Lp" "-Lc %a"; do
     # Unquoted on purpose: the two words are two arguments.
     # shellcheck disable=SC2086
     candidate=$(stat $flags "$1" 2>/dev/null) || continue
@@ -164,7 +194,15 @@ SSH_DEST="$DEPLOY_USER@$DEPLOY_HOST"
 for name in DEPLOY_HOST DEPLOY_USER DEPLOY_PORT SSH_KEY DEPLOY_DIR; do
   case "${!name}" in
     *[[:space:]]*)
-      note "$name contains whitespace ('${!name}'), which rsync's --rsh string cannot carry: it is split on spaces by rsync, so a value with a space in it changes which arguments ssh gets rather than failing."
+      # DEPLOY_DIR is an internal name: it is in no config file and in neither
+      # of the runbook's tables, so a refusal naming it sends the operator
+      # looking for a variable that does not exist. Report it as whichever of
+      # the two things they actually typed.
+      case "$name" in
+        DEPLOY_DIR) shown=$([ -n "$TARGET" ] && echo "the --target argument" || echo "DEPLOY_PATH") ;;
+        *)          shown=$name ;;
+      esac
+      note "$shown contains whitespace ('${!name}'), which rsync's --rsh string cannot carry: it is split on spaces by rsync, so a value with a space in it changes which arguments ssh gets rather than failing."
       ;;
   esac
 done
@@ -192,6 +230,26 @@ $dirty"
   fi
 fi
 flush
+
+# ---- One deploy at a time ---------------------------------------------------
+# .github/workflows/deploy.yml carries `concurrency: {group: deploy,
+# cancel-in-progress: false}` with the comment "two rsyncs into the same tree
+# must not interleave". Moving the ship half into a script dropped that, and a
+# script is easier to run twice than a workflow: two terminals, or a second go
+# because the first looked stuck during `make check`. A directory is the lock
+# because `mkdir` is atomic everywhere and macOS has no flock(1).
+#
+# Taken AFTER the refusals, so a refused deploy neither waits for a lock nor
+# leaves one, and before `make check`, so the slow part is inside it.
+# Overridable so the tests can take a lock in a temp directory instead of in
+# the real repository, the same kind of seam as backend/app/main.py's `_now`.
+# Nothing but a test sets it.
+LOCK=${DEPLOY_LOCK:-$REPO_ROOT/.deploy.lock}
+if ! mkdir "$LOCK" 2>/dev/null; then
+  echo "deploy.sh refuses: $LOCK exists, so another deploy is running (or one died). Two rsyncs into the same tree must not interleave. If nothing is running, rmdir it." >&2
+  exit 1
+fi
+trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
 
 # One place the ssh options are written, for both ssh and rsync.
 #
@@ -254,14 +312,27 @@ ssh "${SSH_OPTS[@]}" "$SSH_DEST" \
 # this one. Overwriting it removes the only access control the deployment has,
 # with nothing anywhere to say so, because the file is perfectly valid without
 # those lines.
-"${RSYNC[@]}" --chmod=F644 .htaccess "$SSH_DEST:$DEPLOY_DIR/.htaccess.new"
+# NO --chmod ON ANY RSYNC HERE, and that is not a simplification. The workflow
+# could use `--chmod=F644`/`F755` because it ran on ubuntu-24.04, whose rsync is
+# GNU rsync. This script runs on macOS, where /usr/bin/rsync is Apple's
+# openrsync ("rsync version 2.6.9 compatible") and a literal mode is rejected
+# outright: `rsync: --chmod=F644: invalid argument`, exit 1, nothing
+# transferred. Carried over unchanged, the flag stopped every deploy at this
+# very line, before anything reached the host. (openrsync takes only relative
+# forms like `u+x`, and documents --chmod as having no effect without --perms,
+# which `-rlt` does not pass -- so even parsing it would not have set the mode.)
+#
+# The modes are therefore set on the host, by chmod, which both rsyncs agree
+# about. `.htaccess` needs none of its own: deploy/merge-htaccess.sh chmods 644
+# the temp file it writes before the atomic mv, so the file Apache reads is 644
+# however it arrived.
+"${RSYNC[@]}" .htaccess "$SSH_DEST:$DEPLOY_DIR/.htaccess.new"
 
-# The merge script, which composes the two. F755 for consistency with app.cgi,
-# but it is invoked through `bash` below rather than relying on the bit:
-# --chmod only applies to files rsync CREATES, so a copy already on the host
-# with the wrong mode would never be repaired, and this is not a file to lose
-# the password over.
-"${RSYNC[@]}" --chmod=F755 deploy/merge-htaccess.sh "$SSH_DEST:$DEPLOY_DIR/deploy/"
+# The merge script, which composes the two. No mode is needed on it at all: it
+# is invoked as `bash <path>` below, never executed directly, so the bit is
+# irrelevant -- and relying on the bit would have been wrong anyway, since a
+# copy already on the host with the wrong mode is not something rsync repairs.
+"${RSYNC[@]}" deploy/merge-htaccess.sh "$SSH_DEST:$DEPLOY_DIR/deploy/"
 
 # .htaccess becomes the staged copy plus whatever auth directives the host's
 # file already carried, written atomically and with the staged copy removed.
@@ -276,9 +347,15 @@ ssh "${SSH_OPTS[@]}" "$SSH_DEST" \
 ssh "${SSH_OPTS[@]}" "$SSH_DEST" \
   "bash '$DEPLOY_DIR/deploy/merge-htaccess.sh' '$DEPLOY_DIR/.htaccess' '$DEPLOY_DIR/.htaccess.new'"
 
-# --chmod is required: `rsync -rlt` carries no permissions, so without it
-# app.cgi arrives mode 644 and Apache 500s on it.
-"${RSYNC[@]}" --chmod=F755 app.cgi "$SSH_DEST:$DEPLOY_DIR/"
+# `rsync -rlt` carries no permissions, so a NEW app.cgi arrives 644 and Apache
+# 500s on executing it. The chmod is its own ssh round-trip immediately after,
+# rather than only in the install step at the end: between the two sits the
+# whole of backend/, the bundle, content/, the .env write and a pip install,
+# and on a first deploy -- the one where app.cgi is new and therefore 644 --
+# that is minutes of 500 on every URL. The install step still chmods it again,
+# for the case rsync did not create it and the mode on the host is wrong.
+"${RSYNC[@]}" app.cgi "$SSH_DEST:$DEPLOY_DIR/"
+ssh "${SSH_OPTS[@]}" "$SSH_DEST" "chmod 755 '$DEPLOY_DIR/app.cgi'"
 
 "${RSYNC[@]}" \
   --exclude '.venv' --exclude '.env' --exclude '__pycache__' \

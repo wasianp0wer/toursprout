@@ -49,11 +49,41 @@ import re
 import stat
 import subprocess
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "deploy" / "deploy.sh"
+
+# Every rsync flag that can remove something on the host. The list is longer
+# than it looks and two of them do not contain the string "delete": the old
+# check was `"--delete" not in line`, and `--del` -- rsync's own documented
+# short form, and the one a person reaches for -- walked straight past it, as
+# did `--force`, which removes a non-empty directory to make way for a
+# non-directory. A deploy that destroys a historian's in-progress tour is the
+# binding failure condition, so this is a token match against a list rather
+# than a substring search for two spellings.
+DELETING_FLAGS = frozenset(
+    [
+        "--delete",
+        "--delete-before",
+        "--delete-during",
+        "--delete-after",
+        "--delete-delay",
+        "--delete-excluded",
+        "--delete-missing-args",
+        "--del",
+        "--remove-source-files",
+        "--remove-sent-files",
+        "--force",
+    ]
+)
+
+# What a complete deploy does on the host: mkdir, stage .htaccess, send the
+# merge script, run the merge, send app.cgi, chmod it, backend/, the bundle,
+# content/, the .env write, the install step.
+REMOTE_OPERATIONS = 11
 
 PROD_PATH = "/home/deployer/tours"
 STAGING_PATH = "/home/deployer/tours-staging"
@@ -70,8 +100,16 @@ STUBS = {
     # it or the pipeline dies of SIGPIPE and the exit code says the wrong
     # thing. It goes to /dev/null: a stub that logged stdin would put the token
     # in the log the token tests then search.
+    # stdin is captured to its own numbered file rather than dropped. The
+    # last remote step -- the venv guard, `pip install`, and the two chmods --
+    # is a heredoc on stdin, so a stub that did `cat > /dev/null` left the
+    # whole of it unasserted: deleting `pip install` or either chmod passed the
+    # entire suite. It must NOT go into $STUB_LOG, because the `.env` step
+    # pipes the token on stdin and the argv log is what the token tests search.
     "ssh": """
-cat > /dev/null
+n=0
+while [ -e "$STUB_STDIN_DIR/$n" ]; do n=$((n + 1)); done
+cat > "$STUB_STDIN_DIR/$n"
 if [ -n "${STUB_FAIL_SSH_MATCH:-}" ]; then
   case "$*" in
     *"$STUB_FAIL_SSH_MATCH"*) exit 1 ;;
@@ -118,6 +156,8 @@ def run_deploy(tmp_path):
     _write_stubs(bin_dir)
 
     log = tmp_path / "stub.log"
+    stdin_dir = tmp_path / "stdin"
+    stdin_dir.mkdir()
     key = tmp_path / "clio_deploy"
     key.write_text("not a key; the ssh that would read it is a stub\n")
     key.chmod(0o600)
@@ -133,7 +173,7 @@ def run_deploy(tmp_path):
     }
 
     def _run(args=(), config_set=None, config_mode=0o600, config_path=None, stat_impl=None,
-             **env):
+             symlink=False, **env):
         if stat_impl is not None:
             stub = bin_dir / "stat"
             stub.write_text(stat_impl)
@@ -158,10 +198,22 @@ def run_deploy(tmp_path):
                 "".join(f'{k}="{v}"\n' for k, v in values.items() if v is not None)
             )
             path.chmod(config_mode)
+            if symlink:
+                # The config becomes a symlink to the real file. A symlink's
+                # own mode is always 0755 and `chmod` on it changes its
+                # target, so a mode check that does not follow the link
+                # refuses this forever with a remedy that cannot work.
+                real = path.with_name(path.name + ".real")
+                path.rename(real)
+                path.symlink_to(real)
 
         environ = dict(os.environ)
         environ["PATH"] = f"{bin_dir}:{environ['PATH']}"
         environ["STUB_LOG"] = str(log)
+        environ["STUB_STDIN_DIR"] = str(stdin_dir)
+        # The lock lives in a temp directory, so a test neither trips nor
+        # leaves behind the real repository's .deploy.lock.
+        environ.setdefault("DEPLOY_LOCK", str(tmp_path / "deploy.lock"))
         environ.update({k: str(v) for k, v in env.items()})
 
         result = subprocess.run(
@@ -174,9 +226,35 @@ def run_deploy(tmp_path):
             check=False,
         )
         lines = log.read_text().strip("\n").split("\n") if log.exists() else []
-        return result, [ln for ln in lines if ln]
+        stdins = [f.read_text() for f in sorted(stdin_dir.iterdir(), key=lambda f: int(f.name))]
+        return Run(result, [ln for ln in lines if ln], stdins)
 
     return _run
+
+
+class Run(NamedTuple):
+    """What a driven deploy left behind.
+
+    `stdins` is what each `ssh` was fed, in call order, which is the only place
+    the remote install script can be inspected: it is a quoted heredoc, so it
+    reaches the host on stdin and appears in no argv.
+    """
+
+    result: subprocess.CompletedProcess
+    log: list[str]
+    stdins: list[str]
+
+    def __iter__(self):
+        # The tests below unpack `result, log = run_deploy()`; `stdins` is
+        # reached by attribute where it is wanted.
+        return iter((self.result, self.log))
+
+
+def remote_script(run: Run) -> str:
+    """The install step's heredoc: the last ssh fed anything but the token."""
+    scripts = [text for text in run.stdins if "pip install" in text or "VENV=" in text]
+    assert len(scripts) == 1, f"expected one remote install script, got {run.stdins!r}"
+    return scripts[0]
 
 
 def index_of(log: list[str], needle: str) -> int:
@@ -255,8 +333,8 @@ def test_no_rsync_can_delete(run_deploy):
     rsyncs = [ln for ln in log if ln.startswith("rsync ")]
     assert rsyncs
     for line in rsyncs:
-        assert "--delete" not in line, line
-        assert "--remove-source-files" not in line, line
+        for token in line.split():
+            assert token.split("=")[0] not in DELETING_FLAGS, f"{token} in: {line}"
 
 
 def test_the_token_never_appears_in_an_argument(run_deploy):
@@ -271,15 +349,122 @@ def test_the_token_never_appears_in_an_argument(run_deploy):
         assert TOKEN not in line, line
 
 
-def test_the_modes_apache_reads_are_given_explicitly(run_deploy):
-    """`rsync -rlt` carries no permissions. Without --chmod, app.cgi arrives
-    644 and Apache 500s on executing it, and an .htaccess Apache cannot read is
-    500 on every URL in the tree -- the same outage from the other side."""
+def test_no_rsync_carries_a_literal_chmod(run_deploy):
+    """Because the rsync that will run this script rejects one.
+
+    The workflow this script was transcribed from used `--chmod=F644` and
+    `--chmod=F755`, which is fine on ubuntu-24.04's GNU rsync. On macOS
+    /usr/bin/rsync is Apple's openrsync ("rsync version 2.6.9 compatible") and
+    a literal mode is refused outright -- `rsync: --chmod=F644: invalid
+    argument`, exit 1, nothing transferred. Carried over unchanged, it stopped
+    every deploy at the first rsync, after `make check` had already run.
+
+    openrsync accepts only relative forms (`u+x`), and documents --chmod as
+    having no effect without `--perms`, which `-rlt` does not pass. So there is
+    no spelling that would have worked, and the modes are set on the host
+    instead -- which is also the only thing that can repair a file rsync did
+    not create.
+    """
     _, log = run_deploy()
 
-    assert "--chmod=F644" in log[index_of(log, ".htaccess.new")]
-    assert "--chmod=F755" in log[index_of(log, "app.cgi")]
-    assert "--chmod=F755" in log[index_of(log, "merge-htaccess.sh")]
+    for line in [ln for ln in log if ln.startswith("rsync ")]:
+        assert "--chmod" not in line, (
+            f"openrsync rejects a literal --chmod and exits 1 without transferring: {line}"
+        )
+
+
+def test_app_cgi_is_made_executable_as_soon_as_it_arrives(run_deploy):
+    """`rsync -rlt` carries no permissions, so a NEW app.cgi lands 644 and
+    Apache 500s on executing it.
+
+    The chmod is asserted to come before the next rsync rather than merely to
+    happen: the install step at the end chmods it too, and between the two sit
+    the whole of backend/, the bundle, content/, the .env write and a pip
+    install. On a first deploy -- the one where app.cgi is new, and therefore
+    the one where its mode is wrong -- that gap is minutes of 500 on every URL
+    of the subdomain.
+    """
+    run = run_deploy()
+    log = run.log
+
+    sent = index_of(log, "app.cgi")
+    made_executable = next(
+        i for i, ln in enumerate(log)
+        if ln.startswith("ssh ") and "chmod 755" in ln and "app.cgi" in ln
+    )
+    assert sent < made_executable
+    later_rsyncs = [i for i, ln in enumerate(log) if ln.startswith("rsync ") and i > sent]
+    assert later_rsyncs, log
+    assert made_executable < min(later_rsyncs), (
+        f"app.cgi stays mode 644 while the rest of the deploy runs: {log}"
+    )
+
+
+def test_the_remote_install_step_does_all_of_its_work(run_deploy):
+    """The install step is a quoted heredoc, so it travels on ssh's stdin and
+    appears in no argv. The stub used to drop stdin, which left every line of
+    it unasserted: deleting `pip install`, or either chmod, passed the whole
+    suite. Those chmods are now the ONLY thing setting the modes Apache needs,
+    since no rsync may carry --chmod.
+    """
+    script = remote_script(run_deploy())
+
+    assert "pip" in script and "install" in script and "requirements.txt" in script
+    assert "chmod 755" in script and "app.cgi" in script
+    assert "chmod 644" in script and ".htaccess" in script
+    # And it refuses rather than creating a venv: the deploy installs into the
+    # one the runbook makes by hand, and app.cgi finds its interpreter there.
+    assert "/.venv" in script
+    assert "exit 1" in script
+
+
+def test_the_host_env_is_written_only_when_it_is_absent(run_deploy):
+    """`backend/.env` is host-owned state. The first deploy bootstraps it;
+    later ones leave it alone, so a SESSIONS_DIR or a lowered cap the operator
+    set on the host survives.
+
+    Losing this is the nearest thing in the script to destroying a tour: if
+    SESSIONS_DIR had been moved off its default, overwriting the file makes
+    every in-progress tour invisible to the application in one deploy. The
+    property was stated in four places and asserted nowhere -- the only test
+    that touched this step matched on `umask 077`, which survives the guard's
+    removal.
+    """
+    _, log = run_deploy()
+
+    line = log[index_of(log, "backend/.env")]
+    assert line.startswith("ssh ")
+    assert "[ -e " in line, f"the .env write is unconditional: {line}"
+    # The skip branch must drain stdin, or the printf upstream of it dies of
+    # SIGPIPE and the deploy fails on a host that is behaving correctly.
+    assert "cat > /dev/null" in line, f"the skip branch does not drain stdin: {line}"
+
+
+def test_the_backend_rsync_withholds_the_env_and_the_venv(run_deploy):
+    """`backend/.env` exists in this working tree, holding a local token, and
+    the host's copy is its own state (above). Dropping the exclude ships the
+    author's development `.env` over the host's. `.venv` is excluded too, which
+    matters less -- the host's venv is at `$DEPLOY_DIR/.venv`, which no rsync
+    destination here reaches -- but shipping a local 3.14 venv to a 3.12 host
+    is pointless at best.
+    """
+    _, log = run_deploy()
+
+    line = log[index_of(log, "backend/ deployer@")]
+    assert "--exclude .env" in line, f"the host's own backend/.env is not safe: {line}"
+    assert "--exclude .venv" in line, line
+    assert "--exclude uv.lock" in line, line
+
+
+def test_the_whole_check_suite_runs_not_a_part_of_it(run_deploy):
+    """`make check` is lint, backend tests, frontend tests and the bundle
+    build. The ordering test only asked that *some* `make` ran before the first
+    remote command, which `make backend-test` satisfies -- and the runbook
+    claims all four ran.
+    """
+    _, log = run_deploy()
+
+    assert log[index_of(log, "make ")].split() == ["make", "check"], log
 
 
 def test_requirements_are_exported_without_the_dev_group(run_deploy):
@@ -338,10 +523,10 @@ def test_target_replaces_the_production_path_everywhere(run_deploy):
     _, log = run_deploy(args=["--target", STAGING_PATH])
 
     remote = remote_lines(log)
-    # Ten of them, and every single one names a deploy directory, so "mentions
-    # the staging path" is a statement about all of them rather than about
-    # whichever ones happen to.
-    assert len(remote) == 10, remote
+    # Every one of them names a deploy directory, so "mentions the staging
+    # path" is a statement about all of them rather than about whichever ones
+    # happen to.
+    assert len(remote) == REMOTE_OPERATIONS, remote
     for line in remote:
         assert STAGING_PATH in line, line
         assert not PRODUCTION_PATH_RE.search(line), line
@@ -410,7 +595,78 @@ def test_a_rehearsal_is_exempt_from_both_gates(run_deploy):
     )
 
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
-    assert len(remote_lines(log)) == 10, log
+    assert len(remote_lines(log)) == REMOTE_OPERATIONS, log
+
+
+def test_the_whitespace_refusal_names_a_variable_the_operator_has(run_deploy):
+    """DEPLOY_PATH reaches the whitespace check as the internal name
+    DEPLOY_DIR, which is in no config file and in neither of the runbook's
+    tables. The script's own stated principle is that a refusal naming nothing
+    is a guessing game, so it reports whichever of the two the operator
+    actually typed.
+    """
+    result, log = run_deploy(config_set={"DEPLOY_PATH": "/home/deployer/tours staging"})
+    assert_refused(result, log, "DEPLOY_PATH")
+    assert "DEPLOY_DIR" not in result.stderr, result.stderr
+
+    result, log = run_deploy(args=["--target", "/home/deployer/tours staging"])
+    assert_refused(result, log, "--target")
+    assert "DEPLOY_DIR" not in result.stderr, result.stderr
+
+
+def test_an_empty_target_is_refused_rather_than_meaning_production(run_deploy):
+    """`--target ""` passed the argument check, then fell through
+    `${TARGET:-$DEPLOY_PATH}` to production while `[ -z "$TARGET" ]`
+    simultaneously re-armed the production gates -- so on main with a clean
+    tree it shipped to the historians while the operator believed they were
+    rehearsing. `--target "$STAGING"` with STAGING unset is how that gets
+    typed, and nothing in the output would have said otherwise.
+    """
+    result, log = run_deploy(args=["--target", ""])
+
+    assert result.returncode != 0
+    assert not remote_lines(log), f"an empty --target deployed somewhere: {log}"
+    assert PROD_PATH not in " ".join(log)
+
+
+def test_a_relative_target_is_refused(run_deploy):
+    """The host resolves it against the deploy user's home, which is not where
+    any subdomain's document root is. `--target tours-staging` would make a
+    directory and deploy into it, succeed, and serve nothing."""
+    result, log = run_deploy(args=["--target", "tours-staging"])
+
+    assert result.returncode != 0
+    assert not remote_lines(log), log
+
+
+def test_a_second_deploy_will_not_interleave_with_the_first(run_deploy, tmp_path):
+    """The workflow had `concurrency: {group: deploy, cancel-in-progress:
+    false}` -- "two rsyncs into the same tree must not interleave". A script is
+    easier to run twice than a workflow: two terminals, or a second go because
+    the first looked stuck during `make check`.
+    """
+    held = tmp_path / "held.lock"
+    held.mkdir()
+    result, log = run_deploy(DEPLOY_LOCK=str(held))
+
+    assert result.returncode != 0
+    assert "refuses" in result.stderr
+    assert not remote_lines(log), log
+
+
+def test_the_lock_is_released_so_the_next_deploy_can_run(run_deploy, tmp_path):
+    """A lock a successful deploy does not release is a deploy that works once."""
+    lock = tmp_path / "released.lock"
+    first, _ = run_deploy(DEPLOY_LOCK=str(lock))
+    assert first.returncode == 0, first.stderr
+    assert not lock.exists(), "the lock outlived the deploy that took it"
+
+    second, log = run_deploy(DEPLOY_LOCK=str(lock))
+    assert second.returncode == 0, second.stderr
+    # The stub log is cumulative across calls within one test, so a second
+    # complete deploy is twice the operations rather than the same count.
+    assert len(remote_lines(log)) == 2 * REMOTE_OPERATIONS, log
+    assert not lock.exists()
 
 
 def test_an_absent_config_file_is_refused_by_name(run_deploy, tmp_path):
@@ -435,13 +691,48 @@ def test_a_missing_required_value_is_refused_by_name(run_deploy, name, value):
     assert_refused(result, log, name)
 
 
-def test_a_group_readable_config_file_is_refused(run_deploy):
-    """The file holds MAPILLARY_TOKEN. On a shared or synced machine, mode 644
-    is the token readable by anything that can read a home directory, and the
-    cost of noticing is one `stat`."""
-    result, log = run_deploy(config_mode=0o644)
+@pytest.mark.parametrize(
+    "config_mode",
+    [0o644, 0o640, 0o604, 0o660, 0o606, 0o666],
+    ids=["644", "640", "604", "660", "606", "666"],
+)
+def test_a_config_file_others_can_read_is_refused(run_deploy, config_mode):
+    """The file holds MAPILLARY_TOKEN. On a shared or synced machine any of
+    these is the token readable or writable by something that is not the
+    owner, and the cost of noticing is one `stat`.
+
+    Parametrised because the check is a mask, and a mask is the kind of thing
+    that is right for the case it was written against and wrong by one bit for
+    the rest: narrowing `& 8#77` to `& 8#7` still refuses 644 and lets 640
+    through.
+    """
+    result, log = run_deploy(config_mode=config_mode)
 
     assert_refused(result, log, "600")
+
+
+def test_an_owner_only_config_file_is_accepted(run_deploy):
+    """The other side of the mask: it must not refuse what it exists to allow."""
+    result, log = run_deploy(config_mode=0o600)
+
+    assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+    assert len(remote_lines(log)) == REMOTE_OPERATIONS, log
+
+
+def test_a_symlinked_config_file_is_accepted(run_deploy):
+    """`deploy/deploy.env -> ~/secrets/clio.env` is a reasonable way to keep
+    the credential out of the repository directory.
+
+    A symlink's own mode is always 0755, and BSD `stat -f` reports the link
+    rather than its target -- so without `-L` this is refused as
+    world-readable, and the refusal's own remedy cannot clear it: `chmod 600`
+    on a symlink changes the target, leaving the link at 0755 forever. The
+    target here is 600, which is the mode that matters.
+    """
+    result, log = run_deploy(symlink=True)
+
+    assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+    assert len(remote_lines(log)) == REMOTE_OPERATIONS, log
 
 
 @pytest.mark.parametrize(
@@ -451,8 +742,9 @@ def test_a_group_readable_config_file_is_refused(run_deploy):
         {"DEPLOY_USER": "deployer deployer"},
         {"DEPLOY_PORT": "22 "},
         {"SSH_KEY": "/tmp/a key"},
+        {"DEPLOY_PATH": "/home/deployer/tours staging"},
     ],
-    ids=["host", "user", "port", "key"],
+    ids=["host", "user", "port", "key", "path"],
 )
 def test_a_config_value_containing_whitespace_is_refused(run_deploy, config_set):
     """Review Focus: rsync's --rsh takes ONE string and splits it on whitespace
@@ -541,14 +833,14 @@ def test_a_failed_env_write_stops_the_deploy(run_deploy):
 # check pass by inventing a mode.
 BSD_ONLY_STAT = """#!/bin/sh
 case "$1" in
-  -f) exec /usr/bin/stat -f "$2" "$3" ;;
+  -Lf) exec /usr/bin/stat -Lf "$2" "$3" ;;
   *)  echo "stat: illegal option -- ${1#-}" >&2; exit 1 ;;
 esac
 """
 
 GNU_ONLY_STAT = """#!/bin/sh
 case "$1" in
-  -c) exec /usr/bin/stat -f '%Lp' "$3" ;;
+  -Lc) exec /usr/bin/stat -Lf '%Lp' "$3" ;;
   *)  echo "stat: invalid option -- '${1#-}'" >&2; exit 1 ;;
 esac
 """
@@ -560,9 +852,9 @@ esac
 # CONCATENATED with the second's, and "600" is not what comes out.
 GNU_STAT_THAT_PRINTS_FIRST = """#!/bin/sh
 case "$1" in
-  -f) echo "  File: \\"$3\\""; echo "    ID: 0 Namelen: 255     Type: apfs"
-      echo "stat: cannot read file system information for '$2'" >&2; exit 1 ;;
-  -c) exec /usr/bin/stat -f '%Lp' "$3" ;;
+  -Lf) echo "  File: \\"$3\\""; echo "    ID: 0 Namelen: 255     Type: apfs"
+       echo "stat: cannot read file system information for '$2'" >&2; exit 1 ;;
+  -Lc) exec /usr/bin/stat -Lf '%Lp' "$3" ;;
 esac
 """
 
@@ -582,7 +874,7 @@ def test_the_mode_check_works_with_either_stat(run_deploy, stat_impl):
     result, log = run_deploy(stat_impl=stat_impl)
 
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
-    assert len(remote_lines(log)) == 10, log
+    assert len(remote_lines(log)) == REMOTE_OPERATIONS, log
 
 
 @pytest.mark.parametrize(
