@@ -43,13 +43,25 @@
     <label>Text <textarea data-field="stop-summary" name="stopSummary" [ngModel]="s.summary" (ngModelChange)="setStopSummary($event)"></textarea></label>
     <label>Longitude <input type="text" inputmode="decimal" data-field="stop-lng" [value]="s.location.lng" (change)="setLocation('lng', $any($event.target))" (keydown.enter)="setLocation('lng', $any($event.target))" /></label>
     <label>Latitude <input type="text" inputmode="decimal" data-field="stop-lat" [value]="s.location.lat" (change)="setLocation('lat', $any($event.target))" (keydown.enter)="setLocation('lat', $any($event.target))" /></label>
-    <label>Address
-      <span class="address-row">
-        <input #address type="text" data-address aria-label="Address" placeholder="Street address or place name"
-          (keydown.enter)="$event.preventDefault(); lookUpAddress(address.value)" />
-        <button type="button" data-lookup-address [disabled]="searching()" (click)="lookUpAddress(address.value)">Look up</button>
-      </span>
-    </label>
+    <div class="address">
+      <label>Address
+        <span class="address-row">
+          <input #address type="text" data-address aria-label="Address" placeholder="Street address or place name"
+            (keydown.enter)="$event.preventDefault(); lookUpAddress(address.value)"
+            (keydown.arrowdown)="$event.preventDefault(); focusFirstAddressResult()"
+            (keydown.escape)="closeAddressResults()" />
+          <button type="button" data-lookup-address [disabled]="searching()" (click)="lookUpAddress(address.value)">Look up</button>
+        </span>
+      </label>
+      @if (addressResults(); as rs) {
+        <ul #results class="address-results" data-address-results aria-label="Matching places"
+          (keydown.escape)="closeAddressResults()">
+          @for (r of rs; track $index) {
+            <li><button type="button" data-address-result (click)="chooseAddress(r)">{{ r.name }}</button></li>
+          }
+        </ul>
+      }
+    </div>
     @if (addressMatch(); as m) {
       @if (m.name === null) {
         <p class="note" data-address-none>No match for that address.</p>
