@@ -410,11 +410,17 @@ if [ ! -x "$VENV/bin/python" ]; then
   exit 1
 fi
 "$VENV/bin/pip" install -r "$DIR/backend/requirements.txt"
-# NOT redundant with the --chmod flags above: --chmod only applies to files
-# rsync CREATES, so a file already on the host with the wrong mode (an earlier
-# deploy without --chmod, or a hand-edit through the file manager) would never
-# be repaired. Either one costs the whole tree: an app.cgi Apache cannot
-# execute and an .htaccess it cannot read are both 500 on every URL.
+# The modes, set here and nowhere by rsync -- see the note above the .htaccess
+# rsync for why no --chmod can appear in this script. app.cgi is chmodded a
+# second time (the first is its own ssh, straight after it arrives, so it is
+# not 644 for the length of this step); .htaccess is chmodded here as the belt
+# behind merge-htaccess.sh's own brace, which chmods 644 before its atomic mv.
+#
+# Repeating them is the cheap half. A file already on the host with the wrong
+# mode -- shipped by a deploy from before this was fixed, or hand-edited
+# through cPanel's file manager -- is not something rsync repairs at any
+# price, and either one costs the whole tree: an app.cgi Apache cannot execute
+# and an .htaccess it cannot read are both 500 on every URL.
 chmod 755 "$DIR/app.cgi"
 chmod 644 "$DIR/.htaccess"
 REMOTE
