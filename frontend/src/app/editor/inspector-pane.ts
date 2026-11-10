@@ -8,9 +8,21 @@ import {
 } from './document-ops';
 import type { InWorldDisplay, OverlayKind } from '../core/tour.models';
 import { MapillarySearch, type PanoramaCandidate } from '../core/mapillary-search';
-import { ToolsApi, type PlaceCandidate } from '../core/tools-api';
+import { ToolsApi, type GeocodeResult } from '../core/tools-api';
 
 type Num = number | null;
+
+/**
+ * The number a coordinate field's text commits to, or null when it is not
+ * one. `Number`, not `parseFloat`: "38abc" is a typo, not 38. A blank field
+ * is null, not the 0 that `Number('')` would make of it.
+ */
+function parseCoordinate(text: string): number | null {
+  const t = text.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
 
 /**
  * Numeric and text fields for the selected stop or overlay. All document
@@ -18,6 +30,15 @@ type Num = number | null;
  *
  * The manual-heading marker lives on EditorStore (shared with the map's
  * rotation handle) and is never written to the document.
+ *
+ * Coordinate fields (lng, lat, altitude) are plain text inputs that commit
+ * on change (blur, or Enter), not on every keystroke. Most prefixes of a
+ * real coordinate ("-", "38.") are not numbers: a number input reports them
+ * as "" (so the document never hears them), and committing per keystroke
+ * made every prefix that was a number an edit of its own (an undo step, an
+ * autosave, a map move), while a refused one (lat 95) left text on screen
+ * that the document did not hold. After a commit the field always shows the
+ * document's value, so what is on screen is what is saved.
  */
 @Component({
   selector: 'app-inspector-pane',
@@ -60,11 +81,17 @@ export class InspectorPane {
     this.store.markHeadingManual(id, on);
   }
 
-  protected setAnchor(field: 'lng' | 'lat' | 'altitudeM', v: Num): void {
+  protected setAnchor(field: 'lng' | 'lat' | 'altitudeM', input: HTMLInputElement): void {
     const o = this.overlay();
-    if (!o || v === null) return;
-    this.store.apply((t) => setOverlayAnchorKeepingHeading(
-      t, o.id, { [field]: v as number }, this.fix(), this.store.manualHeadings()));
+    if (!o) return;
+    const v = parseCoordinate(input.value);
+    // Enter fires keydown and then change: the second commit sees the same
+    // value and must not become a second (empty) undo step.
+    if (v !== null && v !== o.anchor[field]) {
+      this.store.apply((t) => setOverlayAnchorKeepingHeading(
+        t, o.id, { [field]: v }, this.fix(), this.store.manualHeadings()));
+    }
+    input.value = String(this.overlay()?.anchor[field] ?? input.value);
   }
 
   protected setInWorld(field: 'widthM' | 'heightM' | 'opacity', v: Num): void {
@@ -122,30 +149,76 @@ export class InspectorPane {
     this.mark(o.id, false);
   }
 
-  // --- placing a stop: location, panorama picker, places -------------------
+  // --- placing a stop: location, address lookup, panorama picker -----------
 
   /** A search in flight; the buttons stay off so results cannot interleave. */
   protected readonly searching = signal(false);
   protected readonly toolError = signal<string | null>(null);
   /** Results are keyed to the stop searched for: a late reply never shows on another stop. */
-  private readonly found = signal<{
-    stopId: string; panoramas?: PanoramaCandidate[]; places?: PlaceCandidate[];
-  } | null>(null);
+  private readonly found = signal<{ stopId: string; panoramas: PanoramaCandidate[] } | null>(null);
   protected readonly candidates = computed(() => {
     const f = this.found();
-    return f && f.stopId === this.stop()?.id ? f.panoramas ?? null : null;
-  });
-  protected readonly placeResults = computed(() => {
-    const f = this.found();
-    return f && f.stopId === this.stop()?.id ? f.places ?? null : null;
+    return f && f.stopId === this.stop()?.id ? f.panoramas : null;
   });
 
-  protected setLocation(field: 'lng' | 'lat', v: Num): void {
+  protected setLocation(field: 'lng' | 'lat', input: HTMLInputElement): void {
     const s = this.stop();
-    if (!s || v === null) return;
-    const next = { ...s.location, [field]: v };
-    this.found.set(null); // "near here" no longer is
-    this.store.apply((t) => setStopLocation(t, s.id, next.lng, next.lat));
+    if (!s) return;
+    const v = parseCoordinate(input.value);
+    if (v !== null && v !== s.location[field]) {
+      const next = { ...s.location, [field]: v };
+      const before = this.store.draft();
+      this.store.apply((t) => setStopLocation(t, s.id, next.lng, next.lat));
+      if (this.store.draft() !== before) {
+        this.found.set(null); // "near here" no longer is
+        this.lookedUp.set(null); // nor is the matched address
+      }
+    }
+    input.value = String(this.stop()?.location[field] ?? input.value);
+  }
+
+  /** What the last lookup found for a stop: the matched name, or null for no match. Keyed like `found`. */
+  private readonly lookedUp = signal<{ stopId: string; name: string | null } | null>(null);
+  protected readonly addressMatch = computed(() => {
+    const l = this.lookedUp();
+    return l && l.stopId === this.stop()?.id ? l : null;
+  });
+
+  /**
+   * Move the stop to the geocoder's best match and look for panoramas
+   * there, in one step: the author asked for a place, not for a list of
+   * candidate coordinates. A reply for a stop that is no longer selected is
+   * dropped whole, error included: the author has moved on, and moving a
+   * stop they are not looking at would be a silent edit.
+   */
+  protected async lookUpAddress(text: string): Promise<void> {
+    const s = this.stop();
+    const query = text.trim();
+    if (!s || !query || this.searching()) return;
+    this.searching.set(true);
+    this.toolError.set(null);
+    this.lookedUp.set(null);
+    let top: GeocodeResult | undefined;
+    try {
+      top = (await this.tools.geocode(query))[0];
+    } catch (err) {
+      if (this.stop()?.id === s.id) {
+        this.toolError.set(err instanceof Error ? err.message : 'the address lookup failed');
+      }
+      return;
+    } finally {
+      this.searching.set(false);
+    }
+    if (this.stop()?.id !== s.id) return;
+    if (!top) {
+      this.lookedUp.set({ stopId: s.id, name: null });
+      return;
+    }
+    const { lng, lat, osmRef } = top;
+    this.store.apply((t) => setStopLocation(t, s.id, lng, lat, osmRef));
+    this.found.set(null); // "near here" has moved
+    this.lookedUp.set({ stopId: s.id, name: top.name });
+    await this.findPanoramas();
   }
 
   protected async findPanoramas(): Promise<void> {
@@ -153,14 +226,6 @@ export class InspectorPane {
     if (!s || this.searching()) return;
     await this.search(async () => ({
       stopId: s.id, panoramas: await this.mapillary.panoramas(s.location.lng, s.location.lat),
-    }));
-  }
-
-  protected async findPlaces(): Promise<void> {
-    const s = this.stop();
-    if (!s || this.searching()) return;
-    await this.search(async () => ({
-      stopId: s.id, places: await this.tools.places(s.location.lng, s.location.lat),
     }));
   }
 
@@ -197,13 +262,6 @@ export class InspectorPane {
     this.store.apply(() => r.tour);
     this.store.setPanoramaPosition(r.fix);
     this.toolError.set(null);
-  }
-
-  protected usePlace(place: PlaceCandidate): void {
-    const s = this.stop();
-    if (!s) return;
-    this.found.set(null);
-    this.store.apply((t) => setStopLocation(t, s.id, place.lng, place.lat, place.osmRef));
   }
 
   protected captured(at: number | string | null): string {

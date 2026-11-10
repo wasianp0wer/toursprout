@@ -16,9 +16,9 @@
     @if (modes().includes('inWorld') && o.display.mode !== 'inWorld' && !fix()) {
       <span class="override" data-derive-unavailable>In-world needs this stop's panorama position, which is not known yet.</span>
     }
-    <label>Longitude <input type="number" step="any" data-field="lng" name="lng" [ngModel]="o.anchor.lng" (ngModelChange)="setAnchor('lng', $event)" /></label>
-    <label>Latitude <input type="number" step="any" data-field="lat" name="lat" [ngModel]="o.anchor.lat" (ngModelChange)="setAnchor('lat', $event)" /></label>
-    <label>Altitude (m above ground) <input type="number" step="any" data-field="altitudeM" name="altitudeM" [ngModel]="o.anchor.altitudeM" (ngModelChange)="setAnchor('altitudeM', $event)" /></label>
+    <label>Longitude <input type="text" inputmode="decimal" data-field="lng" [value]="o.anchor.lng" (change)="setAnchor('lng', $any($event.target))" (keydown.enter)="setAnchor('lng', $any($event.target))" /></label>
+    <label>Latitude <input type="text" inputmode="decimal" data-field="lat" [value]="o.anchor.lat" (change)="setAnchor('lat', $any($event.target))" (keydown.enter)="setAnchor('lat', $any($event.target))" /></label>
+    <label>Altitude (m above ground) <input type="text" inputmode="decimal" data-field="altitudeM" [value]="o.anchor.altitudeM" (change)="setAnchor('altitudeM', $any($event.target))" (keydown.enter)="setAnchor('altitudeM', $any($event.target))" /></label>
     @if (inWorld(); as w) {
       <label>Heading (deg)
         <input type="number" step="any" data-field="headingDeg" name="headingDeg" [ngModel]="w.headingDeg" [disabled]="!fix()" (ngModelChange)="setHeading($event)" />
@@ -41,12 +41,25 @@
   <form class="inspector" (submit)="$event.preventDefault()">
     <label>Stop title <input type="text" data-field="stop-title" name="stopTitle" [ngModel]="s.title" (ngModelChange)="setStopTitle($event)" /></label>
     <label>Text <textarea data-field="stop-summary" name="stopSummary" [ngModel]="s.summary" (ngModelChange)="setStopSummary($event)"></textarea></label>
-    <label>Longitude <input type="number" step="any" data-field="stop-lng" name="stopLng" [ngModel]="s.location.lng" (ngModelChange)="setLocation('lng', $event)" /></label>
-    <label>Latitude <input type="number" step="any" data-field="stop-lat" name="stopLat" [ngModel]="s.location.lat" (ngModelChange)="setLocation('lat', $event)" /></label>
+    <label>Longitude <input type="text" inputmode="decimal" data-field="stop-lng" [value]="s.location.lng" (change)="setLocation('lng', $any($event.target))" (keydown.enter)="setLocation('lng', $any($event.target))" /></label>
+    <label>Latitude <input type="text" inputmode="decimal" data-field="stop-lat" [value]="s.location.lat" (change)="setLocation('lat', $any($event.target))" (keydown.enter)="setLocation('lat', $any($event.target))" /></label>
+    <label>Address
+      <span class="address-row">
+        <input #address type="text" data-address placeholder="Street address or place name"
+          (keydown.enter)="$event.preventDefault(); lookUpAddress(address.value)" />
+        <button type="button" data-lookup-address [disabled]="searching()" (click)="lookUpAddress(address.value)">Look up</button>
+      </span>
+    </label>
+    @if (addressMatch(); as m) {
+      @if (m.name === null) {
+        <p class="note" data-address-none>No match for that address.</p>
+      } @else {
+        <p class="note" data-address-match>Moved to {{ m.name }}</p>
+      }
+    }
     <p class="note" data-stop-panorama>Panorama: {{ s.panorama.imageId }}</p>
     <div class="tools">
       <button type="button" data-find-panoramas [disabled]="searching()" (click)="findPanoramas()">Find panoramas near here</button>
-      <button type="button" data-find-places [disabled]="searching()" (click)="findPlaces()">Find places near here</button>
     </div>
     @if (searching()) { <p class="note" data-searching>Searching…</p> }
     @if (toolError(); as te) { <p class="error" data-tool-error role="alert">{{ te }}</p> }
@@ -60,17 +73,6 @@
             @if (c.thumbUrl) { <img [src]="c.thumbUrl" alt="" width="64" /> }
             <span>{{ c.distanceM }} m away{{ captured(c.capturedAt) }}</span>
             <button type="button" data-use-panorama (click)="usePanorama(c)">Use this panorama</button>
-          </li>
-        }
-      </ul>
-    }
-    @if (placeResults(); as ps) {
-      @if (ps.length === 0) { <p class="note" data-place-none>No places found near this location.</p> }
-      <ul class="candidates">
-        @for (p of ps; track p.osmRef) {
-          <li [attr.data-place]="p.osmRef">
-            <span>{{ p.name }}</span>
-            <button type="button" data-use-place (click)="usePlace(p)">Use this place</button>
           </li>
         }
       </ul>
