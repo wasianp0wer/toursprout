@@ -154,11 +154,19 @@ export class InspectorPane {
   /** A search in flight; the buttons stay off so results cannot interleave. */
   protected readonly searching = signal(false);
   protected readonly toolError = signal<string | null>(null);
-  /** Results are keyed to the stop searched for: a late reply never shows on another stop. */
-  private readonly found = signal<{ stopId: string; panoramas: PanoramaCandidate[] } | null>(null);
+  /**
+   * Results are keyed to the stop searched for, and to the location it was
+   * searched at: a late reply never shows on another stop, and "N m away"
+   * never outlives a move made elsewhere (a ring drag on the map, an undo).
+   */
+  private readonly found = signal<
+    { stopId: string; lng: number; lat: number; panoramas: PanoramaCandidate[] } | null
+  >(null);
   protected readonly candidates = computed(() => {
     const f = this.found();
-    return f && f.stopId === this.stop()?.id ? f.panoramas : null;
+    const s = this.stop();
+    return f && s && f.stopId === s.id && f.lng === s.location.lng && f.lat === s.location.lat
+      ? f.panoramas : null;
   });
 
   protected setLocation(field: 'lng' | 'lat', input: HTMLInputElement): void {
@@ -258,6 +266,8 @@ export class InspectorPane {
     this.store.apply((t) => setStopLocation(t, s.id, lng, lat, osmRef));
     this.found.set(null); // "near here" has moved
     this.lookedUp.set({ stopId: s.id, lng, lat, name: match.name });
+    // The clicked button leaves with the list; keep focus in the field, as Escape does.
+    this.addressInput()?.nativeElement.focus();
     await this.findPanoramas();
   }
 
@@ -276,7 +286,7 @@ export class InspectorPane {
     const s = this.stop();
     if (!s || this.searching()) return;
     await this.search(async () => ({
-      stopId: s.id, panoramas: await this.mapillary.panoramas(s.location.lng, s.location.lat),
+      stopId: s.id, ...s.location, panoramas: await this.mapillary.panoramas(s.location.lng, s.location.lat),
     }));
   }
 

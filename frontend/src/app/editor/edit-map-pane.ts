@@ -182,7 +182,9 @@ export class EditMapPane {
     }).addTo(this.layers);
     this.tag(ring, 'data-stop-location');
     ring.on('dragend', (e: LeafletEvent) => {
-      const { lat, lng } = (e.target as Marker).getLatLng();
+      // Wrapped: panned across the antimeridian the drop can read past ±180,
+      // which setStopLocation refuses, leaving the ring where it was dropped.
+      const { lat, lng } = (e.target as Marker).getLatLng().wrap();
       // The ring is already under the author's hand: mark the drop as painted
       // before the edit repaints, or paint() would pan to it.
       this.paintedLocation = { lng, lat };

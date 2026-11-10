@@ -357,6 +357,32 @@ describe('InspectorPane: placing a stop', () => {
     expect(qa('[data-candidate]').length).toBe(0);
   });
 
+  it('drops the candidates and the none message when the location changes from outside the inspector', async () => {
+    panoramas.mockResolvedValueOnce([A]).mockResolvedValueOnce([]);
+    await click('[data-find-panoramas]');
+    expect(qa('[data-candidate]').length).toBe(1);
+    // A drag of the stop's ring on the map writes the store directly.
+    store.apply((t) => setStopLocation(t, 's1', -77.31, 38.85));
+    await settle();
+    expect(q('[data-candidate]')).toBeNull();
+    await click('[data-find-panoramas]');
+    expect(q('[data-panorama-none]')).toBeTruthy();
+    store.apply((t) => setStopLocation(t, 's1', -77.2, 38.8));
+    await settle();
+    expect(q('[data-panorama-none]')).toBeNull();
+  });
+
+  it('drops the candidates when an undo takes the stop back from a typed coordinate', async () => {
+    panoramas.mockResolvedValue([A]);
+    await commit('[data-field="stop-lat"]', '38.9');
+    await click('[data-find-panoramas]');
+    expect(qa('[data-candidate]').length).toBe(1);
+    store.undo(); await settle();
+    expect(store.selectedStop()!.location.lat).toBe(STOP_LOC.lat);
+    expect(q('[data-candidate]')).toBeNull();
+    expect(q('[data-panorama-none]')).toBeNull();
+  });
+
   it('selecting resets the bearing to the candidate camera heading', async () => {
     panoramas.mockResolvedValue([{ ...A, compassAngle: 123 }]);
     await click('[data-find-panoramas]');
@@ -503,6 +529,16 @@ describe('InspectorPane: placing a stop', () => {
     // Focus goes back to the field rather than to a button that is gone.
     expect(document.activeElement).toBe(q('[data-address]'));
     expect(store.draft()).toBe(before);
+  });
+
+  it('choosing a match returns focus to the address field, not to the button that is gone', async () => {
+    geocode.mockResolvedValue([COURTHOUSE, OTHER]);
+    panoramas.mockResolvedValue([]);
+    await lookUp('Fairfax Courthouse');
+    qa('[data-address-result]')[1].focus();
+    await click('[data-address-result]', 1);
+    expect(q('[data-address-results]')).toBeNull();
+    expect(document.activeElement).toBe(q('[data-address]'));
   });
 
   it('a new lookup replaces the list', async () => {

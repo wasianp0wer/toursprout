@@ -262,6 +262,12 @@ describe('EditMapPane', () => {
     expect(store.draft()!.stops[0].osmRef).toBe('way/123');
   });
 
+  it('a ring dropped past the antimeridian lands at the wrapped longitude', async () => {
+    await start([note()], null);
+    await dropRing({ lng: 190, lat: 38.85 });
+    expect(store.draft()!.stops[0].location).toEqual({ lng: -170, lat: 38.85 });
+  });
+
   it('dropping the ring does not move the map under the author', async () => {
     await start([note()], null);
     const setView = vi.spyOn(leaflet(), 'setView');
