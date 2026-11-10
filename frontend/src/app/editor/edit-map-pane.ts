@@ -7,7 +7,7 @@ import {
 import { ConfigStore } from '../core/config-store';
 import { EditorStore } from './editor-store';
 import {
-  panoramaFixForStop, setOverlayAnchorKeepingHeading, setOverlayHeadingManual,
+  panoramaFixForStop, setOverlayAnchorKeepingHeading, setOverlayHeadingManual, setStopLocation,
 } from './document-ops';
 import { footprintCorners, headingFromHandle, rotationHandleAt, viewWedge } from './footprint';
 import type { Overlay } from '../core/tour.models';
@@ -119,12 +119,7 @@ export class EditMapPane {
       ).addTo(this.layers), 'data-view-wedge');
     }
 
-    // The building, drawn so typing its lat/lng shows somewhere. Only a
-    // marker: it is never the camera and never a bearing reference.
-    this.tag(new Marker([stop.location.lat, stop.location.lng], {
-      icon: new DivIcon({ className: 'stop-location', iconSize: [16, 16], iconAnchor: [8, 8] }),
-      interactive: false, keyboard: false,
-    }).addTo(this.layers), 'data-stop-location');
+    this.stopLocationMarker(stop.id, stop.location);
 
     for (const o of stop.overlays) this.overlayMarker(o, o.id === selected?.id);
 
@@ -140,7 +135,8 @@ export class EditMapPane {
     // Re-centre only when the stop changes, not after every edit, or the map
     // would snap back under the author's hand mid-drag. The one edit that
     // moves the view is to the stop's own location: typed lat/lng, or a
-    // searched address, should be shown, and no drag on this map changes it.
+    // searched address, should be shown. Dragging the ring changes it too,
+    // but records the drop as painted first, so that edit does not pan.
     const loc = stop.location;
     const moved = this.paintedLocation !== null
       && (this.paintedLocation.lng !== loc.lng || this.paintedLocation.lat !== loc.lat);
@@ -169,6 +165,30 @@ export class EditMapPane {
   private publishCenter(): void {
     const c = this.map?.getCenter();
     if (c) this.store.setMapCenter({ lng: c.lng, lat: c.lat });
+  }
+
+  /**
+   * The building, drawn so typing its lat/lng shows somewhere, and dragged to
+   * move the stop. Only a marker: it is never the camera and never a bearing
+   * reference, and dragging it moves the stop alone; overlays stay put.
+   */
+  private stopLocationMarker(stopId: string, at: { lng: number; lat: number }): void {
+    const ring = new Marker([at.lat, at.lng], {
+      // Wider than an overlay's 22px marker, and drawn under it, so an overlay
+      // anchored on the building (the default) leaves the ring's rim to grab.
+      icon: new DivIcon({ className: 'stop-location', iconSize: [32, 32], iconAnchor: [16, 16] }),
+      draggable: true, keyboard: true, title: 'Drag to move this stop', alt: 'Drag to move this stop',
+      zIndexOffset: -1000,
+    }).addTo(this.layers);
+    this.tag(ring, 'data-stop-location');
+    ring.on('dragend', (e: LeafletEvent) => {
+      const { lat, lng } = (e.target as Marker).getLatLng();
+      // The ring is already under the author's hand: mark the drop as painted
+      // before the edit repaints, or paint() would pan to it.
+      this.paintedLocation = { lng, lat };
+      // A dragged point is no longer the looked-up building, as with typed lat/lng.
+      this.store.apply((t) => setStopLocation(t, stopId, lng, lat, null));
+    });
   }
 
   private overlayMarker(o: Overlay, selected: boolean): void {

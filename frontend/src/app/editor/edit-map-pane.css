@@ -16,9 +16,10 @@
   display: block; width: 18px; height: 18px; box-sizing: border-box;
   background: #fff; border: 3px solid #e8825b; border-radius: 3px; transform: rotate(45deg); cursor: grab;
 }
-/* Hollow and grey: it marks the building, and must not read as something to grab like an overlay. */
+/* Hollow and grey: it marks the building, so it must not read as an overlay,
+   but it is dragged to move the stop. */
 :host ::ng-deep .stop-location {
-  box-sizing: border-box; border-radius: 50%;
+  box-sizing: border-box; border-radius: 50%; cursor: grab;
   background: rgba(15, 17, 20, 0.35); border: 3px solid #c9ccd3; box-shadow: 0 0 0 1px #0f1114;
 }
 :host ::ng-deep .pano-dot { width: 14px; height: 14px; border-radius: 50%; background: #5bc98a; border: 2px solid #0f1114; }

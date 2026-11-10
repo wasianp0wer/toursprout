@@ -226,12 +226,74 @@ describe('EditMapPane', () => {
     return found;
   };
 
-  it("draws the stop's location as a marker that cannot be dragged", async () => {
+  it("draws the stop's location as a marker that can be dragged", async () => {
     await start([note()], null);
     const m = markerTagged('data-stop-location')!;
     expect(m).toBeTruthy();
     expect(m.getLatLng()).toMatchObject({ lat: STOP_LOC.lat, lng: STOP_LOC.lng });
-    expect(m.options.draggable).toBeFalsy();
+    expect(m.options.draggable).toBe(true);
+    expect(m.options.keyboard).toBe(true);
+    expect(m.options.title).toBe('Drag to move this stop');
+    expect(m.options.alt).toBe('Drag to move this stop');
+  });
+
+  /** Drop the stop-location ring at `at`, as Leaflet reports the end of a drag. */
+  const dropRing = async (at: { lng: number; lat: number }) => {
+    const ring = markerTagged('data-stop-location')!;
+    ring.setLatLng([at.lat, at.lng]);
+    ring.fire('dragend', { target: ring });
+    await settle();
+  };
+
+  it("dropping the ring moves the stop's location there and clears osmRef, as one undoable edit", async () => {
+    store.load(tour([stop('s1', 1, [note()], { location: STOP_LOC, osmRef: 'way/123' })]));
+    store.select('s1');
+    fixture = TestBed.createComponent(EditMapPane);
+    el = fixture.nativeElement;
+    await settle();
+    const overlaysBefore = store.draft()!.stops[0].overlays;
+    await dropRing({ lng: -77.31, lat: 38.85 });
+    const s = store.draft()!.stops[0];
+    expect(s.location).toEqual({ lng: -77.31, lat: 38.85 });
+    expect(s.osmRef).toBeNull();
+    expect(s.overlays).toEqual(overlaysBefore); // overlays stay put
+    store.undo();
+    expect(store.draft()!.stops[0].location).toEqual(STOP_LOC);
+    expect(store.draft()!.stops[0].osmRef).toBe('way/123');
+  });
+
+  it('dropping the ring does not move the map under the author', async () => {
+    await start([note()], null);
+    const setView = vi.spyOn(leaflet(), 'setView');
+    const panTo = vi.spyOn(leaflet(), 'panTo');
+    await dropRing({ lng: -77.31, lat: 38.85 });
+    expect(store.draft()!.stops[0].location).toEqual({ lng: -77.31, lat: 38.85 }); // the drop did land
+    expect(setView).not.toHaveBeenCalled();
+    expect(panTo).not.toHaveBeenCalled();
+  });
+
+  it("an overlay anchored on the stop's location leaves both it and the ring grabbable", async () => {
+    const onStop = overlay('o3', { anchor: { type: 'geo', lng: STOP_LOC.lng, lat: STOP_LOC.lat, altitudeM: 2 } });
+    await start([onStop], null);
+    const ring = markerTagged('data-stop-location')!;
+    const mark = markerTagged('data-overlay-marker', 'o3')!;
+    expect(ring.options.draggable).toBe(true);
+    expect(mark.options.draggable).toBe(true);
+    // The overlay draws above the ring...
+    expect(mark.options.zIndexOffset!).toBeGreaterThan(ring.options.zIndexOffset!);
+    // ...and the ring is wider than the overlay's 22px, so its rim shows around it.
+    const size = (m: Marker) => m.options.icon!.options.iconSize as [number, number];
+    expect(size(ring)[0]).toBeGreaterThan(22);
+    expect(size(ring)[1]).toBeGreaterThan(22);
+    expect(size(mark)).toEqual([22, 22]);
+  });
+
+  it("an overlay drag never changes the stop's location", async () => {
+    const onStop = overlay('o3', { anchor: { type: 'geo', lng: STOP_LOC.lng, lat: STOP_LOC.lat, altitudeM: 2 } });
+    await start([onStop], null);
+    await drag(q('[data-overlay-marker="o3"]')!, 60, 0);
+    expect(anchorOf('o3').lng).toBeGreaterThan(STOP_LOC.lng); // the drag did land
+    expect(store.draft()!.stops[0].location).toEqual(STOP_LOC);
   });
 
   it("follows the stop's location when it is edited", async () => {
