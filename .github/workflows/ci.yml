@@ -3,8 +3,8 @@ name: CI
 # Build, lint and test, and nothing else. This workflow references no secret
 # and no repository variable anywhere, and that is deliberate rather than
 # incidental: it is what makes a `pull_request` trigger safe here, where
-# deploy.yml -- which holds the SSH key and the host's secrets -- has to stay
-# scoped to push and workflow_dispatch.
+# deploy.yml -- which holds the SSH key and the host's secrets -- is triggered
+# by hand and by nothing else.
 #
 # The split exists because shipping no longer happens on a runner: the host
 # drops GitHub's hosted-runner addresses, so deploy.yml is manual-only and
