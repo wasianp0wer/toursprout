@@ -1,4 +1,6 @@
-/* mapillary-js raises its own layers to z-indexes of up to 100. Isolated, those only order the viewer's own layers; otherwise they compete with the rest of the page and the panorama draws over the close dialog. */
+/* mapillary-js raises its own layers to z-indexes of up to 100. Isolated,
+   those only order the viewer's own layers; otherwise they compete with the
+   rest of the page and the panorama draws over the close dialog. */
 :host { display: block; position: relative; height: 100%; isolation: isolate; }
 .panorama { width: 100%; height: 100%; min-height: 12rem; background: #1b1e24; border-radius: 4px; }
 .empty, .pano-error { position: absolute; top: 0.75rem; left: 0.75rem; margin: 0; color: #9aa0ab; font-size: 0.8rem; }
@@ -9,5 +11,8 @@
   padding: 0.6rem 0.75rem; font-size: 0.7rem; color: #ecebe6; display: grid; gap: 0.35rem;
 }
 .keys { margin: 0; color: #9aa0ab; }
-button { font: inherit; background: #e8b04b; border: 0; border-radius: 3px; padding: 0.3rem 0.55rem; cursor: pointer; }
+/* Dark text set explicitly: the browser's default button text is not
+   guaranteed to read on the amber. */
+button { font: inherit; color: #0f1114; background: #e8b04b; border: 0; border-radius: 3px; padding: 0.3rem 0.55rem; cursor: pointer; }
 label { display: grid; gap: 0.2rem; }
+input[type=range] { accent-color: #e8b04b; }

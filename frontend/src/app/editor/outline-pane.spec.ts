@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { OutlinePane } from './outline-pane';
 import { EditorStore } from './editor-store';
 import { SessionApi } from '../core/session-api';
-import { overlay, stop, tour } from './test-builders';
+import { controlsWithoutLabelAbove, overlay, stop, tour } from './test-builders';
 import { installRecording, uninstallRecording } from './recording-fakes';
 
 describe('OutlinePane', () => {
@@ -200,6 +200,12 @@ describe('OutlinePane', () => {
         l.value = license; l.dispatchEvent(new Event('input'));
         fixture.detectChanges();
       };
+
+      it('labels the creator and licence fields above their inputs', () => {
+        click('[data-add-image]');
+        expect(q('[data-defaults-form]')).toBeTruthy();
+        expect(controlsWithoutLabelAbove(el)).toEqual([]);
+      });
 
       it('asks for a creator and licence before opening the file chooser', () => {
         const input = q('[data-file-image]') as HTMLInputElement;

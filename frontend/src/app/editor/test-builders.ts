@@ -35,3 +35,28 @@ export function tour(stops: Stop[] = [stop('s1', 1)]): Tour {
     attribution: [], stops,
   };
 }
+
+/**
+ * Controls under `root` that the editor stylesheet cannot put below their
+ * label text. styles.css sets each label to a column with the control
+ * inside it, so a control outside any label, or one whose label has no text
+ * before it, renders unlabelled or side by side with its neighbour. Hidden
+ * file inputs are opened by a button and have no label of their own.
+ * Returns a description of each offender, so a failure names it.
+ */
+export function controlsWithoutLabelAbove(root: HTMLElement): string[] {
+  const describe = (c: Element) =>
+    c.outerHTML.slice(0, c.outerHTML.indexOf('>') + 1);
+  return Array.from(root.querySelectorAll('input, select, textarea'))
+    .filter((c) => !(c instanceof HTMLInputElement && (c.type === 'file' || c.type === 'hidden')))
+    .filter((c) => {
+      const label = c.closest('label');
+      if (!label) return true;
+      // The label's text up to the control: what reads above it.
+      const range = document.createRange();
+      range.setStart(label, 0);
+      range.setEndBefore(c);
+      return range.toString().trim() === '';
+    })
+    .map(describe);
+}

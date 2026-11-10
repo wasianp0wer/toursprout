@@ -1,9 +1,26 @@
+/* Labels, controls and buttons come from the editor rules in styles.css. */
 :host { display: block; }
 .inspector { display: flex; flex-direction: column; gap: 0.5rem; }
-label { display: flex; flex-direction: column; font-size: 0.8rem; color: #9aa0ab; gap: 0.15rem; }
-input, select, textarea { background: #1c2026; color: #c9ccd3; border: 1px solid #343a44; border-radius: 4px; padding: 0.3rem; font: inherit; }
-button { background: #1c2026; color: #c9ccd3; border: 1px solid #343a44; border-radius: 4px; padding: 0.25rem 0.6rem; cursor: pointer; }
-.override { color: #e8b04b; font-size: 0.75rem; margin-left: 0.5rem; }
-.hint { color: #9aa0ab; }
+/* The form's gap is the rhythm; a paragraph's own margins would double it. */
+.inspector p { margin: 0; }
+.note { font-size: 0.75rem; color: #9aa0ab; }
+.error { font-size: 0.8rem; color: #e8825b; }
+.override { color: #e8b04b; font-size: 0.75rem; }
+.hint { color: #9aa0ab; font-size: 0.85rem; }
 .address-row { display: flex; gap: 0.25rem; }
-.address-row input { flex: 1; min-width: 0; }
+.address-row input { flex: 1; }
+.heading-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; }
+.tools { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+
+/* Thumbnail on the left across two rows, text then button beside it. The
+   sidebar can be 15rem wide, which cannot hold all three in one row. A
+   candidate without a thumbnail keeps the empty column, so the text of every
+   candidate lines up. */
+.candidates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.candidates li {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 0.5rem; row-gap: 0.25rem;
+  align-items: center; font-size: 0.8rem;
+}
+.candidates img { grid-row: span 2; border-radius: 3px; }
+.candidates span, .candidates button { grid-column: 2; }
+.candidates button { justify-self: start; }

@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { InspectorPane } from './inspector-pane';
 import { EditorStore } from './editor-store';
-import { overlay, stop, tour } from './test-builders';
+import { controlsWithoutLabelAbove, overlay, stop, tour } from './test-builders';
 import { MapillarySearch, type PanoramaCandidate } from '../core/mapillary-search';
 import { ToolsApi, type GeocodeResult } from '../core/tools-api';
 import { vi } from 'vitest';
@@ -248,6 +248,14 @@ describe('InspectorPane', () => {
     expect(store.manualHeadings().has('o1')).toBe(true);
   });
 
+  // The stylesheet puts label text above each control only when the control
+  // sits inside its label, after the text: pin that for every field shown.
+  it('gives every overlay field a label with its text above the control', async () => {
+    await start(inWorld());
+    expect(q('[data-field="headingDeg"]')).toBeTruthy();
+    expect(controlsWithoutLabelAbove(el)).toEqual([]);
+  });
+
   it('shows stop fields for a selected stop', async () => {
     store.load(tour());
     store.select('s1');
@@ -327,6 +335,11 @@ describe('InspectorPane: placing a stop', () => {
     expect(store.selectedStop()!.location).toEqual({ lng: -77.5, lat: 38.9 });
     await commit('[data-field="stop-lng"]', '999');
     expect(store.selectedStop()!.location.lng).toBe(-77.5);
+  });
+
+  it('gives every stop field, the address included, a label with its text above the control', () => {
+    expect(q('[data-address]')).toBeTruthy();
+    expect(controlsWithoutLabelAbove(el)).toEqual([]);
   });
 
   it('searches near the stop location and lists candidates', async () => {

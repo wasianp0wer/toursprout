@@ -23,3 +23,44 @@ body {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   font: 700 12px Georgia, serif;
 }
+
+/* Editor form controls, shared by the header and the two sidebar panes.
+   Here rather than in each pane's stylesheet: one copy instead of one per
+   component (Angular inlines a component's styles into its own string, so a
+   shared file in styleUrls would be duplicated), and none of it counts
+   against the per-component style budget. Every selector is wrapped in
+   :where() so its specificity stays at a single type selector: any rule a
+   pane writes for itself wins without !important. The map and panorama
+   panes and the close dialog are left out on purpose; their controls have a
+   deliberate look of their own. */
+app-editor-page :where(header, app-outline-pane, app-inspector-pane) { color-scheme: dark; }
+
+/* Label text above a full-width control: the control is inside the label,
+   so a column flex is all it takes. */
+app-editor-page :where(app-outline-pane, app-inspector-pane) :where(label) {
+  display: flex; flex-direction: column; gap: 0.25rem;
+  font-size: 0.8rem; color: #9aa0ab;
+}
+app-editor-page :where(app-outline-pane, app-inspector-pane)
+  :where(input:not([type=checkbox], [type=radio], [type=file], [type=range]), select, textarea) {
+  box-sizing: border-box; width: 100%; min-width: 0;
+  background: #1c2026; color: #c9ccd3;
+  border: 1px solid #343a44; border-radius: 4px;
+  padding: 0.3rem 0.4rem; font: inherit; font-size: 0.85rem;
+}
+app-editor-page :where(app-outline-pane, app-inspector-pane) :where(textarea) { min-height: 5rem; resize: vertical; }
+app-editor-page :where(app-outline-pane, app-inspector-pane) :where(input, select, textarea):disabled { opacity: 0.5; }
+
+app-editor-page :where(header, app-outline-pane, app-inspector-pane) :where(button) {
+  font: inherit; font-size: 0.8rem;
+  background: #1c2026; color: #c9ccd3;
+  border: 1px solid #343a44; border-radius: 4px;
+  padding: 0.3rem 0.6rem; cursor: pointer;
+}
+app-editor-page :where(header, app-outline-pane, app-inspector-pane) :where(button):hover:not(:disabled) { border-color: #9aa0ab; }
+app-editor-page :where(header, app-outline-pane, app-inspector-pane) :where(button):disabled { opacity: 0.5; cursor: default; }
+
+/* One focus ring for every control, in the editor's accent. */
+app-editor-page :where(header, app-outline-pane, app-inspector-pane) :where(input, select, textarea, button, a):focus-visible {
+  outline: 2px solid #e8b04b; outline-offset: 1px;
+}

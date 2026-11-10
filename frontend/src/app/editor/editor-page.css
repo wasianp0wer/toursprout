@@ -10,10 +10,11 @@
 .fatal { color: #e8825b; }
 .shell header {
   display: flex;
-  align-items: baseline;
-  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
 }
-.recovery { font-size: 0.75rem; color: #9aa0ab; display: flex; align-items: baseline; gap: 0.4rem; }
+.recovery { font-size: 0.75rem; color: #9aa0ab; display: flex; align-items: center; gap: 0.4rem; }
 .recovery input { font: 0.8rem ui-monospace, monospace; color: #c9ccd3; background: #15181d; border: 1px solid #343a44; border-radius: 4px; padding: 0.15rem 0.4rem; }
 .autosave-status {
   font-size: 0.75rem;
