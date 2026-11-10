@@ -2,12 +2,12 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-export interface PlaceCandidate {
+/** One match for an address, best first, as the backend's Nominatim lookup returns it. */
+export interface GeocodeResult {
   name: string;
-  osmRef: string;
-  kind?: string;
   lng: number;
   lat: number;
+  osmRef: string | null;
 }
 
 /**
@@ -20,9 +20,9 @@ export interface PlaceCandidate {
 export class ToolsApi {
   private readonly http = inject(HttpClient);
 
-  async places(lng: number, lat: number, name?: string): Promise<PlaceCandidate[]> {
-    const body = name?.trim() ? { lng, lat, name: name.trim() } : { lng, lat };
-    return (await this.post<{ places: PlaceCandidate[] }>('places', body)).places;
+  /** Through the backend, not straight to Nominatim: its usage policy wants an identifying User-Agent and one request a second, which only the server can keep to. */
+  async geocode(query: string): Promise<GeocodeResult[]> {
+    return (await this.post<{ results: GeocodeResult[] }>('geocode', { query })).results;
   }
 
   private async post<T>(tool: string, body: object): Promise<T> {

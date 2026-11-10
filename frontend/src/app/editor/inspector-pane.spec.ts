@@ -4,7 +4,7 @@ import { InspectorPane } from './inspector-pane';
 import { EditorStore } from './editor-store';
 import { overlay, stop, tour } from './test-builders';
 import { MapillarySearch, type PanoramaCandidate } from '../core/mapillary-search';
-import { ToolsApi, type PlaceCandidate } from '../core/tools-api';
+import { ToolsApi, type GeocodeResult } from '../core/tools-api';
 import { vi } from 'vitest';
 import { deriveHeading, setOverlayAnchor, setStopLocation } from './document-ops';
 import type { Overlay } from '../core/tour.models';
@@ -277,7 +277,7 @@ describe('InspectorPane: placing a stop', () => {
   let el: HTMLElement;
   let fixture: ReturnType<typeof TestBed.createComponent<InspectorPane>>;
   let panoramas: ReturnType<typeof vi.fn>;
-  let places: ReturnType<typeof vi.fn>;
+  let geocode: ReturnType<typeof vi.fn>;
 
   const q = (sel: string) => el.querySelector(sel) as HTMLElement | null;
   const qa = (sel: string) => Array.from(el.querySelectorAll(sel)) as HTMLElement[];
@@ -302,11 +302,11 @@ describe('InspectorPane: placing a stop', () => {
 
   beforeEach(async () => {
     panoramas = vi.fn();
-    places = vi.fn();
+    geocode = vi.fn();
     TestBed.configureTestingModule({
       imports: [InspectorPane],
       providers: [
-        { provide: ToolsApi, useValue: { places } },
+        { provide: ToolsApi, useValue: { geocode } },
         { provide: MapillarySearch, useValue: { panoramas } },
       ],
     });
@@ -397,22 +397,100 @@ describe('InspectorPane: placing a stop', () => {
     expect((q('[data-derive-heading]') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('searches places by the stop location and applies the chosen one', async () => {
-    const place: PlaceCandidate = { name: 'Old Courthouse', osmRef: 'way/77', lng: -77.31, lat: 38.846 };
-    places.mockResolvedValue([place]);
-    await click('[data-find-places]');
-    expect(places).toHaveBeenCalledWith(STOP_LOC.lng, STOP_LOC.lat);
-    await click('[data-place="way/77"] [data-use-place]');
-    expect(store.selectedStop()!.location).toEqual({ lng: -77.31, lat: 38.846 });
-    expect(store.selectedStop()!.osmRef).toBe('way/77');
+  // --- address lookup ------------------------------------------------------
+
+  const COURTHOUSE: GeocodeResult = {
+    name: 'Fairfax County Courthouse, Fairfax, Virginia', lng: -77.3064, lat: 38.8462, osmRef: 'way/123',
+  };
+  const OTHER: GeocodeResult = { name: 'Another Courthouse', lng: -77.1, lat: 38.9, osmRef: null };
+  const typeAddress = async (text: string) => {
+    const i = q('[data-address]') as HTMLInputElement;
+    i.value = text; i.dispatchEvent(new Event('input')); await settle();
+  };
+  const lookUp = async (text: string) => {
+    await typeAddress(text);
+    await click('[data-lookup-address]');
+  };
+
+  it('offers an address lookup in place of the places search', () => {
+    expect(q('[data-address]')).toBeTruthy();
+    expect(q('[data-lookup-address]')?.textContent?.trim()).toBe('Look up');
+    expect(q('[data-find-places]')).toBeNull();
+    expect(el.textContent).not.toContain('Find places near here');
+    expect(q('[data-find-panoramas]')?.textContent?.trim()).toBe('Find panoramas near here');
   });
 
-  it('a place search failure shows its message and changes nothing', async () => {
+  it('moves the stop to the top result, names it, and searches panoramas there', async () => {
+    geocode.mockResolvedValue([COURTHOUSE, OTHER]);
+    panoramas.mockResolvedValue([A, B]);
+    await lookUp('  Fairfax Courthouse ');
+    expect(geocode).toHaveBeenCalledWith('Fairfax Courthouse');
+    expect(store.selectedStop()!.location).toEqual({ lng: COURTHOUSE.lng, lat: COURTHOUSE.lat });
+    expect(store.selectedStop()!.osmRef).toBe('way/123');
+    expect(q('[data-address-match]')?.textContent).toContain(COURTHOUSE.name);
+    expect(panoramas).toHaveBeenCalledWith(COURTHOUSE.lng, COURTHOUSE.lat);
+    expect(qa('[data-candidate]').map((n) => n.getAttribute('data-candidate'))).toEqual(['cam-A', 'cam-B']);
+    expect((q('[data-field="stop-lat"]') as HTMLInputElement).value).toBe(String(COURTHOUSE.lat));
+  });
+
+  it('Enter in the address field looks it up', async () => {
+    geocode.mockResolvedValue([COURTHOUSE]);
+    panoramas.mockResolvedValue([]);
+    await typeAddress('Fairfax Courthouse');
+    q('[data-address]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise((r) => setTimeout(r)); await settle();
+    expect(geocode).toHaveBeenCalledWith('Fairfax Courthouse');
+    expect(store.selectedStop()!.location).toEqual({ lng: COURTHOUSE.lng, lat: COURTHOUSE.lat });
+  });
+
+  it('a hand-typed location drops the matched name: it no longer describes the stop', async () => {
+    geocode.mockResolvedValue([COURTHOUSE]);
+    panoramas.mockResolvedValue([]);
+    await lookUp('Fairfax Courthouse');
+    expect(q('[data-address-match]')).toBeTruthy();
+    await commit('[data-field="stop-lat"]', '38.9');
+    expect(q('[data-address-match]')).toBeNull();
+  });
+
+  it('a blank address looks nothing up', async () => {
+    await lookUp('   ');
+    expect(geocode).not.toHaveBeenCalled();
+  });
+
+  it('no match says so and changes nothing', async () => {
     const before = store.draft();
-    places.mockRejectedValue(new Error('every Overpass mirror failed'));
-    await click('[data-find-places]');
-    expect(q('[data-tool-error]')?.textContent).toContain('every Overpass mirror failed');
+    geocode.mockResolvedValue([]);
+    await lookUp('Nowhere at all');
+    expect(q('[data-address-none]')?.textContent?.trim()).toBe('No match for that address.');
+    expect(q('[data-address-match]')).toBeNull();
     expect(store.draft()).toBe(before);
+    expect(panoramas).not.toHaveBeenCalled();
+  });
+
+  it('a failed lookup shows its message and changes nothing', async () => {
+    const before = store.draft();
+    geocode.mockRejectedValue(new Error('the address lookup failed: timed out'));
+    await lookUp('Fairfax Courthouse');
+    expect(q('[data-tool-error]')?.textContent).toContain('the address lookup failed: timed out');
+    expect(store.draft()).toBe(before);
+    expect(panoramas).not.toHaveBeenCalled();
+  });
+
+  it('ignores a reply that lands after another stop was selected', async () => {
+    store.load(tour([stop('s1', 1, [], { location: STOP_LOC }), stop('s2', 2)]));
+    store.select('s1'); await settle();
+    let reply!: (r: GeocodeResult[]) => void;
+    geocode.mockReturnValue(new Promise<GeocodeResult[]>((r) => { reply = r; }));
+    await lookUp('Fairfax Courthouse');
+    const before = store.draft();
+    store.select('s2'); await settle();
+    reply([COURTHOUSE]);
+    await new Promise((r) => setTimeout(r)); await settle();
+    expect(store.draft()).toBe(before);
+    expect(q('[data-address-match]')).toBeNull();
+    expect(panoramas).not.toHaveBeenCalled();
+    store.select('s1'); await settle();
+    expect(q('[data-address-match]')).toBeNull();
   });
 });
 

@@ -5,3 +5,5 @@ input, select, textarea { background: #1c2026; color: #c9ccd3; border: 1px solid
 button { background: #1c2026; color: #c9ccd3; border: 1px solid #343a44; border-radius: 4px; padding: 0.25rem 0.6rem; cursor: pointer; }
 .override { color: #e8b04b; font-size: 0.75rem; margin-left: 0.5rem; }
 .hint { color: #9aa0ab; }
+.address-row { display: flex; gap: 0.25rem; }
+.address-row input { flex: 1; min-width: 0; }
