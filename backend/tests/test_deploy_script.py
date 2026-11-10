@@ -189,13 +189,17 @@ def run_deploy(tmp_path):
             # would otherwise produce `unbound variable` instead of a refusal
             # that says which variable.
             values.update(config_set or {})
-            # Quoted, because the config file is SOURCED: `DEPLOY_HOST=a b` is
-            # not a value with a space in it, it is a command named `b` run
-            # with DEPLOY_HOST in its environment. Quoting is how a person
-            # writes a value with a space, and it is the only way the
-            # whitespace refusals below get a value to refuse.
+            # SINGLE-quoted, because the config file is SOURCED and single
+            # quotes are what deploy.env.example tells the operator to use:
+            # inside double quotes a backtick in a token would run, and a
+            # `$NAME` would be substituted. Writing the fixture the hazardous
+            # way would have modelled the hazard for every test below. Quoting
+            # at all is also the only way the whitespace refusals get a value
+            # to refuse -- `DEPLOY_HOST=a b` is not a value with a space in
+            # it, it is a command named `b` with DEPLOY_HOST in its
+            # environment.
             path.write_text(
-                "".join(f'{k}="{v}"\n' for k, v in values.items() if v is not None)
+                "".join(f"{k}='{v}'\n" for k, v in values.items() if v is not None)
             )
             path.chmod(config_mode)
             if symlink:
