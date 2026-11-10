@@ -10,8 +10,9 @@ the 3.12 floor, the `.htaccess` merge that keeps the shared password — all of
 0007 stands, untouched and still the mechanism. What moved is **the trigger and
 the machine**: a push to `main` no longer ships, and the ten remote operations
 0007's deploy performs now run from `deploy/deploy.sh` on the author's own Mac
-instead of from a GitHub-hosted runner. The ordering properties 0007 argued for
-are the same ordering properties, in the same order, with the same modes and
+instead of from a GitHub-hosted runner — eleven, counting the one the script has
+to add for the modes (decision 1). The ordering properties 0007 argued for are
+the same ordering properties, in the same order, with the same modes and
 excludes; they are simply enforced by a script and its tests rather than by a
 workflow file.
 
@@ -55,15 +56,34 @@ A single bash script, run from the repository root, reading its configuration
 from a gitignored `deploy/deploy.env` instead of from repository secrets. It is
 a **transcription** of the workflow's ship half rather than a reimplementation:
 the same `mkdir -p`, the same six rsyncs in the same order with the same
-excludes and the same `--chmod` flags, the same `merge-htaccess.sh` invocation
-between the staged `.htaccess` and `app.cgi`, the same only-if-absent
-`backend/.env` fed over stdin, the same `pip install` into the venv it refuses
-to create. Lint, tests and build are not reimplemented at all: the script calls
-`make check`, so the Makefile's pinned Node 24 (the ambient one is v25, which
-Angular 22 rejects) applies exactly as it does by hand.
+excludes, the same `merge-htaccess.sh` invocation between the staged
+`.htaccess` and `app.cgi`, the same only-if-absent `backend/.env` fed over
+stdin, the same `pip install` into the venv it refuses to create. Lint, tests
+and build are not reimplemented at all: the script calls `make check`, so the
+Makefile's pinned Node 24 (the ambient one is v25, which Angular 22 rejects)
+applies exactly as it does by hand.
 
-Two things in it are new, and both exist because the properties that the
-workflow got from being a workflow had to be got some other way:
+**One thing a transcription could not carry, and it took a review to notice:
+the `--chmod` flags.** The workflow's `--chmod=F644`/`F755` worked because it
+ran on ubuntu-24.04's GNU rsync; `/usr/bin/rsync` on macOS is Apple's openrsync
+and rejects a literal mode outright — `rsync: --chmod=F644: invalid argument`,
+exit 1, nothing transferred — and there is no spelling of it that works, since
+openrsync takes only relative forms and documents `--chmod` as needing
+`--perms`, which `-rlt` does not pass. Copied across unchanged, the flag made
+every deploy die at the first rsync. The *modes* are therefore the same 755 and
+644 and are still part of the contract; what sets them moved to the host. The
+script `chmod 755`s `app.cgi` in its own `ssh` the moment it arrives — not only
+in the install step at the end, because between those two points sit
+`backend/`, the bundle, `content/`, the `.env` write and a `pip install`, which
+on a first deploy is minutes of 500 on every URL — and `.htaccess` needs
+nothing of its own, because `merge-htaccess.sh` chmods 644 before its atomic
+`mv`. That is the eleventh remote operation.
+
+Two things in it were new from the start, and both exist because the properties
+that the workflow got from being a workflow had to be got some other way. (A
+third, the one-deploy-at-a-time lock, belongs in *What is given up* below
+rather than here, because it was not got some other way until a review noticed
+it had gone.)
 
 - **The refusals happen before the first remote command**, and more than one is
   reported at once. A refusal has therefore never done anything, which is what
@@ -183,6 +203,21 @@ check. Rejected for the same reason the previous branch rejected it.
   hidden.
 - **The `main`-only and clean-tree gates are advisory where they used to be
   structural** (decision 2).
+- **`deploy.yml`'s `concurrency: {group: deploy, cancel-in-progress: false}`
+  went with the trigger**, and this record did not notice it until a review of
+  the branch did. The workflow got one-deploy-at-a-time from GitHub for free,
+  with the comment "two rsyncs into the same tree must not interleave" beside
+  it; a script has no such thing, and is far easier to run twice than a
+  workflow was — two terminals, or a second go because the first looked stuck
+  during `make check`. It is the clearest example of what decision 1 calls a
+  transcription losing a property quietly: nothing in the script was wrong, the
+  property was simply not there any more. `deploy/deploy.sh` now takes a
+  `.deploy.lock` directory (`mkdir` is atomic everywhere; macOS has no
+  `flock(1)`) after the refusals and before `make check`, releasing it on exit,
+  and refuses with a message that says to `rmdir` it if nothing is running. The
+  guarantee is back, but it is now a thing in this repository that has to keep
+  working rather than a line of YAML that could not fail — and, unlike the
+  workflow's, it has never met a second deploy (`UNVERIFIED.md` entry 41).
 - **A rotated `MAPILLARY_TOKEN` in `deploy/deploy.env` still does not reach the
   host**, unchanged from the pipeline: `backend/.env` is host-owned state and
   is written only when absent.

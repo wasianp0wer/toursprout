@@ -1016,29 +1016,59 @@ intact, manual-only and still unrun; this entry is about the script that ships
 instead. Nothing in 34's host-side list is closed by this one — the same rsyncs
 reach the same host in the same order, from a different machine.*
 
+*Amended 2026-11-10, same day, after an adversarial review of the branch. **The
+script still has never run against the host, and that has not changed.** What
+changed is sharper than that and worth stating separately: one of the
+properties this entry listed as proven — that the two files Apache reads arrive
+with the modes it needs, because the rsyncs carry `--chmod=F644`/`F755` — was
+**shown to be false on the author's own machine**, not merely left unproven.
+`/usr/bin/rsync` on macOS is Apple's openrsync and rejects a literal mode
+outright (`rsync: --chmod=F644: invalid argument`, exit 1, nothing
+transferred), so every deploy would have died at the first rsync, after
+`make check` had already run. A claim that has been tested and found false is
+worth more than one nothing has looked at — it names a thing to fix, where an
+unexamined claim only looks like a finding — and the test that let this one sit
+here as "proven" is why: it asserted the string `--chmod=F644` was **present**,
+which was exactly as true of the broken script as of a working one. It now
+asserts that no rsync carries one. The modes are set by `chmod` on the host
+instead, which moves them out of this list's first bullet and into its
+second.*
+
 - **Proven here, and it is worth being precise about how little that is:**
   `backend/tests/test_deploy_script.py` drives the real script with `ssh`,
   `rsync`, `make`, `uv` and `git` replaced by stubs on `PATH` that log their own
   argv. So what is proven is the script's control flow and the arguments it
   builds: that `.htaccess` is staged and merged before `app.cgi`, before
-  `backend/`, before `content/` and before the `.env` write; that no rsync
-  carries `--delete`; that `--chmod=F644` and `--chmod=F755` are on the two
-  files Apache reads; that the token never reaches an argv; that `make check`
-  runs before the first remote command; that `--target` reaches **every**
-  remote path; that each refusal logged no `ssh` and no `rsync`; and that the
-  first failing remote command is the last thing in the log.
+  `backend/`, before `content/` and before the `.env` write; that **no** rsync
+  carries a deleting flag, matched by token against all eleven of them rather
+  than by the substring `--delete`, which `--del` and `--force` walked past;
+  that **no** rsync carries a `--chmod` at all, and that `app.cgi` is chmodded
+  755 on the host in the command straight after the rsync that lands it, and
+  again in the install step; that `backend/.env` is written only when absent;
+  that the backend rsync excludes `.env` and `.venv`; that the token never
+  reaches an argv; that `make check` — that target, not any `make` — runs
+  before the first remote command; that `--target` reaches **every** remote
+  path, and that an empty or relative one is refused instead; that each refusal
+  logged no `ssh` and no `rsync`; and that the first failing remote command is
+  the last thing in the log.
 - **Unproven: that the deploy works.** None of the above is evidence about
   anything outside the script. Not reachable from a stub, and so not claimed:
-  `rsync`'s real behaviour and its exit codes; whether `--chmod` lands the modes
-  Apache needs on files it creates; the host's `pip` resolving
+  `rsync`'s real behaviour and its exit codes; whether the **host-side
+  `chmod`s** land the modes Apache needs — that is where the modes now come
+  from, so it is the host's `chmod 755` on `app.cgi` and
+  `merge-htaccess.sh`'s own `chmod 644` that are unproven, and no longer
+  anything about `--chmod`; whether the `.deploy.lock` directory actually keeps
+  two deploys apart, which no test can reach: the lock is taken and released
+  against a temp directory in the suite, and a *real* second deploy arriving
+  mid-`rsync` has never happened; the host's `pip` resolving
   `requirements.txt` into the hand-made venv; `merge-htaccess.sh` meeting a real
   `.htaccess` with a real Directory Privacy password in it; whether the author's
   `~/.ssh/known_hosts` entry is enough of a pin in practice, now that there is
   no `DEPLOY_HOST_KEY` to compare against; and whether `make check` passes at
   all on a machine with a network, which it cannot here (`uv.lock` is stale —
-  `docs/DEPLOY.md` step 2 — so a bare `uv run` re-resolves, and the rewrite it
-  leaves behind is what the **next** production deploy's clean-tree gate
-  refuses).
+  `docs/DEPLOY.md` step 2 — so the bare `uv run` inside it, and the bare
+  `uv export` after it, both re-resolve, and the rewrite they leave behind is
+  what the **next** production deploy's clean-tree gate refuses).
 - **Why not here:** the stubs are the point. A test that let the real `rsync` or
   the real `ssh` through would be talking to the network from a sandbox that has
   none, and against a live shared host if it had one. There is no Apache and no
@@ -1047,9 +1077,14 @@ reach the same host in the same order, from a different machine.*
 - **Close it:** `docs/DEPLOY.md` step 6 — `deploy/deploy.sh --target
   /home/USER/tours-staging` — which is the first time this script will have run
   against anything. Its *You should see* list is in the order the script
-  prints, so a deploy that stops part-way says exactly how far it got. Then step
-  7's `curl` checks, which are what close entries 33 and 38; a clean ship with a
-  500 tree behind it is a different finding, not this one.
+  prints, so a deploy that stops part-way says exactly how far it got. Step 6's
+  `ls -l` is what closes the modes, and it is now checking the host-side
+  `chmod`s rather than anything `rsync` did. Then step 7's `curl` checks, which
+  are what close entries 33 and 38; a clean ship with a 500 tree behind it is a
+  different finding, not this one. **The lock is not closed by any of that**:
+  nothing in the runbook runs two deploys at once, and the only honest way to
+  see it work is to start a second `deploy/deploy.sh` while the first is inside
+  `make check` and read the refusal.
 
 ---
 

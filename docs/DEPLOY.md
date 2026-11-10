@@ -278,9 +278,13 @@ and nothing for cPanel to tell us. (`-P` keeps the document root off
 
 **You should see:** `Python 3.12.15` from the last line — the version measured
 on this host in step 3. Anything else means `python3.12` on the account is not
-what it was, and the floor in `backend/pyproject.toml` and the pin in
-`deploy.yml` would both have to move with it (a decision for the author, not a
-fix to make in passing).
+what it was, and the floor in `backend/pyproject.toml` and **every workflow's
+`python-version:` pin** would all have to move with it — there are two of them
+now, `.github/workflows/ci.yml`'s (the one gating every push) and
+`.github/workflows/deploy.yml`'s, and `backend/tests/test_versions.py` checks
+every workflow in the directory against the floor, however the pin is spelled
+(bare, quoted either way, with a patch level, with a trailing comment). A
+decision for the author, not a fix to make in passing.
 
 **Paste back:** the `--version` output if it is not 3.12.x, and the whole
 error if `python3.12 -m venv` fails. If the venv is missing or has no
@@ -378,6 +382,13 @@ assuming the best. `deploy/deploy.env` is gitignored;
 `deploy/deploy.env.example` is the committed copy and carries a shorter version
 of this table beside each variable.
 
+**A symlink works, if you would rather the credential lived outside the
+repository directory.** `ln -s ~/secrets/clio.env deploy/deploy.env` is fine:
+the mode check follows the link and reads the mode of the file at the end of
+it. It did not always — a symlink's own mode is always `0755`, and `chmod 600`
+on a symlink changes its target, so the refusal used to be permanent and its
+advice impossible to follow. `chmod 600` the real file.
+
 | Name | Required | What it is |
 | --- | --- | --- |
 | `DEPLOY_HOST` | yes | The same string as the secret of that name: the SSH endpoint of the **server**, not the subdomain the app serves at and not your Cloudflare-proxied domain, which forwards HTTP and drops port 22. Confirm it the way the secret's row says, with `ssh USER@CANDIDATE 'hostname -f; pwd'` landing you in `/home/USER`. |
@@ -393,11 +404,16 @@ string and splits it on whitespace *itself*, so a space in `DEPLOY_HOST`,
 `DEPLOY_USER`, `DEPLOY_PORT`, `SSH_KEY` or the deploy directory cannot be
 quoted through it; it would change which arguments `ssh` receives rather than
 failing, and an rsync that connects somewhere unintended and says nothing is
-the failure this refusal exists to prevent.
+the failure this refusal exists to prevent. For the deploy directory the
+message names **`DEPLOY_PATH`**, or **the `--target` argument** if that is what
+you gave it — whichever of the two you actually typed, rather than the script's
+internal name for the value.
 
 `deploy/deploy.sh --config FILE` reads a different file, if you ever want a
-second host or a second account side by side. There are only those two flags,
-and an argument that is neither is refused rather than ignored.
+second host or a second account side by side. A relative `FILE` is resolved
+against the directory you typed the command in, not against the repository
+root, so `--config ../clio.env` means what it looks like. There are only those
+two flags, and an argument that is neither is refused rather than ignored.
 
 ### The host key: there is no `DEPLOY_HOST_KEY` here
 
@@ -462,12 +478,14 @@ branch, mid-change, against a directory nobody uses is the whole point of the
 flag, so it relaxes both.
 
 **Do step 2 first if you have not.** `deploy/deploy.sh` delegates the lint, the
-tests and the build to `make check`, which goes through a bare `uv run`; with
-`uv.lock` still stale that either fails (no network) or re-resolves and rewrites
-the lockfile (network). The rewrite is the one to watch: the clean-tree gate
-runs *before* `make check`, so the deploy you are running now is unaffected,
-and the **next** production deploy refuses because `uv.lock` is modified. The
-fix is step 2's `uv lock`, committed, not a `--target` to get past it.
+tests and the build to `make check`, which goes through a bare `uv run`, and
+then resolves `requirements.txt` with a bare `uv export`. **Neither carries
+`--frozen`**, so with `uv.lock` still stale either of them fails (no network)
+or re-resolves and rewrites the tracked lockfile (network). The rewrite is the
+one to watch: the clean-tree gate runs *before* both, so the deploy you are
+running now is unaffected, and the **next** production deploy refuses because
+`uv.lock` is modified. The fix is step 2's `uv lock`, committed, not a
+`--target` to get past it.
 
 **Read step 7 before you press anything.** This deploy copies `.htaccess` to
 the staging directory, so it is the deploy that installs the front controller,
@@ -489,19 +507,29 @@ so that the file is proven somewhere harmless.
    this machine happens after this**, so a failing test stops the deploy
    instead of being noticed with half a tree shipped.
 2. a line or two from `uv export`, which resolves
-   `backend/requirements.txt` for the host's `pip` from `uv.lock`. That file is
-   **gitignored**: it is a build artefact, rewritten on every run, and an
+   `backend/requirements.txt` for the host's `pip` against `uv.lock`. That file
+   is **gitignored**: it is a build artefact, rewritten on every run, and an
    untracked file left in the tree would make the script's own clean-tree gate
-   refuse every deploy after the first. Do not "fix" the gitignore.
+   refuse every deploy after the first. Do not "fix" the gitignore. This
+   `uv export` carries no `--frozen` either, so with a stale lockfile and a
+   network it too — not only `make check`'s `uv run` — can rewrite the tracked
+   `uv.lock` on its way past. See the paragraph above; the fix is the same one.
 3. nothing from the `mkdir -p` that makes the directories on the host.
 4. `rsync --itemize-changes` lines, in this order: `.htaccess` (staged as
    `.htaccess.new`), `deploy/merge-htaccess.sh`, then — silently, because
    `deploy/merge-htaccess.sh` speaks only when it refuses — the merge of the
-   two on the host, then `app.cgi`, then `backend/`, then the built frontend,
+   two on the host, then `app.cgi`, then — silently again — a `chmod 755` on
+   the `app.cgi` that just arrived, then `backend/`, then the built frontend,
    then `content/`. **The front controller is first on purpose** and that order
    is pinned by a test: until `.htaccess` is in place the document root is
    uncontained, and the `.env` write below would publish `MAPILLARY_TOKEN` by
-   URL.
+   URL. **The `chmod` is its own step on purpose too**, rather than being left
+   to the install step at the end: `rsync -rlt` carries no permissions, so a
+   *new* `app.cgi` lands 644, and between the two points sit `backend/`, the
+   bundle, `content/`, the `.env` write and a `pip install` — on a first deploy,
+   minutes of 500 on every URL. Eleven remote commands in all: the `mkdir`, six
+   `rsync`s, and four `ssh`s (the merge, this `chmod`, the `.env` write and the
+   install).
 5. one line from the `.env` step: `backend/.env did not exist: created it.` on
    a first deploy, or `backend/.env already exists on the host: left alone
    (token and other settings NOT updated).` on every one after. The token goes
@@ -516,16 +544,35 @@ so that the file is proven somewhere harmless.
 **Stop and paste back** whatever it printed. The likely failures, in the order
 the script reaches them:
 
+- **`deploy.sh: --target …`**, before the config file is even read. The
+  argument itself is refused in two cases, and the first is worth knowing by
+  heart: **`--target ""` is refused**, because `--target "$STAGING"` with
+  `STAGING` unset is how an empty one gets typed, and an empty one used to mean
+  *production* — it fell through to `DEPLOY_PATH` while an empty `TARGET` also
+  re-armed the `main`-and-clean-tree gates, so on `main` with a clean tree it
+  shipped to the historians while you believed you were rehearsing. Omit
+  `--target` to mean production; there is no other way to say it. A
+  **relative** `--target` is refused too: the host would resolve it against the
+  deploy user's home, which is not where the subdomain's document root is.
 - **`deploy.sh refuses: …`**, one line per problem, with nothing shipped — the
   refusals all run before the first remote command, so a refusal has never done
   anything. They are: no config file at that path; a required variable empty or
   absent, named; the config file readable by group or world (`chmod 600` it),
-  or a `stat` that would not say which; a value containing whitespace, named;
-  not on `main`; and a dirty working tree, with `git status --porcelain`'s
-  output quoted so you can see what it means. The last two are the ones
-  `--target` relaxes. More than one is reported at once, deliberately: fixing
-  one, re-running the whole `make check` and only then being told about the
-  second is the kind of gate that gets worked around.
+  or a `stat` that would not say which; a value containing whitespace, named
+  (the deploy directory is reported as `DEPLOY_PATH`, or as the `--target`
+  argument if you gave one); not on `main`; and a dirty working tree, with
+  `git status --porcelain`'s output quoted so you can see what it means. The
+  last two are the ones `--target` relaxes. More than one is reported at once,
+  deliberately: fixing one, re-running the whole `make check` and only then
+  being told about the second is the kind of gate that gets worked around.
+- **`deploy.sh refuses: …/.deploy.lock exists, so another deploy is running (or
+  one died).`** One deploy at a time: two `rsync`s into the same tree must not
+  interleave, and a script is much easier to run twice than a workflow was —
+  two terminals, or a second go because the first looked stuck during
+  `make check`. The lock is a directory (`mkdir` is atomic everywhere and macOS
+  has no `flock(1)`), taken after the refusals above and before `make check`,
+  and released on exit. If nothing is running, `rmdir` it, as the message says.
+  It is gitignored, so it does not trip the clean-tree gate.
 - **`make check` red.** Not a deploy problem. The one deploy-flavoured case is
   a `uv` resolution failure now that the floor is 3.12 (step 2), which is where
   a dependency needing 3.13 would first show.
@@ -583,14 +630,22 @@ and these three lines:
 #
 ```
 
-The modes are the thing to look at twice. `rsync -rlt` carries no permissions
-at all, so the deploy sets them with `--chmod=F755` and `--chmod=F644` and
-re-asserts both with an explicit `chmod` on the host at the end of every
-deploy — belt and braces, because `--chmod` only applies to files rsync
-*creates*, so a file already on the host with the wrong mode would otherwise
-never be repaired. Either one costs you the whole tree: an `app.cgi` Apache
-cannot execute, and an `.htaccess` it cannot read, are both 500 on every URL.
-**Paste back** the `ls -l` lines if the modes differ.
+The modes are the thing to look at twice, and this check is now the only thing
+that watches them. `rsync -rlt` carries no permissions at all, and **no `rsync`
+in `deploy/deploy.sh` carries a `--chmod` either** — `/usr/bin/rsync` on macOS
+is Apple's openrsync, which rejects a literal mode outright
+(`rsync: --chmod=F644: invalid argument`, exit 1, nothing transferred), so the
+flag the workflow uses on its GNU rsync cannot come along. The modes are set on
+the host instead, by `chmod`: `app.cgi` gets `chmod 755` in its own `ssh` the
+moment it arrives and again in the install step at the end, and `.htaccess`
+needs nothing of its own because `deploy/merge-htaccess.sh` chmods the file 644
+before the atomic `mv` that puts it in place. So what these `ls -l` lines
+verify is that work, not `rsync`'s. The repeat at the end is deliberate: a file
+already on the host with the wrong mode — an older deploy, or a hand-edit
+through the file manager — is not something `rsync` would ever repair. Either
+mode costs you the whole tree: an `app.cgi` Apache cannot execute, and an
+`.htaccess` it cannot read, are both 500 on every URL. **Paste back** the
+`ls -l` lines if the modes differ.
 
 If `head` shows something other than those three lines — cPanel's own
 placeholder, or nothing — `rsync` did not land the file: paste back what it
