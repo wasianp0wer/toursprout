@@ -433,17 +433,109 @@ describe('InspectorPane: placing a stop', () => {
     expect(q('[data-find-panoramas]')?.textContent?.trim()).toBe('Find panoramas near here');
   });
 
-  it('moves the stop to the top result, names it, and searches panoramas there', async () => {
-    geocode.mockResolvedValue([COURTHOUSE, OTHER]);
-    panoramas.mockResolvedValue([A, B]);
+  const lookUpAndPick = async (text: string, i = 0) => {
+    await lookUp(text);
+    await click('[data-address-result]', i);
+  };
+  const names = () => qa('[data-address-result]').map((n) => n.textContent?.trim());
+  const THIRD: GeocodeResult = { name: 'Old Courthouse, Fairfax', lng: -77.2, lat: 38.8, osmRef: 'node/9' };
+  const key = async (sel: string, k: string) => {
+    q(sel)!.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    await settle();
+  };
+
+  it('lists the matches under the address row and moves nothing until one is chosen', async () => {
+    const before = store.draft();
+    geocode.mockResolvedValue([COURTHOUSE, OTHER, THIRD]);
     await lookUp('  Fairfax Courthouse ');
     expect(geocode).toHaveBeenCalledWith('Fairfax Courthouse');
-    expect(store.selectedStop()!.location).toEqual({ lng: COURTHOUSE.lng, lat: COURTHOUSE.lat });
-    expect(store.selectedStop()!.osmRef).toBe('way/123');
-    expect(q('[data-address-match]')?.textContent).toContain(COURTHOUSE.name);
-    expect(panoramas).toHaveBeenCalledWith(COURTHOUSE.lng, COURTHOUSE.lat);
+    expect(names()).toEqual([COURTHOUSE.name, OTHER.name, THIRD.name]);
+    // Directly under the address row, ahead of the "Moved to" note and the panorama tools.
+    const list = q('[data-address-results]')!;
+    expect(list.previousElementSibling?.querySelector('[data-address]')).toBeTruthy();
+    expect(store.draft()).toBe(before);
+    expect(q('[data-address-match]')).toBeNull();
+    expect(panoramas).not.toHaveBeenCalled();
+  });
+
+  it('choosing a match moves the stop there, names it, searches panoramas there, and closes the list', async () => {
+    geocode.mockResolvedValue([COURTHOUSE, OTHER, THIRD]);
+    panoramas.mockResolvedValue([A, B]);
+    await lookUpAndPick('Fairfax Courthouse', 2);
+    expect(store.selectedStop()!.location).toEqual({ lng: THIRD.lng, lat: THIRD.lat });
+    expect(store.selectedStop()!.osmRef).toBe('node/9');
+    expect(q('[data-address-match]')?.textContent).toContain(THIRD.name);
+    expect(panoramas).toHaveBeenCalledWith(THIRD.lng, THIRD.lat);
     expect(qa('[data-candidate]').map((n) => n.getAttribute('data-candidate'))).toEqual(['cam-A', 'cam-B']);
-    expect((q('[data-field="stop-lat"]') as HTMLInputElement).value).toBe(String(COURTHOUSE.lat));
+    expect((q('[data-field="stop-lat"]') as HTMLInputElement).value).toBe(String(THIRD.lat));
+    expect(q('[data-address-results]')).toBeNull();
+  });
+
+  it('a single match is still listed for the author to confirm', async () => {
+    const before = store.draft();
+    geocode.mockResolvedValue([COURTHOUSE]);
+    await lookUp('Fairfax Courthouse');
+    expect(names()).toEqual([COURTHOUSE.name]);
+    expect(store.draft()).toBe(before);
+  });
+
+  it('the matches are buttons, and ArrowDown from the address field reaches the first', async () => {
+    geocode.mockResolvedValue([COURTHOUSE, OTHER]);
+    await lookUp('Fairfax Courthouse');
+    for (const b of qa('[data-address-result]')) {
+      expect(b.tagName).toBe('BUTTON');
+      expect(b.getAttribute('type')).toBe('button');
+    }
+    await key('[data-address]', 'ArrowDown');
+    expect(document.activeElement).toBe(qa('[data-address-result]')[0]);
+  });
+
+  it('Escape closes the list and moves nothing, from the field or from a match', async () => {
+    const before = store.draft();
+    geocode.mockResolvedValue([COURTHOUSE, OTHER]);
+    await lookUp('Fairfax Courthouse');
+    await key('[data-address]', 'Escape');
+    expect(q('[data-address-results]')).toBeNull();
+    await lookUp('Fairfax Courthouse');
+    qa('[data-address-result]')[1].focus();
+    await key('[data-address-result]', 'Escape');
+    expect(q('[data-address-results]')).toBeNull();
+    // Focus goes back to the field rather than to a button that is gone.
+    expect(document.activeElement).toBe(q('[data-address]'));
+    expect(store.draft()).toBe(before);
+  });
+
+  it('a new lookup replaces the list', async () => {
+    geocode.mockResolvedValueOnce([COURTHOUSE, OTHER]).mockResolvedValueOnce([THIRD]);
+    await lookUp('Fairfax Courthouse');
+    await lookUp('Old Courthouse');
+    expect(names()).toEqual([THIRD.name]);
+  });
+
+  it('selecting another stop closes the list, and it does not come back', async () => {
+    store.load(tour([stop('s1', 1, [], { location: STOP_LOC }), stop('s2', 2)]));
+    store.select('s1'); await settle();
+    geocode.mockResolvedValue([COURTHOUSE, OTHER]);
+    await lookUp('Fairfax Courthouse');
+    expect(names().length).toBe(2);
+    store.select('s2'); await settle();
+    expect(q('[data-address-results]')).toBeNull();
+    store.select('s1'); await settle();
+    expect(q('[data-address-results]')).toBeNull();
+  });
+
+  it('a list for a location the stop has left (an undo) is gone, and cannot move it', async () => {
+    await commit('[data-field="stop-lat"]', '38.9');
+    geocode.mockResolvedValue([COURTHOUSE, OTHER]);
+    await lookUp('Fairfax Courthouse');
+    const stale = qa('[data-address-result]')[0];
+    store.undo(); await settle();
+    expect(store.selectedStop()!.location).toEqual(STOP_LOC);
+    expect(q('[data-address-results]')).toBeNull();
+    const before = store.draft();
+    stale.click(); await new Promise((r) => setTimeout(r)); await settle();
+    expect(store.draft()).toBe(before);
+    expect(panoramas).not.toHaveBeenCalled();
   });
 
   it('Enter in the address field looks it up', async () => {
@@ -453,13 +545,14 @@ describe('InspectorPane: placing a stop', () => {
     q('[data-address]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await new Promise((r) => setTimeout(r)); await settle();
     expect(geocode).toHaveBeenCalledWith('Fairfax Courthouse');
-    expect(store.selectedStop()!.location).toEqual({ lng: COURTHOUSE.lng, lat: COURTHOUSE.lat });
+    expect(names()).toEqual([COURTHOUSE.name]);
+    expect(store.selectedStop()!.location).toEqual(STOP_LOC);
   });
 
   it('a hand-typed location drops the matched name: it no longer describes the stop', async () => {
     geocode.mockResolvedValue([COURTHOUSE]);
     panoramas.mockResolvedValue([]);
-    await lookUp('Fairfax Courthouse');
+    await lookUpAndPick('Fairfax Courthouse');
     expect(q('[data-address-match]')).toBeTruthy();
     await commit('[data-field="stop-lat"]', '38.9');
     expect(q('[data-address-match]')).toBeNull();
@@ -474,7 +567,7 @@ describe('InspectorPane: placing a stop', () => {
   it('undoing a lookup drops the matched name with it', async () => {
     geocode.mockResolvedValue([COURTHOUSE]);
     panoramas.mockResolvedValue([]);
-    await lookUp('Fairfax Courthouse');
+    await lookUpAndPick('Fairfax Courthouse');
     expect(q('[data-address-match]')).toBeTruthy();
     store.undo();
     await settle();
@@ -485,7 +578,7 @@ describe('InspectorPane: placing a stop', () => {
   it("a hand-typed location drops the lookup's OSM reference: it names another place", async () => {
     geocode.mockResolvedValue([COURTHOUSE]);
     panoramas.mockResolvedValue([]);
-    await lookUp('Fairfax Courthouse');
+    await lookUpAndPick('Fairfax Courthouse');
     expect(store.selectedStop()!.osmRef).toBe('way/123');
     await commit('[data-field="stop-lat"]', '38.9');
     expect(store.selectedStop()!.location.lat).toBe(38.9);
@@ -503,6 +596,7 @@ describe('InspectorPane: placing a stop', () => {
     await lookUp('Nowhere at all');
     expect(q('[data-address-none]')?.textContent?.trim()).toBe('No match for that address.');
     expect(q('[data-address-match]')).toBeNull();
+    expect(q('[data-address-results]')).toBeNull();
     expect(store.draft()).toBe(before);
     expect(panoramas).not.toHaveBeenCalled();
   });
@@ -512,6 +606,7 @@ describe('InspectorPane: placing a stop', () => {
     geocode.mockRejectedValue(new Error('the address lookup failed: timed out'));
     await lookUp('Fairfax Courthouse');
     expect(q('[data-tool-error]')?.textContent).toContain('the address lookup failed: timed out');
+    expect(q('[data-address-results]')).toBeNull();
     expect(store.draft()).toBe(before);
     expect(panoramas).not.toHaveBeenCalled();
   });
@@ -528,9 +623,11 @@ describe('InspectorPane: placing a stop', () => {
     await new Promise((r) => setTimeout(r)); await settle();
     expect(store.draft()).toBe(before);
     expect(q('[data-address-match]')).toBeNull();
+    expect(q('[data-address-results]')).toBeNull();
     expect(panoramas).not.toHaveBeenCalled();
     store.select('s1'); await settle();
     expect(q('[data-address-match]')).toBeNull();
+    expect(q('[data-address-results]')).toBeNull();
   });
 });
 

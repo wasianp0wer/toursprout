@@ -9,6 +9,29 @@
 .hint { color: #9aa0ab; font-size: 0.85rem; }
 .address-row { display: flex; gap: 0.25rem; }
 .address-row input { flex: 1; }
+
+/* The address matches drop down over what follows rather than pushing the
+   form down, so the notes and panorama tools below do not jump while the
+   author chooses. Full width of the address row, on the raised surface. The
+   global button rules weigh (0,2,1) on hover, so the state rule here repeats
+   the state to win. */
+.address { position: relative; }
+.address-results {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 10;
+  list-style: none; margin: 0; padding: 0.2rem 0;
+  background: #171a1f; border: 1px solid #343a44; border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  max-height: 14rem; overflow-y: auto;
+}
+.address-results button {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: none; border-radius: 0;
+  padding: 0.35rem 0.5rem; color: #c9ccd3;
+}
+.address-results button:hover:not(:disabled), .address-results button:focus-visible {
+  background: #1c2026; color: #e8b04b;
+}
+.address-results button:focus-visible { outline-offset: -2px; }
 .heading-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; }
 .tools { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 

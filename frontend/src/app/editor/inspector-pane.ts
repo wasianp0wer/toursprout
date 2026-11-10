@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, computed, inject, linkedSignal, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { EditorStore } from './editor-store';
 import {
@@ -192,11 +192,34 @@ export class InspectorPane {
   });
 
   /**
-   * Move the stop to the geocoder's best match and look for panoramas
-   * there, in one step: the author asked for a place, not for a list of
-   * candidate coordinates. A reply for a stop that is no longer selected is
-   * dropped whole, error included: the author has moved on, and moving a
-   * stop they are not looking at would be a silent edit.
+   * The geocoder's matches, waiting for the author to choose one. Keyed like
+   * `lookedUp`, on the stop and the location it was at when looked up: a
+   * list for another stop, or for a location an undo or a typed coordinate
+   * has since left, is stale and never moves anything. Selecting another
+   * stop drops it outright (the linkedSignal resets), so it does not come
+   * back when the author returns.
+   */
+  private readonly matches = linkedSignal<string | undefined,
+    { stopId: string; lng: number; lat: number; results: GeocodeResult[] } | null>({
+    source: () => this.stop()?.id,
+    computation: () => null,
+  });
+  protected readonly addressResults = computed(() => {
+    const m = this.matches();
+    const s = this.stop();
+    return m && s && m.stopId === s.id && m.lng === s.location.lng && m.lat === s.location.lat
+      ? m.results : null;
+  });
+  private readonly addressInput = viewChild<ElementRef<HTMLInputElement>>('address');
+  private readonly resultsList = viewChild<ElementRef<HTMLElement>>('results');
+
+  /**
+   * List the geocoder's matches under the address field; nothing moves until
+   * the author chooses one, even when there is only one, since the first
+   * match is often the wrong place of the same name. Nominatim's policy
+   * forbids suggestions as the author types, so this runs only on an
+   * explicit Look up. A reply for a stop that is no longer selected is
+   * dropped whole, error included: the author has moved on.
    */
   protected async lookUpAddress(text: string): Promise<void> {
     const s = this.stop();
@@ -205,9 +228,10 @@ export class InspectorPane {
     this.searching.set(true);
     this.toolError.set(null);
     this.lookedUp.set(null);
-    let top: GeocodeResult | undefined;
+    this.matches.set(null);
+    let results: GeocodeResult[];
     try {
-      top = (await this.tools.geocode(query))[0];
+      results = await this.tools.geocode(query);
     } catch (err) {
       if (this.stop()?.id === s.id) {
         this.toolError.set(err instanceof Error ? err.message : 'the address lookup failed');
@@ -217,15 +241,35 @@ export class InspectorPane {
       this.searching.set(false);
     }
     if (this.stop()?.id !== s.id) return;
-    if (!top) {
+    if (results.length === 0) {
       this.lookedUp.set({ stopId: s.id, ...s.location, name: null });
       return;
     }
-    const { lng, lat, osmRef } = top;
+    this.matches.set({ stopId: s.id, ...s.location, results });
+  }
+
+  /** Move the stop to the chosen match and look for panoramas there, in one step. */
+  protected async chooseAddress(match: GeocodeResult): Promise<void> {
+    const s = this.stop();
+    // Only from the list on screen: a stale one is not a choice the author can see.
+    if (!s || !this.addressResults()?.includes(match)) return;
+    const { lng, lat, osmRef } = match;
+    this.matches.set(null);
     this.store.apply((t) => setStopLocation(t, s.id, lng, lat, osmRef));
     this.found.set(null); // "near here" has moved
-    this.lookedUp.set({ stopId: s.id, lng, lat, name: top.name });
+    this.lookedUp.set({ stopId: s.id, lng, lat, name: match.name });
     await this.findPanoramas();
+  }
+
+  /** Escape: close the list, and keep focus in the field rather than on a button that is gone. */
+  protected closeAddressResults(): void {
+    if (!this.addressResults()) return;
+    this.matches.set(null);
+    this.addressInput()?.nativeElement.focus();
+  }
+
+  protected focusFirstAddressResult(): void {
+    this.resultsList()?.nativeElement.querySelector<HTMLButtonElement>('button')?.focus();
   }
 
   protected async findPanoramas(): Promise<void> {
