@@ -16,4 +16,4 @@ Index:
 - [0005](0005-schema-v3-locks-the-document.md): schema v3 locks the document — the last tightenings, and a migration registry.
 - [0006](0006-host-it-one-session-per-browser.md): host it rather than package it; one session per browser; what left the server because the host cannot reach it.
 - [0007](0007-serve-it-through-cgi.md): serve it through CGI behind an Apache front controller, because the host has no Passenger — supersedes 0006's hosting mechanism and leaves the rest of it standing.
-- [0008](0008-ship-from-a-workstation.md): ship from a workstation, because the host's firewall drops GitHub's runners — the trigger and the machine move, and 0007's mechanism stands.
+- [0008](0008-ship-from-a-workstation.md): ship from a workstation, because CI reaches the host about one time in nine and a deterministic manual deploy beats a lottery — the trigger and the machine move, and 0007's mechanism stands.

@@ -23,11 +23,26 @@ panorama search does not work on the host.
 **The CGI deployment (ADR
 [0007](decisions/0007-serve-it-through-cgi.md)) added entries 37 to 40 and
 rewrote 33 and 34.** The host has no Passenger, so the application now runs as
-CGI behind an Apache front controller, and **entry 38 is the one to read
-first**: there is no Apache in the development environment, so the whole of
-`.htaccess` — every rewrite, and the claim that the Mapillary token is not
-reachable by URL — rests on reasoning rather than on anything anyone has
-seen. Nothing below 38 can be reached in a browser until it holds.
+CGI behind an Apache front controller.
+
+**2026-11-09/10 closed a great deal of that, and the closures are marked in
+place rather than deleted.** Two runs did it. A **production deploy ran to
+completion from GitHub Actions on 2026-11-09**, on the one attempt in nine that
+reached the host (ADR [0008](decisions/0008-ship-from-a-workstation.md)), and
+the author has confirmed that the live site serves and works. Then
+`deploy/deploy.sh --target` was **rehearsed against the real host on
+2026-11-10** and succeeded. Entries 33, 34, 37, 38 and 41 are rewritten around
+that evidence; each says what the run proved and what it did not.
+
+**What is still open about the host, in the order worth caring about:** a
+**production** run of `deploy/deploy.sh`, which is the thing that ships from
+now on and has never shipped (entry 41); the one-deploy-at-a-time lock against
+a real second deploy (entry 41); whether `backend/.env` is reachable by URL,
+which is the one remaining `.htaccess` claim with a credential at stake
+(entry 38); whether `merge-htaccess.sh` preserves a **real** Directory Privacy
+password (entry 34); `index.html`'s missing `no-cache` header, which nothing
+has touched (**entry 40**); and CGI under the load of several historians at
+once (entry 39).
 
 Only unproven things are listed. What was verified (the live Mapillary and
 loc.gov response shapes, the Overpass `[timeout:12]` query, the direct
@@ -728,25 +743,35 @@ is gone, and `a2wsgi` **is** installed here now (`f708161`).*
   percent-encoded and a malformed path, and a crash before the headers are
   written. `a2wsgi` does not run the ASGI lifespan, which is why
   `app.state.cfg` is set in `create_app`'s body.
-- **Unproven:** that Apache executes any of it. Specifically: that `app.cgi`
-  arrives and stays mode 755; that `AddHandler cgi-script .cgi` and
-  `Options +ExecCGI` are permitted, rather than 500ing the tree or serving
-  `app.cgi` to the browser as text (which would publish the one file that
-  names the venv); that the venv at `$DEPLOY_PATH/.venv` holds every
-  dependency the app imports; that `"$DIR/.venv/bin/python"` resolves from
-  `app.cgi`'s own `$0` under Apache's CGI invocation; and that the error log
-  the wrapper writes its tracebacks to can be found at all (where this host
-  puts it is unverified — `docs/DEPLOY.md`, *Reading the error log*).
-- **Why not here:** there is no Apache and no 3.12 interpreter in the
-  development sandbox. A test can run the Python; nothing here can run the
-  web server.
-- **Close it:** `docs/DEPLOY.md` step 7, checks 1 and 2.
+- **Proven on the host, 2026-11-09, and this is the entry's main business
+  now.** A production deploy ran to completion and the author has confirmed
+  that the live site serves and works. That one fact settles the whole chain
+  this entry listed as guesswork: **Apache executes `app.cgi`**, so the mode
+  survived the deploy and `AddHandler cgi-script .cgi` with `Options +ExecCGI`
+  are permitted rather than 500ing the tree or serving the wrapper as text;
+  `"$DIR/.venv/bin/python"` resolves from `app.cgi`'s own `$0` under Apache's
+  CGI invocation; and the venv at `$DEPLOY_PATH/.venv` holds every dependency
+  the application imports, installed there by the host's own pip 23.2.1 from
+  the exported `requirements.txt`. A missing dependency or an unresolvable
+  interpreter is a 500 on every URL, and the site is not 500ing.
+- **Still unproven:** that the error log the wrapper writes its tracebacks to
+  can be found at all. Where this host puts it is still unverified
+  (`docs/DEPLOY.md`, *Reading the error log*), and nothing about a working site
+  says anything about where it reports a broken one. That is the half of this
+  entry that only a deliberate failure can close.
+- **Why it could not be done here:** there is no Apache and no 3.12
+  interpreter in the development sandbox. A test can run the Python; nothing
+  here can run the web server. That is still true, and is why the host was the
+  only way to settle it.
+- **Close the rest of it:** `docs/DEPLOY.md` step 7, checks 1 and 2, on any
+  **new** subdomain, since what Apache permits is per-directory configuration.
   `curl -s https://STAGING/api/health` must answer `{"status":"ok"}` and
   `curl -s https://STAGING/api/session/examples` must answer the example
   list — the second one is what proves the whole application imported, the
   settings loaded and `content/` arrived. "Premature end of script headers",
   a blank page, or `app.cgi`'s own source text in the response body are each a
-  different failure, and step 7 says which is which.
+  different failure, and step 7 says which is which. For the error log, make
+  the application fail on purpose once and go looking.
 
 ## 34. The deploy pipeline
 
@@ -756,38 +781,54 @@ is gone: there is no "Setup Python App" on this host, so there is no
 `$DEPLOY_PATH/.venv` (`docs/DEPLOY.md` step 4) and the deploy only installs
 into it.*
 
-- **Unproven:** every step of `.github/workflows/deploy.yml`. It has never
-  run. Specific guesses:
-  - that the SSH port is 22 (or whatever `DEPLOY_PORT` says), and that the
-    pinned host key is of a type the host offers;
-  - that `DEPLOY_PATH` is under `$HOME`;
-  - that `app.cgi` arrives **executable** — `rsync -rlt` carries no
-    permissions, so this rests on `--chmod=F755` and on the explicit
-    `chmod 755` in the install step, neither of which has run;
-  - that the hand-created venv is where both the workflow and `app.cgi`
-    expect it, at `$DEPLOY_DIR/.venv`, and that
-    `"$VENV/bin/pip" install -r backend/requirements.txt` succeeds on the
-    host (PyPI is reachable from the shell — ADR 0007's table — which is not
-    the same as reachable from this step).
-  - **The document-root contract.** The subdomain's document root must be
-    `$DEPLOY_PATH` *itself*: `app.cgi` finds the interpreter relative to its
-    own path and `.htaccess` finds the bundle relative to
-    `%{DOCUMENT_ROOT}`. Whether cPanel will let the author *set* a document
-    root outside `public_html` is unconfirmed. If it refuses, step 4a's
-    fallback nests the deploy tree inside `public_html` — which gives the
-    tree a **second URL under the parent domain**, where `%{DOCUMENT_ROOT}`
-    is the parent's and rule 2's `-f` test therefore does not resolve. What
-    that second URL serves has not been reasoned through, let alone tested.
-  The first run should be a rehearsal against a staging path —
-  `deploy/deploy.sh --target /home/USER/tours-staging` from the author's own
-  machine, since entry 41 below explains why the pipeline no longer ships
-  (`workflow_dispatch` with a `target` is still the equivalent, if the host
-  ever permits GitHub's runners again).
+*Rewritten again 2026-11-10: **the pipeline has run, once, all the way
+through.** On 2026-11-09 at 22:15 UTC — the third attempt, after two timeouts
+with an identical signature — a run of `.github/workflows/deploy.yml` found
+TCP 22 open and performed a full production deploy, every step succeeding. It
+is one of nine runs that reached the network, and the only one that got in; ADR
+[0008](decisions/0008-ship-from-a-workstation.md) has the table and is careful
+about what nine samples can and cannot support. What this entry used to list as
+"never run" is therefore mostly measured, and what remains is named below.*
+
+- **Proven by that run**, with the live site as the second half of the
+  evidence:
+  - **the SSH port is 22**, and the pinned host key was of a type the host
+    offers — the run authenticated and shipped;
+  - **`DEPLOY_PATH` is under `$HOME`**, and the `mkdir -p` and every `rsync`
+    into it worked;
+  - **`app.cgi` arrived executable**, by `--chmod=F755` on the runner's GNU
+    rsync plus the explicit `chmod 755` in the install step. (Neither spelling
+    is available to `deploy/deploy.sh`, which is a separate matter — entry 41.)
+  - **the hand-created venv is where the workflow and `app.cgi` both expect
+    it**, at `$DEPLOY_DIR/.venv`, and
+    `"$VENV/bin/pip" install -r backend/requirements.txt` **succeeded on the
+    host**, with its pip 23.2.1, from the `--no-dev` export. PyPI being
+    reachable from the shell turned out to mean it was reachable from this step
+    too.
+  - **the document-root contract holds.** cPanel accepted `$DEPLOY_PATH`
+    *itself* as the subdomain's document root, **outside `public_html`**, so
+    `app.cgi` finds the interpreter relative to its own path and `.htaccess`
+    finds the bundle relative to `%{DOCUMENT_ROOT}`.
+- **Still unproven here:** step 4a's **nesting fallback**, which was not
+  needed. If some later subdomain has to live inside `public_html`, the tree
+  gets a **second URL under the parent domain**, where `%{DOCUMENT_ROOT}` is
+  the parent's and rule 2's `-f` test does not resolve. What that second URL
+  serves has still not been reasoned through, let alone tested — it is simply
+  moot on this host.
+- **And unproven in a different sense: that the pipeline is a path you can
+  rely on.** One run in nine reached the host, the cause of the other eight is
+  unknown, and nine runs give no power to say whether the rate is moving. That
+  is why shipping moved to `deploy/deploy.sh` (entry 41) and why this workflow
+  is manual-only: a `workflow_dispatch` run is worth a try, not a plan.
 - **Also unproven: that a deploy does not remove the shared password.** This
   branch introduced the risk — the old pipeline shipped no `.htaccess`, and
   this one ships the file cPanel's Directory Privacy writes into — and
-  `deploy/merge-htaccess.sh` is the answer to it. Three separate things are
-  open:
+  `deploy/merge-htaccess.sh` is the answer to it. **The script itself has now
+  run on the host twice**, in the 2026-11-09 production deploy and the
+  2026-11-10 rehearsal, and composed an `.htaccess` that Apache then read —
+  which the live site is the proof of, and which is more than the synthetic
+  tests could say. What it has never met is a real password. Three separate
+  things are open:
   - **Whether Directory Privacy writes into *this* `.htaccess` on this
     host at all.** If it keeps the password somewhere else, the merge is a
     harmless no-op and nothing below matters. `docs/DEPLOY.md` step 8's
@@ -804,14 +845,18 @@ into it.*
     atomic — and an `.htaccess` that is half-written or briefly absent is
     500 on every URL of the subdomain for as long as it lasts — but nothing
     in the suite proves the `mv` is what happened.
-- **Also unproven:** that `uv sync` re-resolving in CI produces a working
-  environment. `backend/uv.lock` is stale in two ways now: it does not
-  mention `a2wsgi`, and it still records `requires-python = ">=3.13"` while
-  `pyproject.toml` says `>=3.12`. It must be regenerated with network access
-  (`docs/DEPLOY.md` step 2). Until then `make backend-test` fails offline
-  and CI re-resolves the whole dependency set on every run.
-- **Close it:** `docs/DEPLOY.md` steps 2 to 6 (and step 10 for production);
-  step 8's one-off check for the password.
+- **No longer unproven: the lockfile.** `backend/uv.lock` has been
+  regenerated and committed, and now records `requires-python = ">=3.12"`, the
+  same floor `pyproject.toml` asks for, with `a2wsgi` in it. So CI's `uv sync`
+  installs from the lock rather than re-resolving, `make backend-test` works
+  offline again, and the deploy's bare `uv export` cannot rewrite the tracked
+  lock on its way past. What is still outstanding is the `--frozen` half of
+  `docs/DEPLOY.md` step 2: no workflow and no Makefile target passes it, so a
+  future drift would be as quiet as the last one.
+- **Close what is left:** `docs/DEPLOY.md` step 8's one-off check for the
+  password, which is now the only part of this entry a deploy can settle. The
+  rest of the runbook's deploy steps are entry 41's business, since
+  `deploy/deploy.sh` is what ships.
 
 ## 35. Sessions across real browsers
 
@@ -862,27 +907,65 @@ into it.*
   re-scan over `app/`, `tests/` and `content/scripts` turned up nothing newer
   than 3.9 (the only `.walk(` hit is `os.walk`). The entry stands as
   unproven for the reason below, not because of this.
-- **Why not here:** the development sandbox has no network and so cannot
-  build or fetch a 3.12 interpreter. The suite here runs on 3.14.
-- **Close it, in two steps:** first, **CI** — the deploy workflow's test job
-  on the pinned `3.12` must go green, which is the cheapest evidence
-  available and arrives on the next push. Then **the host**: `docs/DEPLOY.md`
-  step 7, check 2 (`/api/session/examples`) answering proves the whole
-  application imported under the host's own 3.12.15. If CI fails on a syntax
-  or stdlib feature the scan missed, the fix is in the code, not in the
-  floor — the host offers one interpreter.
+- **Why it could not be done here:** the development sandbox has no network
+  and so cannot build or fetch a 3.12 interpreter. The suite here runs on 3.14.
+- **Closed on the host, 2026-11-09.** The production deploy installed the
+  dependencies into the host's venv with its own pip 23.2.1 and the author has
+  confirmed that the live site serves and works — an application that did not
+  import under 3.12.15 is a 500 on every URL, so this is the compatibility
+  evidence the reading could not give. The entry stays on the list, marked
+  closed rather than deleted, for two reasons: what has been exercised is the
+  paths a served page and a routed `/api` call touch, not every code path in
+  `app/`, and a syntax or stdlib feature the scan missed would fail at import
+  of the module that holds it, which may be a module no request has reached
+  yet. CI on the pinned `3.12` is the cheap second opinion and runs on every
+  push. If either ever fails on a 3.12 feature, the fix is in the code, not in
+  the floor — the host offers one interpreter.
 
 ## 38. The `.htaccess` front controller — every rule in it
 
-*The highest-risk unverified assumption on the CGI branch, in the same way
-entry 32 is on the hosted-deployment branch. Nothing else on this host can be
-looked at until it holds.*
+*This was the highest-risk unverified assumption on the CGI branch, in the way
+entry 32 still is on the hosted-deployment branch: nothing else on this host
+could be looked at until it held. The note below is where that changed, and
+what is left of this entry is one `curl` and a caution about new subdomains.*
 
-- **Unproven:** that Apache does any of what `.htaccess` says. There is **no
-  Apache in the development environment**.
+*Updated 2026-11-10. **Apache has now read this file and followed it.** The
+2026-11-09 production deploy put it on the host and the author has confirmed
+that the live site serves and works: the bundle is served, `/api` is routed to
+`app.cgi`, and a deep link falls through to `index.html`. That is rules 1, 2
+and 3 doing their jobs with the guard rule in front of them — and the guard
+rule in particular, because without it rule 3 would have turned `app.cgi` and
+every bundle path into `index.html`, which is the HTTP-200-on-everything
+failure described below and is not what the site is doing. `Options +ExecCGI`
+is permitted, and the inherited symlink option is in effect, since otherwise
+per-directory `mod_rewrite` would not have run at all. **One claim in this
+entry is untouched by all of that, and it is the one with a credential at
+stake: nobody has asked the host for `/backend/.env`.** The entry stays for
+that, and because every rule here is per-directory configuration and so a fresh
+question on any new subdomain.*
+
+- **Proven on the host for the production subdomain, 2026-11-09:** the guard
+  rule, rule 1, rule 2, rule 3's fallback, `Options +ExecCGI` and the
+  inherited `FollowSymLinks`. See the note above for what each one's evidence
+  is.
+- **Still unproven:** that **`/backend/.env` is not reachable by URL**. Rule 3
+  is unconditional precisely so that it swallows the path, and the
+  `<Files ".env">` deny is the belt behind that brace, but neither has been
+  asked the question on a real server — and a deep link falling through to
+  `index.html` is suggestive rather than conclusive, because it says nothing
+  about a path that **does** exist on disk under the document root. The thing
+  at stake is a credential, so this is a `curl` worth running today:
+  `docs/DEPLOY.md` step 7, check 6.
+- **Also still unproven:** every one of these rules on any **other** document
+  root. An `.htaccess` is read for its own directory and below, and what a host
+  permits is per-directory, so a staging subdomain or a second production one
+  is a new measurement rather than a formality.
+- **The reasoning each rule rested on before the host answered**, kept because
+  it is what to re-read if one of them fails somewhere new. There is **no
+  Apache in the development environment**;
   `backend/tests/test_htaccess.py` reads the file as text and pins the rule
   order and the two routed prefixes; it cannot make a web server follow them.
-  Each rule is a separate claim:
+  Each rule was a separate claim:
   - **The guard rule** (`^(app\.cgi$|frontend/dist/frontend/browser/)`) is
     there because per-directory `mod_rewrite` re-runs the whole ruleset on a
     rewritten path — `[L]` ends the round, not the processing. If that
@@ -903,8 +986,10 @@ looked at until it holds.*
     all exist on disk under the document root, so the usual
     `RewriteCond %{REQUEST_FILENAME} !-f` idiom would publish the source and
     the Mapillary token. The `<Files ".env">` deny is the belt behind that
-    brace. **Neither has been tested against a server**, and the thing at
-    stake is a credential.
+    brace. **The fallback has now been seen working on a path that does not
+    exist** (a deep link returns the application); neither it nor the deny has
+    been asked for a path that *does* exist on disk, which is the case the
+    credential depends on.
   - **`Options +ExecCGI`**, which needs `AllowOverride Options`. cPanel's
     usual setting is `All`, unconfirmed here. If it is narrower, the
     directive itself 500s the tree — not the route, the tree.
@@ -917,12 +1002,12 @@ looked at until it holds.*
     the defence. A host that does not grant the symlink option 500s the
     tree, or silently fails every rewrite, and the only fix is to ask the
     host for it.
-- **Close it:** `docs/DEPLOY.md` step 7's six `curl` checks, in the order
-  given, each one narrowing what a failure can be. Run them against the
-  **staging** subdomain and before Directory Privacy (step 8), so no
-  credentials are involved. Check 6 (`curl -s https://STAGING/backend/.env`)
-  is the one to read with your own eyes: it must not contain
-  `MAPILLARY_TOKEN`. Step 7 also keeps the undo —
+- **Close what is left:** `docs/DEPLOY.md` step 7's six `curl` checks, in the
+  order given, each one narrowing what a failure can be. **Check 6**
+  (`curl -s https://HOST/backend/.env`) is the one still open and the one to
+  read with your own eyes: it must not contain `MAPILLARY_TOKEN`. On a new
+  subdomain run all six, before Directory Privacy (step 8), so no credentials
+  are involved. Step 7 also keeps the undo —
   `ssh HOST 'rm -f .../.htaccess'` — on screen, because a file Apache
   rejects takes the whole subdomain with it.
 
@@ -1006,22 +1091,20 @@ fixed, and the reasoning for not fixing it is below.*
   then it is a step-7-style change: add it, `curl` the site at once, and keep
   `mv .htaccess .htaccess.broken` on screen first.
 
-## 41. `deploy/deploy.sh` — the thing that now ships, which has never shipped
+## 41. `deploy/deploy.sh` — the thing that now ships, rehearsed once and never shipped to production
 
 *Added 2026-11-10 with ADR
 [0008](decisions/0008-ship-from-a-workstation.md). Shipping moved off GitHub
-Actions and onto the author's own machine, because the host's firewall drops
-GitHub's runner addresses. Entry 34 above still describes the pipeline, which is
-intact, manual-only and still unrun; this entry is about the script that ships
-instead. Nothing in 34's host-side list is closed by this one — the same rsyncs
-reach the same host in the same order, from a different machine.*
+Actions and onto the author's own machine because the pipeline reaches the host
+about one time in nine, and a deterministic deploy you type is worth more than
+a lottery on a one-person project. Entry 34 above describes the pipeline, which
+is intact, manual-only, and has run successfully exactly once.*
 
-*Amended 2026-11-10, same day, after an adversarial review of the branch. **The
-script still has never run against the host, and that has not changed.** What
-changed is sharper than that and worth stating separately: one of the
-properties this entry listed as proven — that the two files Apache reads arrive
-with the modes it needs, because the rsyncs carry `--chmod=F644`/`F755` — was
-**shown to be false on the author's own machine**, not merely left unproven.
+*Amended 2026-11-10, after an adversarial review of the branch and before the
+rehearsal described below. One of the properties this entry listed as proven — that the
+two files Apache reads arrive with the modes it needs, because the rsyncs carry
+`--chmod=F644`/`F755` — was **shown to be false on the author's own machine**,
+not merely left unproven.
 `/usr/bin/rsync` on macOS is Apple's openrsync and rejects a literal mode
 outright (`rsync: --chmod=F644: invalid argument`, exit 1, nothing
 transferred), so every deploy would have died at the first rsync, after
@@ -1033,6 +1116,17 @@ which was exactly as true of the broken script as of a working one. It now
 asserts that no rsync carries one. The modes are set by `chmod` on the host
 instead, which moves them out of this list's first bullet and into its
 second.*
+
+*Corrected 2026-11-10, later the same day. **This entry used to say the script
+had never run against the host. That is no longer true, and it was the most
+misleading line in this file.** `deploy/deploy.sh --target` was rehearsed
+against the real host and succeeded: all eleven remote operations worked, the
+`.htaccess` merge ran on the host, the only-when-absent `backend/.env` logic
+ran, the host-side `chmod`s set the modes, and `rsync` with no `--chmod`
+transferred correctly from macOS. What has **not** happened is a **production**
+run — no `--target`, into `DEPLOY_PATH` — and the rehearsal's target was a
+staging directory with **no subdomain**, so nothing the script wrote was ever
+served by Apache. The lock has still never met a second deploy.*
 
 - **Proven here, and it is worth being precise about how little that is:**
   `backend/tests/test_deploy_script.py` drives the real script with `ssh`,
@@ -1051,40 +1145,47 @@ second.*
   path, and that an empty or relative one is refused instead; that each refusal
   logged no `ssh` and no `rsync`; and that the first failing remote command is
   the last thing in the log.
-- **Unproven: that the deploy works.** None of the above is evidence about
-  anything outside the script. Not reachable from a stub, and so not claimed:
-  `rsync`'s real behaviour and its exit codes; whether the **host-side
-  `chmod`s** land the modes Apache needs — that is where the modes now come
-  from, so it is the host's `chmod 755` on `app.cgi` and
-  `merge-htaccess.sh`'s own `chmod 644` that are unproven, and no longer
-  anything about `--chmod`; whether the `.deploy.lock` directory actually keeps
-  two deploys apart, which no test can reach: the lock is taken and released
-  against a temp directory in the suite, and a *real* second deploy arriving
-  mid-`rsync` has never happened; the host's `pip` resolving
-  `requirements.txt` into the hand-made venv; `merge-htaccess.sh` meeting a real
-  `.htaccess` with a real Directory Privacy password in it; whether the author's
-  `~/.ssh/known_hosts` entry is enough of a pin in practice, now that there is
-  no `DEPLOY_HOST_KEY` to compare against; and whether `make check` passes at
-  all on a machine with a network, which it cannot here (`uv.lock` is stale —
-  `docs/DEPLOY.md` step 2 — so the bare `uv run` inside it, and the bare
-  `uv export` after it, both re-resolve, and the rewrite they leave behind is
-  what the **next** production deploy's clean-tree gate refuses).
-- **Why not here:** the stubs are the point. A test that let the real `rsync` or
-  the real `ssh` through would be talking to the network from a sandbox that has
-  none, and against a live shared host if it had one. There is no Apache and no
-  3.12 interpreter here either (entries 33 and 38), so even a successful ship
-  would prove nothing about what the host then does with the files.
-- **Close it:** `docs/DEPLOY.md` step 6 — `deploy/deploy.sh --target
-  /home/USER/tours-staging` — which is the first time this script will have run
-  against anything. Its *You should see* list is in the order the script
-  prints, so a deploy that stops part-way says exactly how far it got. Step 6's
-  `ls -l` is what closes the modes, and it is now checking the host-side
-  `chmod`s rather than anything `rsync` did. Then step 7's `curl` checks, which
-  are what close entries 33 and 38; a clean ship with a 500 tree behind it is a
-  different finding, not this one. **The lock is not closed by any of that**:
-  nothing in the runbook runs two deploys at once, and the only honest way to
-  see it work is to start a second `deploy/deploy.sh` while the first is inside
-  `make check` and read the refusal.
+- **Proven against the real host by the 2026-11-10 rehearsal**, which is what
+  none of the stubs could reach: `rsync`'s real behaviour and its exit codes,
+  including that **`rsync` with no `--chmod` transfers correctly from macOS**;
+  all **eleven remote operations**, in order, each one succeeding; the
+  **`.htaccess` merge running on the host** rather than on a synthetic file
+  tree; the **only-when-absent `backend/.env` logic** running, which on a first
+  deploy means the branch that creates the file; the **host-side `chmod`s**
+  landing the modes Apache needs, which is where the modes now come from; the
+  host's `pip` resolving `requirements.txt` into a hand-made venv; the
+  `~/.ssh/known_hosts` entry working as the pin, with no `DEPLOY_HOST_KEY`
+  anywhere; and `make check` passing on a machine with a network, which cannot
+  be run here at all.
+- **Still unproven, and this is the list that matters now:**
+  - **A production run.** The rehearsal used `--target`, which relaxes the
+    `main`-and-clean-tree gates, and pointed at a staging directory with **no
+    subdomain** — so nothing it wrote was ever served by Apache, and no `curl`
+    check could have been run against it. A run with no `--target`, into
+    `DEPLOY_PATH`, against the tree the historians use, has never happened.
+    `docs/DEPLOY.md` step 10 is that run.
+  - **The `.deploy.lock` directory keeping two deploys apart.** No test can
+    reach it: the lock is taken and released against a temp directory in the
+    suite, and a *real* second deploy arriving mid-`rsync` has never happened.
+  - **`merge-htaccess.sh` meeting a real Directory Privacy password.** The
+    merge ran on the host and Apache read what it wrote, but the live
+    `.htaccess` it read had no password in it to carry across (entry 34).
+- **Why the rest could not be done here:** the stubs are the point. A test that
+  let the real `rsync` or the real `ssh` through would be talking to the network
+  from a sandbox that has none, and against a live shared host if it had one.
+  There is no Apache and no 3.12 interpreter here either (entries 33 and 38),
+  so even a successful ship from the suite would prove nothing about what the
+  host then does with the files.
+- **Close what is left:** `docs/DEPLOY.md` step 10 — `deploy/deploy.sh` with
+  **no** `--target`, from `main` with a clean tree. Its *You should see* list is
+  step 6's and is in the order the script prints, so a deploy that stops
+  part-way says exactly how far it got; the clean-tree gate is the likeliest
+  thing to stop it before it starts. Then step 7's `curl` checks against
+  production, of which **check 6 is the one still open** (entry 38). **The lock
+  is closed by none of that**: nothing in the runbook runs two deploys at once,
+  and the only honest way to see it work is to start a second
+  `deploy/deploy.sh` while the first is inside `make check` and read the
+  refusal.
 
 ---
 

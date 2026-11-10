@@ -16,14 +16,29 @@ measured to actually offer is step 3's table, and the raw output those rows
 were read from is committed in [`tests/`](tests/) with a README that says
 which file is which.
 
-**No step in this file has been run against the real host.** The exception is
-step 3's table: those rows were measured in the host's own terminal and
-browser on 2026-11-08/09. Everything else — every command below, and every
-claim about where this host puts things — was written from the code and the
-workflow in a sandbox with no network. Treat every step as an instruction to
-verify, not a description of what works. Each step says what you should see,
-and what to paste back if you see something else. Where a detail about the
-host is a guess, the text says so.
+**Some of this has now been run against the real host, and the text says
+which.** Three bodies of evidence stand behind it:
+
+- Step 3's table was measured in the host's own terminal and browser on
+  2026-11-08/09.
+- **A production deploy ran to completion on 2026-11-09**, from GitHub Actions,
+  on the one run in nine that reached the host (step 5) — and the author has
+  confirmed that the live site serves and works. That is what proves Apache
+  executes `app.cgi`, that the front controller's rules fire, that cPanel
+  accepted a document root outside `public_html`, that the host's pip 23.2.1
+  installed the exported `requirements.txt`, and that `merge-htaccess.sh`
+  composed an `.htaccess` Apache reads.
+- **`deploy/deploy.sh --target` was rehearsed against the real host on
+  2026-11-10** and succeeded, which is what proves the workstation script's
+  eleven remote operations (step 6).
+
+Everything else — and that is still most of the detail below — was written from
+the code in a sandbox with no network. Treat an unmarked step as an instruction
+to verify, not a description of what works. Each step says what you should see,
+and what to paste back if you see something else. Where a detail about the host
+is a guess, the text says so, and `UNVERIFIED.md` is the ledger of what is
+still open: a **production** run of `deploy/deploy.sh` is not in the list above
+and has never happened.
 
 How it fits together. **You ship from your own machine:** `deploy/deploy.sh`
 (step 5b) runs `make check` — the lint, both test suites and the frontend
@@ -39,10 +54,14 @@ moment `rsync` finishes. Each historian's tour lives outside all of that, in
 
 **A push to `main` no longer deploys**, which is the one structural change
 since this runbook was first written. `.github/workflows/deploy.yml` still
-holds the same sequence and is not stubbed or gutted, but it cannot reach the
-host from GitHub's runners — the host's firewall drops their addresses, which
-step 5 explains and [ADR 0008](decisions/0008-ship-from-a-workstation.md)
-records — so it is kept intact and manual-only for the day that changes.
+holds the same sequence and is not stubbed or gutted, but it reaches the host
+about **one time in nine**: nine runs have got as far as the network, eight
+timed out at TCP 22 and one shipped the whole production deploy. Shipping on a
+merge would therefore be a lottery, and a lottery is worse than nothing here —
+it leaves you unsure whether a merge shipped. On a one-person project a
+deterministic deploy you type beats that, which is the decision step 5
+summarises and [ADR 0008](decisions/0008-ship-from-a-workstation.md) records in
+full. The workflow is kept intact and manual-only.
 `.github/workflows/ci.yml` runs the frontend build, both test suites and the
 lint on every push and every pull request, so the gates still fire on a merge;
 they just do not ship anything. The gates that used to live in the trigger —
@@ -69,6 +88,11 @@ a dynamic route, so it needs both the application installed (steps 3 to 6)
 and the front controller routing `/api` to it (step 7). Do those against a
 staging subdomain, then come back here before doing anything else. On every
 deploy after that, this is the first thing to check.
+
+**Both of those are already true of production**, since the 2026-11-09 deploy
+(step 5) and the live site that followed it — so this can be run against the
+live host today, and nobody has run it. Its answer is the only thing that will
+settle whether place search works here (`UNVERIFIED.md` entry 36).
 
 ```sh
 curl -u USER:PASSWORD https://YOUR-HOST/api/diagnostics/egress
@@ -107,47 +131,49 @@ dead on this host, and its fate is the author's decision (ADR 0006,
 other than the table's "normal" rows appears. In particular: any `error` on an
 Overpass mirror, and any status on `graph.mapillary.com` other than an error.
 
-## 2. On your own machine: run `uv lock` once, with network access
+## 2. On your own machine: the lockfile, which has already been re-locked
 
-`backend/uv.lock` is **stale, and still is after the `a2wsgi` fix.** The
-missing dependency was locked in `f708161`; what is stale now is the Python
-floor. This branch lowered `requires-python` to `>=3.12`, to match the
-3.12.15 the host was measured to have (step 3), and the committed lock still
-records `requires-python = ">=3.13"`. A lock resolved for a higher floor is
-not a lock for this project any more, so:
+**This step is done, and the rest of it is here because the hole it closed can
+re-open.** `backend/uv.lock` used to record
+`requires-python = ">=3.13"` while `pyproject.toml` asked for `>=3.12` — the
+floor was lowered to match the 3.12.15 the host was measured to have (step 3),
+and the lock was not regenerated with it. A lock resolved for a higher floor is
+not a lock for this project, and the symptoms were these:
 
 - `make backend-test` (and `make lint`, `make serve`; everything that goes
-  through a bare `uv run`) sees the mismatch and tries to re-resolve. With no
+  through a bare `uv run`) saw the mismatch and tried to re-resolve. With no
   network that fails. With a network it succeeds but rewrites `uv.lock`,
-  leaving you an uncommitted change you did not ask for. The way to run the
-  tests meanwhile is to opt out of the sync, which is what this branch has
-  been doing:
+  leaving an uncommitted change nobody asked for — which the **next**
+  production deploy's clean-tree gate then refuses (step 6). The way to run the
+  tests meanwhile was to opt out of the sync:
 
   ```sh
   cd backend && uv run --no-sync pytest -q
   ```
 
-- The CI workflow copes: it runs `uv sync`, which re-resolves, on purpose.
-  Its comment explains the earlier, `a2wsgi` version of the staleness rather
-  than this one; the workaround is the same either way. It is working around
-  this, not endorsing it.
+- CI coped by running `uv sync`, which re-resolved on purpose. Its comment
+  explains the earlier, `a2wsgi` version of the staleness rather than the
+  floor; the workaround was the same either way.
 
-Fix it once, on a machine with a network:
+**The committed lock now says `requires-python = ">=3.12"`**, the same as
+`pyproject.toml`, so neither the bare `uv run` nor the bare `uv export` in the
+deploy re-resolves anything. **One half of this step is still outstanding:**
 
 ```sh
-cd backend && uv lock
-git add uv.lock && git commit -m "Re-lock for the 3.12 floor"
+# in .github/workflows/ci.yml and deploy.yml, as their own comments ask
+uv sync --frozen
+uv export --frozen --no-dev --no-hashes --no-emit-project -o requirements.txt
 ```
 
-Once the regenerated lock is committed, change `uv sync` to `uv sync --frozen`
-and add `--frozen` to the `uv export` in the workflow, as the workflow's own
-comment says. Do not do that before the lock is committed or the build breaks.
+Neither workflow passes `--frozen` yet, and neither does the Makefile, so a
+lock that drifts from the floor again drifts silently — which is exactly how
+this started.
 
-**You should see:** `uv lock` finishing without error, and `git diff uv.lock`
-showing `requires-python` changed to `>=3.12`. A resolution that then refuses
-a dependency on 3.12 is a real finding, not a lock problem: stop and report
-it, because the host has no newer interpreter to move to. **Paste back:** the
-error, if it fails.
+**You should see:** `cd backend && uv lock --check` passing, and no `uv.lock`
+in `git status`. If you ever have to re-lock and the resolution then refuses a
+dependency on 3.12, that is a real finding rather than a lock problem: stop and
+report it, because the host has no newer interpreter to move to. **Paste
+back:** the error, if it fails.
 
 ## 3. What the host offers: what was measured, and what is still open
 
@@ -181,24 +207,29 @@ should not be treated as measured. `docs/tests/README.md` describes both
 series and is the only place that tells them apart. Size anything you plan
 against **0.46 s per dynamic request**, not 0.40 s.
 
-**Three questions are still open, and only cPanel can answer them:**
+**Three questions used to be open here, and all three are now answered** — by
+the 2026-11-09 production deploy, which ran over SSH from end to end, and by
+the author's confirmation that the live site serves:
 
-1. **Is SSH enabled on the plan?** cPanel, *Security*, *SSH Access*. The deploy
-   cannot run without it. (The fallback, cPanel Git Version Control with a
-   `.cpanel.yml`, works but requires committing the built frontend; it is not
-   built.)
-2. **Which port does SSH use?** Reclaim has not been confirmed to use 22. If it
-   is not 22, you set the `DEPLOY_PORT` variable in step 5.
-3. **Will cPanel accept `DEPLOY_PATH` as the subdomain's document root?** The
-   document root and the deploy directory **must be the same directory** —
-   that is a contract both `app.cgi` and `.htaccess` depend on, and step 4
-   explains why and what to do if cPanel refuses.
+1. **SSH is enabled on the plan.** The deploy authenticated with the deploy key
+   and ran every remote step. (So the fallback — cPanel Git Version Control
+   with a `.cpanel.yml` — is not needed; it would have required committing the
+   built frontend, and it is not built.)
+2. **The SSH port is 22.** The workflow's reachability step logged TCP 22 open
+   on the run that shipped, and `deploy/deploy.sh` has since connected on the
+   default. `DEPLOY_PORT` stays for the day that changes.
+3. **cPanel accepted `DEPLOY_PATH` as the subdomain's document root**, outside
+   `public_html`. The document root and the deploy directory are the same
+   directory, which is the contract both `app.cgi` and `.htaccess` depend on,
+   and step 4a's nesting fallback was not needed.
 
-Nothing about the Python version is open any more: the floor is `>=3.12`, CI
-pins `3.12`, and `backend/tests/test_versions.py` fails if those two ever
-drift apart. What is *not* proven is that the code runs on 3.12 — only that
-the numbers agree. CI running green on 3.12 is the first evidence; the host is
-the second.
+Nothing about the Python version is open any more, and that now includes the
+part the numbers could not settle. The floor is `>=3.12`, CI pins `3.12`, and
+`backend/tests/test_versions.py` fails if those two ever drift apart — which
+proves consistency, not compatibility. **Compatibility is what the host
+answered:** the 2026-11-09 deploy installed the dependencies with the host's
+pip 23.2.1 and the live site serves, so the application imports and answers
+under this host's own 3.12.15 (`UNVERIFIED.md` entry 37).
 
 **Paste back:** the SSH port, your disk quota if cPanel shows it, and whether
 cPanel let you set the document root where step 4 asks.
@@ -233,6 +264,12 @@ are visible in the files that depend on them:
   slash. Under a subpath every API call would break while the viewer kept
   working, which is the most confusing possible failure.
 
+**On this host cPanel did not refuse** (step 3): the production subdomain's
+document root is the deploy directory itself, outside `public_html`, and the
+2026-11-09 deploy into it served. The rest of this subsection is therefore a
+contingency for a second account or a changed configuration rather than
+something anyone here has had to do.
+
 **If cPanel refuses a document root outside `public_html`** — some
 configurations will only let you point a subdomain at a directory beneath it —
 then put the deploy directory inside it, e.g. `/home/USER/public_html/tours`,
@@ -247,8 +284,9 @@ in the bullet above — `%{DOCUMENT_ROOT}` is `public_html` there, the bundle
 rule misses, and the frontend's leading-slash API calls go to the parent
 domain's root. The password is not the problem (Directory Privacy protects the
 *directory*, so it applies by either route), but confusion is: check which URL
-does what, and give the historians only the subdomain. **Unverified**, like
-everything else here about this host's Apache configuration.
+does what, and give the historians only the subdomain. **Unverified, and moot
+on this host** — the nesting was not needed, so nothing has ever served that
+second URL. It matters again only if some future subdomain has to nest.
 
 ### 4b. The virtualenv, created once, by hand
 
@@ -294,23 +332,32 @@ something improvised.
 
 ## 5. Configure GitHub
 
-**Do this, and know that it is not the path that ships today.** The pipeline
-cannot reach the host. Its *Check the host is reachable* step says so in as
-many words — `Cannot open TCP 22 to DEPLOY_HOST from this runner` — because
-the host's firewall permits your own address and drops GitHub's hosted-runner
-addresses **at the TCP level**: the connection never gets as far as
-authentication, so there is nothing here to fix with a key or a secret. The same
-key, the same user and the same `DEPLOY_HOST` connect from your Mac. Shipping
-therefore happens from your own machine, which is **step 5b** — do that step if
-all you want is a deploy.
+**Do this, and know that it is not the path that ships.** The pipeline reaches
+the host about one time in nine. Nine runs have got as far as the network:
+eight stopped at the *Check the host is reachable* step with
+`Cannot open TCP 22 to DEPLOY_HOST from this runner`, and one — 2026-11-09
+22:15 UTC, the third attempt — found TCP 22 open and ran the whole production
+deploy, every step green. So there is nothing here to fix with a key or a
+secret: the run that got through used these same secrets, and the same key,
+user and `DEPLOY_HOST` connect from your Mac every time. What the pipeline
+cannot give you is an answer you can rely on, and that is why shipping happens
+from your own machine — **step 5b**, which is the step to do if all you want is
+a deploy.
 
-Configure GitHub anyway. `deploy.yml` is kept intact and manual-only, so the day
-Reclaim allowlists a few addresses (asking them is the one thing that would
-bring the pipeline back; see
-[ADR 0008](decisions/0008-ship-from-a-workstation.md)) a deploy is one button
-away rather than an afternoon's archaeology. These secrets are also the
-reference for step 5b's table, which carries the same values under the same
-names.
+Why the odds are what they are is not known, and nine runs cannot tell you
+whether they are moving in either direction;
+[ADR 0008](decisions/0008-ship-from-a-workstation.md) has the table and is
+careful about what it does and does not support. **Do not add a retry loop to
+the workflow:** a runner's egress address is fixed for the job's lifetime
+(run 9 logged it, `20.55.86.178`), so a retry inside the job leaves from the
+same address into the same condition. Re-running the workflow is what draws a
+new address, and that is something you do on purpose.
+
+Configure GitHub anyway. `deploy.yml` is kept intact and manual-only, so a
+`workflow_dispatch` run is one button away rather than an afternoon's
+archaeology — worth a try when you feel like it, and no worse than a timeout
+when it is not your day. These secrets are also the reference for step 5b's
+table, which carries the same values under the same names.
 
 Repository *Settings*, *Secrets and variables*, *Actions*. The two tabs matter.
 
@@ -477,15 +524,42 @@ cannot name in the history is one you cannot reason about later. Rehearsing a
 branch, mid-change, against a directory nobody uses is the whole point of the
 flag, so it relaxes both.
 
-**Do step 2 first if you have not.** `deploy/deploy.sh` delegates the lint, the
-tests and the build to `make check`, which goes through a bare `uv run`, and
-then resolves `requirements.txt` with a bare `uv export`. **Neither carries
-`--frozen`**, so with `uv.lock` still stale either of them fails (no network)
-or re-resolves and rewrites the tracked lockfile (network). The rewrite is the
-one to watch: the clean-tree gate runs *before* both, so the deploy you are
-running now is unaffected, and the **next** production deploy refuses because
-`uv.lock` is modified. The fix is step 2's `uv lock`, committed, not a
-`--target` to get past it.
+**This has now been run once, and it worked.** On 2026-11-10
+`deploy/deploy.sh --target` was rehearsed against the real host: all eleven
+remote operations completed, the `.htaccess` merge ran on the host, the
+only-when-absent `backend/.env` logic ran, the host-side `chmod`s set the
+modes, and `rsync` with no `--chmod` transferred correctly from macOS. Two
+things that rehearsal did **not** establish, both of which matter when you read
+the rest of this step:
+
+- **Its target was a staging directory with no subdomain**, so nothing the
+  script wrote was ever served by Apache, and step 7's `curl` checks cannot be
+  run against a directory no URL reaches. What proves the front controller on
+  this host is the 2026-11-09 production deploy and the live site
+  (`UNVERIFIED.md` entries 33 and 38), not this rehearsal.
+- **A production run of the script has still never happened** — no `--target`,
+  into `DEPLOY_PATH` (`UNVERIFIED.md` entry 41). Step 10 is that run.
+
+**The rehearsal left a real credential in the staging tree.** The script writes
+`backend/.env` when that file is absent, so the rehearsal created it, with the
+live `MAPILLARY_TOKEN` from `deploy/deploy.env` in it; every later deploy to
+that directory leaves it alone, by design. Two consequences. A staging
+directory is **not** a credential-free sandbox and should not be treated as
+one. And **rotating the Mapillary token means editing `backend/.env` in the
+staging tree too** — in every tree the script has ever deployed to, in fact,
+not only production and not only `deploy/deploy.env`.
+
+**Step 2 is done, and this is what it bought.** `deploy/deploy.sh` delegates
+the lint, the tests and the build to `make check`, which goes through a bare
+`uv run`, and then resolves `requirements.txt` with a bare `uv export`.
+**Neither carries `--frozen`**, so while `uv.lock` disagreed with
+`pyproject.toml` either of them would fail (no network) or re-resolve and
+rewrite the tracked lockfile (network) — and a rewritten `uv.lock` is an
+uncommitted change, which the **next** production deploy's clean-tree gate
+refuses. The committed lock now records `requires-python = ">=3.12"`, the floor
+`pyproject.toml` asks for, so neither re-resolves. If `uv.lock` ever turns up in
+`git status` after a deploy, this paragraph is back: re-lock and commit
+(step 2), rather than reaching for `--target` to get past the gate.
 
 **Read step 7 before you press anything.** This deploy copies `.htaccess` to
 the staging directory, so it is the deploy that installs the front controller,
@@ -584,8 +658,11 @@ the script reaches them:
   does nothing: *Manage*, *Authorize* is the second half (step 5).
 - **A connection timeout** — the wrong `DEPLOY_PORT`, or `DEPLOY_HOST` is your
   proxied domain rather than the server (step 5's `DEPLOY_HOST` row). From your
-  own machine this should not be the firewall: the firewall is what stops
-  GitHub's runners, and your address is the one it permits.
+  own machine this has not been seen: the rehearsal connected on 22, and so
+  does step 5b's interactive `ssh`. If it does happen, note that it is the same
+  signature the pipeline hits eight runs in nine (step 5) and nobody knows the
+  cause of those, so **try it again** before concluding anything about your
+  configuration, and paste back both outcomes.
 - **`merge-htaccess.sh: …` and the deploy stops.** It refuses, and changes
   nothing, if the staged copy did not arrive or is empty, or if it cannot read
   the host's live `.htaccess` — because overwriting a file it could not read
@@ -640,7 +717,9 @@ the host instead, by `chmod`: `app.cgi` gets `chmod 755` in its own `ssh` the
 moment it arrives and again in the install step at the end, and `.htaccess`
 needs nothing of its own because `deploy/merge-htaccess.sh` chmods the file 644
 before the atomic `mv` that puts it in place. So what these `ls -l` lines
-verify is that work, not `rsync`'s. The repeat at the end is deliberate: a file
+verify is that work, not `rsync`'s — and the 2026-11-10 rehearsal is where
+those host-side `chmod`s were first seen landing the modes on a real host. The
+repeat at the end is deliberate: a file
 already on the host with the wrong mode — an older deploy, or a hand-edit
 through the file manager — is not something `rsync` would ever repair. Either
 mode costs you the whole tree: an `app.cgi` Apache cannot execute, and an
@@ -713,8 +792,20 @@ event.
 headers are all exercised locally. The rule *order* in `.htaccess` is covered
 by `backend/tests/test_htaccess.py`, which reads the file as text. **What
 neither can prove is that Apache does any of it**, because there is no Apache
-in the development environment. The `curl` checks below are the only evidence
-that the rewrites work; the whole front controller rests on them.
+in the development environment.
+
+**Apache has since done it.** The 2026-11-09 production deploy put this file on
+the host, and the author has confirmed the live site: the bundle is served,
+`/api` is routed to `app.cgi`, and a deep link falls through to `index.html` —
+which is rules 1, 2 and 3 and the guard rule in front of them, all firing. The
+front controller no longer rests on reasoning alone. Two things still do, and
+they are why the checks below are worth running anyway:
+
+- **Check 6**, that `backend/.env` is not reachable by URL. Nobody has run it,
+  and it is the one with a credential at stake (`UNVERIFIED.md` entry 38).
+- **The same six checks on any *new* subdomain.** What Apache permits is
+  per-directory configuration, so a staging subdomain, or a second production
+  one later, is a fresh question rather than a formality.
 
 Run them from your own machine, before Directory Privacy (step 8), so no
 credentials are needed. **In this order**, because each one narrows what a
@@ -879,6 +970,13 @@ and nothing below applies.
    while removing the password is the defect this replaced. The behaviour is
    pinned by `backend/tests/test_merge_htaccess.py`.
 
+   **The merge itself has now run on the host twice** — in the 2026-11-09
+   production deploy and in the 2026-11-10 rehearsal — and composed an
+   `.htaccess` that Apache then read, which the live site is the proof of. What
+   has never happened is the merge meeting a **real Directory Privacy
+   password**, so the check below is still the first evidence that a password
+   survives a deploy.
+
    So this is a check to run **once**, after the first deploy that follows
    this step — not after every deploy, which is what this runbook used to ask
    for:
@@ -931,20 +1029,39 @@ own `.venv` (step 4b) before the first deploy, or *Install dependencies* stops;
 and the front controller's `curl` checks (step 7) are worth repeating there,
 because the two subdomains could differ in what Apache permits.
 
+**Most of step 4 is already done for production.** The subdomain exists, its
+document root is the deploy directory outside `public_html`, the `.venv` is
+there and populated, and the tree is serving — all of it from the 2026-11-09
+deploy that the pipeline got through (step 5). What has never happened is
+`deploy/deploy.sh` shipping into that tree, which is what the rest of this step
+is about.
+
 Merge to `main`, check out `main` with a clean tree, and run
 `deploy/deploy.sh` with **no** `--target`: that is what deploys to
 `DEPLOY_PATH`, and the two gates it stops relaxing are exactly the ones that
 make a production deploy nameable afterwards. Nothing happens on the push
-itself (step 5). Once it has printed `shipped to`:
+itself (step 5).
+
+**A production run refuses while the working tree is dirty**, and that is the
+likeliest way the first one stops before it starts. With no `--target` the
+script requires `main` *and* an empty `git status --porcelain` — any
+uncommitted change counts, including a **deletion** of a tracked file, a change
+you meant to commit later, and an untracked file that is not gitignored. It
+quotes what it found and ships nothing. Commit it, stash it, or gitignore it;
+`--target` is not the answer here, because relaxing that gate is precisely what
+makes a production deploy impossible to name in the history afterwards.
+
+Once it has printed `shipped to`:
 
 1. `https://HOST/api/health` answers `{"status":"ok"}`, and the six checks in
    step 7 pass against production.
 2. Run step 1 again against production.
 3. The three Directory Privacy checks in step 8 still give `401`, `401`,
    `200`. This is not a formality: the deploy you just ran rewrote
-   `.htaccess`, which may be where the password lives — it is meant to carry
-   the password across, and production is the first place that has ever been
-   true of.
+   `.htaccess`, which may be where the password lives. The merge has run on
+   this host before, but never with a real password in the file it read
+   (step 8, `UNVERIFIED.md` entry 34), so this is the first time that part of
+   it is actually being tested.
 4. In a browser, sign in with the shared password and open `https://HOST/`. **You
    should see** the welcome screen, with *Old Town Fairfax* under "Open an
    example". Open it. You should land in the editor with six stops, and a
@@ -1006,6 +1123,12 @@ every later deploy. The trade: **a rotated Mapillary token does not
 propagate.** Updating the `MAPILLARY_TOKEN` secret changes nothing on an
 existing host; edit the token in the host's `.env` by hand. (The file is
 created with mode 600.) To re-bootstrap, delete the host's `.env` and deploy.
+
+**Every deploy target has its own `backend/.env`, and the staging tree now has
+one.** The 2026-11-10 rehearsal created it there, with the live token in it
+(step 6), so a rotation is an edit in each tree the script has ever shipped to
+— production and staging both — and a staging directory holds a real credential
+even though nothing serves it.
 
 ## Where sessions live, and how to back them up
 
@@ -1167,13 +1290,16 @@ Lowering `MAX_SESSION_MEDIA_BYTES` is the first remedy.
 - **The subdomain's document root must be the deploy directory**, and the
   virtualenv must be at `$DEPLOY_PATH/.venv` (step 4). Neither is a guess
   about the host — both are contracts `app.cgi` and `.htaccess` depend on —
-  but whether cPanel will let you *set* that document root is unconfirmed, and
-  if it will not, the deploy directory moves inside `public_html` (step 4a).
+  and cPanel accepted that document root, outside `public_html` (step 3). The
+  fallback that nests the deploy directory inside `public_html` (step 4a)
+  stands for a configuration that refuses, which this one did not.
 - **`Options +ExecCGI` must be permitted in `.htaccess`.** It needs
-  `AllowOverride Options`, which is cPanel's usual setting but is not
-  confirmed here. If the host refuses it, the right answer is to ask for it:
-  without ExecCGI and the `.cgi` handler, Apache serves `app.cgi` as text and
-  publishes the one file that names the venv.
+  `AllowOverride Options`, which is cPanel's usual setting, and this host
+  permits it: the 2026-11-09 deploy's `.htaccess` was accepted and `app.cgi`
+  executed. It is still a requirement to re-check on a new subdomain or a new
+  account, because it is per-directory configuration. If a host refuses it, the
+  right answer is to ask for it: without ExecCGI and the `.cgi` handler, Apache
+  serves `app.cgi` as text and publishes the one file that names the venv.
 - **Every dynamic request pays a process start: 0.35–0.46 s**, measured on
   this host (step 3, which says what was and was not measured). Autosave,
   session polling and each media fetch pay it.
@@ -1195,23 +1321,27 @@ Lowering `MAX_SESSION_MEDIA_BYTES` is the first remedy.
   something to publish for the sake of a tidy route table. They still work in
   development, at `http://localhost:8000/docs`, which is where they are
   useful.
-- **The SSH port must be confirmed** (step 3). The workflow defaults to 22.
+- **The SSH port is 22** (step 3), confirmed by the deploy that shipped and by
+  the rehearsal. `DEPLOY_PORT` defaults to it.
 - **The Python floor is 3.12** — `requires-python = ">=3.12"`, CI pins
-  `3.12`, the host measures 3.12.15 — but **that the code runs on 3.12 is
-  unproven.** It was checked by reading (no syntax or stdlib newer than 3.9 is
-  used) and cannot be built here. CI on 3.12 is the first proof; the host is
-  the second.
-- **`uv.lock` is stale** until you run `uv lock` (step 2): it still records
-  `requires-python = ">=3.13"` while `pyproject.toml` says `>=3.12`. Until
-  then `make backend-test` fails on a machine with no network — the tests run
-  with `cd backend && uv run --no-sync pytest -q` instead — and CI re-resolves
-  the whole dependency set on every run.
-- **The CGI path has never run on the host, and nor has the pipeline.** The
-  bridge itself is now tested in development (`backend/tests/test_cgi.py`, and
-  `test_htaccess.py` for the rule order), so what is untested is specifically
-  the part that needs Apache: that the rewrites fire, that CGI is permitted,
-  and that the deploy's SSH half works at all. Steps 6 and 7 are where that
-  changes.
+  `3.12`, the host measures 3.12.15 — and **the code does run on it**: the
+  2026-11-09 deploy installed the dependencies with the host's pip and the live
+  site serves, so the application imports and answers under the host's own
+  3.12.15. The earlier reading-only check (no syntax or stdlib newer than 3.9)
+  is no longer the only evidence.
+- **`uv.lock` matches the 3.12 floor now** — step 2's re-lock is committed, so
+  the lock and `pyproject.toml` both say `>=3.12`, `make backend-test` works
+  offline again, and CI's `uv sync` installs from the lock instead of
+  re-resolving. What is still outstanding from step 2 is the `--frozen` half:
+  no workflow and no Makefile target passes it, so the next time the floor
+  moves the lock can drift again as quietly as it did before.
+- **A *production* run of `deploy/deploy.sh` has never happened** — that is the
+  path which ships from now on (steps 6 and 10, `UNVERIFIED.md` entry 41). Its
+  only run against the host is the 2026-11-10 rehearsal, into a staging
+  directory with no subdomain, so nothing it wrote was ever served. The CGI
+  path itself *has* run on the host: the 2026-11-09 production deploy shipped
+  it from GitHub Actions on the one run in nine that reached the host, the
+  rewrites fire and CGI is permitted (step 7).
 - **Directory Privacy survives a deploy by being re-read, not by being
   version-controlled** (step 8). The deploy greps the host's live `.htaccess`
   for `Auth*` and for `Require valid-user`, `Require user` and `Require group`,
@@ -1232,8 +1362,10 @@ Lowering `MAX_SESSION_MEDIA_BYTES` is the first remedy.
   - **Directives in an `Include`d file are not seen at all.** The script reads
     only the one file it is given. If that is where the password lives, the
     deploy neither keeps it nor needs to.
-  - **None of it has run on the host yet,** so step 8's one-off check after the
-    first deploy is the first evidence that any of it works.
+  - **The merge has run on the host and produced an `.htaccess` Apache
+    reads** — in the 2026-11-09 deploy and the 2026-11-10 rehearsal — but it
+    has **never met a real Directory Privacy password**, so step 8's one-off
+    check is still the first evidence that the password survives a deploy.
 - **The recorder has never run in a real browser,** and ships that way by the
   author's decision; historians are told where to report a failure.
 - **Whether a browser may call `graph.mapillary.com` directly** is unproven

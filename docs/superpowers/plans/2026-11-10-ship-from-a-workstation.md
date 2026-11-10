@@ -1,8 +1,22 @@
 # Ship From a Workstation Implementation Plan
 
+> **Correction, 2026-11-10 (after this plan was executed).** This plan was
+> written on the belief that Reclaim's firewall drops GitHub's runner
+> addresses, and says so in its Goal, its Architecture note, Task 3 and the
+> commit messages it dictates. **That belief was wrong**, and the plan is left
+> as written because it is a record of what was planned rather than a statement
+> of fact. What was measured afterwards: of nine runs that reached the network,
+> one — the third, on 2026-11-09 — found TCP 22 open and performed a full
+> production deploy, so hosted runners *can* reach this host, about one time in
+> nine, for reasons nobody has established. The decision still stands, on
+> better grounds: a deterministic manual deploy is worth more than a lottery on
+> a solo project. ADR
+> [0008](../../decisions/0008-ship-from-a-workstation.md) is the current
+> record; read it rather than this plan's framing.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move the *shipping* half of the deploy off GitHub Actions and onto the author's own machine, because Reclaim's firewall drops GitHub's runner addresses, while keeping every gate and every ordering property the CI pipeline already had.
+**Goal:** Move the *shipping* half of the deploy off GitHub Actions and onto the author's own machine, because Reclaim's firewall drops GitHub's runner addresses [**wrong, see the correction above**: CI reaches the host about one time in nine, and the reason is determinism rather than reachability], while keeping every gate and every ordering property the CI pipeline already had.
 
 **Architecture:** `.github/workflows/deploy.yml` keeps all of its logic but loses its `push` trigger, so it is manual-only and ready for the day the firewall opens. A new `deploy/deploy.sh` reproduces its ship half — the same rsync order, the same excludes, the same modes, the same `.htaccess` merge, the same stdin-fed `.env`, the same remote install — reading its configuration from a gitignored `deploy/deploy.env` instead of GitHub secrets, and delegating lint/test/build to the existing `make check` so the Makefile's pinned Node still applies. A new `.github/workflows/ci.yml` keeps build-and-test running on every push, so `main` is not permanently red.
 
@@ -393,7 +407,9 @@ the script's refusals (loose config mode, missing variable, dirty tree, not on
 
 - [ ] **Step 4: Write ADR 0008**
 
-Title: *ship from a workstation, because the host drops the runners*. The
+Title: *ship from a workstation, because the host drops the runners* [the ADR
+was written under this title and has since been retitled and re-argued; see the
+correction at the top of this plan]. The
 forces: Reclaim's firewall permits the author's address and drops GitHub's
 hosted runners at the TCP level, confirmed by the same key and the same
 `DEPLOY_HOST` succeeding from a Mac and timing out from a runner. The

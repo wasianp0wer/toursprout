@@ -1,4 +1,4 @@
-# 0008 — Ship from a workstation, because the host drops the runners
+# 0008 — Ship from a workstation, because one deploy in nine is not a deploy
 
 Status: accepted, 2026-11-10.
 
@@ -20,35 +20,101 @@ The runbook for it is `docs/DEPLOY.md`, steps 5b and 6.
 
 ## Problem
 
-`.github/workflows/deploy.yml` was written, reviewed and never able to run.
-Reclaim's firewall **permits the author's own address and drops GitHub's
-hosted-runner addresses at the TCP level**: the connection is not refused and
-not authenticated, it is dropped, so nothing in the pipeline can diagnose it
-beyond a timeout.
+`.github/workflows/deploy.yml` was written, reviewed, and **reaches the host
+about one time in nine.**
 
-The two observations that pin it, which are worth recording because neither is
-reproducible from this repository:
+Nine runs have got as far as the network. Eight timed out at TCP 22; one
+shipped.
+
+| # | When (UTC) | Result |
+| --- | --- | --- |
+| 1 | 2026-11-09 21:44 | `ssh: connect to host *** port 22: Connection timed out` |
+| 2 | 2026-11-09 22:02 | the same |
+| 3 | **2026-11-09 22:15** | **TCP 22 open — a full production deploy, every step succeeded** |
+| 4 | 2026-11-10 05:43 | timed out |
+| 5 | 2026-11-10 13:36 | timed out |
+| 6 | 2026-11-10 16:29 | timed out |
+| 7 | 2026-11-10 16:33 | timed out |
+| 8 | 2026-11-10 16:46 | timed out |
+| 9 | 2026-11-10 17:07 | timed out, with the runner's own egress address logged at last: `20.55.86.178` |
+
+**The success was the third attempt, not the first**, and that ordering carries
+more weight than the ratio does. The natural reading of one success followed by
+six failures is that the successful deploy changed something on the host —
+tripped a protection, exhausted something, taught a firewall an address it then
+stopped trusting. Runs 1 and 2 rule that out: the same timeout, with the same
+signature, was already happening before anything had ever shipped. Whatever the
+cause is, it predates the deploy that worked.
+
+**Nine samples give no power to detect a change in the rate, and this record
+does not claim one.** Nov 9 was 1 of 3 and Nov 10 is 0 of 6, which is nowhere
+near significant — and the same arithmetic forbids the opposite claim, so the
+odds are not known to be stable either. "About one in nine" is the whole
+record's figure, not a property of the host.
+
+What run 9 added is the runner's own address, which nothing had been recording:
+`20.55.86.178`, Microsoft Azure, inside GitHub's published Actions range
+`20.55.0.0/17`. So the runner was where GitHub says its runners are, and none
+of the eight timeouts is a DNS mistake, a wrong port, a wrong key or a wrong
+secret — run 3 authenticated and shipped with the same ones.
+
+Two consequences, because both are tempting and neither works:
+
+- **An allowlist is not a practical ask of a shared host.** GitHub publishes
+  **8,350** Actions ranges at `api.github.com/meta`, and documents that the
+  list is not to be used as a firewall allowlist. The number is the argument;
+  no adjective improves on it.
+- **Retrying inside a job cannot help.** A runner's egress address is fixed for
+  the job's lifetime, so a retry loop around the `ssh` step retries the same
+  address against the same condition. Only a fresh run draws a new address,
+  which is a re-run button rather than a retry.
+
+### What we believed at first, and what measurement showed
+
+This record first said that Reclaim's firewall permits the author's own address
+and drops GitHub's hosted-runner addresses at the TCP level. That was a
+reasonable inference from the two observations available at the time, and both
+observations still stand:
 
 - The same key, the same user and the same `DEPLOY_HOST` succeed from the
   author's Mac.
   `ssh -i ~/.ssh/clio_deploy -o IdentitiesOnly=yes USER@area51.reclaimhosting.com 'hostname -f; pwd'`
   lands in `/home/USER`.
 - The workflow's *Check the host is reachable* step — added to tell a DNS
-  mistake apart from a network one — reports
+  mistake apart from a network one — reported
   `Cannot open TCP 22 to DEPLOY_HOST from this runner`, after resolving the
   host correctly.
 
-So the failure is neither a secret nor a host key nor a port. `DEPLOY_HOST` is
-the **server**, `area51.reclaimhosting.com` → `143.110.219.49`; the author's own
-domain is Cloudflare-proxied and times out on 22, which is a different mistake
-the runbook already covers (step 5's `DEPLOY_HOST` row). Both addresses were
-checked. What is left is the firewall, and a shared host's firewall is not ours
-to change.
+**The inference was too strong, and run 3 is what broke it.** A rule that drops
+those addresses cannot also let a hosted runner open TCP 22 and complete a
+production deploy. What has been measured is a failure *rate* with an unknown
+cause, not a rule: a TCP-level timeout looks identical whether it comes from a
+firewall, a rate limit, a reputation list, a shared host's connection cap or a
+bad route, and only Reclaim can see which. `DEPLOY_HOST` is the **server**,
+`area51.reclaimhosting.com` → `143.110.219.49`; the author's own domain is
+Cloudflare-proxied and times out on 22, which is a different mistake the
+runbook already covers (step 5's `DEPLOY_HOST` row). Both addresses were
+checked.
 
-The decision is therefore not "how do we fix the pipeline" but "what ships the
-code, given that the one machine which can reach the host is a laptop."
+The decision is therefore not "how do we fix the pipeline", and no longer "what
+ships the code, given that nothing in CI can reach the host" — CI
+demonstrably can, sometimes. It is "what should shipping feel like, when the
+automatic path works one time in nine."
 
 ## Decision
+
+Decided 2026-11-10, and the reason is the author's own: **CI reaches the host
+roughly one time in nine, and for a solo-developer project a deterministic
+manual deploy is worth more than a lottery.** A deploy-on-push that half-works
+is worse than no deploy-on-push at all. After every merge you would have to go
+and find out whether the code shipped; and once you are checking by hand, you
+may as well ship by hand and read the result. One person, one machine, one
+command, one answer on the screen.
+
+Reachability is the measurement. Determinism is the reason, and the two are
+worth keeping apart: a host that answered every time would not by itself
+reverse this decision (see *The thing that would reverse this*), and a host
+that answered half the time would make it stronger rather than weaker.
 
 ### 1. The ship half moves to `deploy/deploy.sh`, run by hand
 
@@ -137,14 +203,17 @@ which, because at 11pm they look identical.
 ### 4. `deploy.yml` is kept intact, manual-only, and CI is split out of it
 
 The workflow loses its `push` trigger and nothing else. Not a step, not a
-comment, not the *Check the host is reachable* step that diagnosed this in the
-first place. It is the only executable record of what the ship sequence is, it
-is where the sequence will go back to living if the firewall opens, and a
-half-deleted workflow would be worth neither.
+comment, not the *Check the host is reachable* step that measured this in the
+first place — and which, on run 3, is the step that said `TCP 22 open`. It is
+the only executable record of what the ship sequence is, it is where the
+sequence would go back to living if this project ever wants an automatic deploy
+again, and a half-deleted workflow would be worth neither. It is also still
+usable: a `workflow_dispatch` run is worth a try whenever you want one, and
+costs a timeout when it is not your day.
 
 But a workflow that no longer runs on a push takes the build and the tests with
-it, and `main` going permanently un-gated is not an acceptable price for a
-firewall rule. So `.github/workflows/ci.yml` carries the build-and-test half:
+it, and `main` going permanently un-gated is not an acceptable price for
+shipping by hand. So `.github/workflows/ci.yml` carries the build-and-test half:
 `on: [push, pull_request]`, Node 24, `npm ci`, `ng build`, `ng test`, Python
 3.12, `uv sync`, `ruff`, `pytest`. It **references no secret and no repository
 variable anywhere**, which is what makes its `pull_request` trigger safe, and
@@ -166,12 +235,30 @@ covered without anyone remembering.
 
 **Allowlisting GitHub's runner ranges on the host.** The ranges are published,
 at `api.github.com/meta`, and that is where the idea dies rather than where it
-starts: it is thousands of Azure CIDRs which rotate, GitHub documents that it
-is not to be used as a firewall allowlist, and no shared host is going to take
-a list that needs re-pasting whenever Azure moves. The supported way to get a
-stable egress address is a **larger runner** with static IP ranges, which
-requires **GitHub Enterprise Cloud**. For a six-historian PhD project that is
-not a trade-off, it is a different budget.
+starts: **8,350 of them**, Azure CIDRs which rotate, and GitHub documents that
+the list is not to be used as a firewall allowlist. No shared host is going to
+take a list of 8,350 ranges that needs re-pasting whenever Azure moves, and
+asking for a few addresses instead asks for the wrong thing — the address a run
+draws is not ours to choose, as run 9's `20.55.86.178` shows. The supported way
+to get a stable egress address is a **larger runner** with static IP ranges,
+which requires **GitHub Enterprise Cloud**. For a six-historian PhD project
+that is not a trade-off, it is a different budget.
+
+**A retry loop around the `ssh` step, to play the one-in-nine odds inside one
+run.** It cannot work, and the reason is worth knowing before anyone writes it:
+a runner's egress address is fixed for the job's lifetime, so every retry
+leaves from the same address into the same condition. A loop would turn a
+two-minute failure into a twenty-minute one and ship nothing. Re-running the
+workflow is the only thing that draws a new address, and that is a button, not
+a loop.
+
+**Keeping the `push` trigger and living with the failures.** This is the
+alternative the decision above is actually chosen against, and it is not
+absurd: one merge in nine would ship for free. It loses on the thing the
+decision names — after a merge you would not know whether the code was live
+without going to look, and a red deploy on every second or third push is a
+signal that teaches you to ignore signals. One deploy you typed beats nine
+notifications you have learned to dismiss.
 
 **A self-hosted runner on the author's Mac.** This genuinely works — the
 firewall would see the home address, which is the address it permits — and it
@@ -224,28 +311,50 @@ check. Rejected for the same reason the previous branch rejected it.
 
 ## The thing that would reverse this
 
-**Ask Reclaim to allowlist a few addresses.** It is a support request, not a
-project, and it is worth sending: if they permit even a small set of addresses
-for port 22, `deploy.yml` is sitting there intact and the pipeline resumes with
-a single edit to its `on:` block. Nothing in this record is built to be
-permanent, and nothing here is blocked on the answer — the script ships today
-either way, which is why the request is a line in the runbook rather than a
-dependency.
+**Not a firewall change, because the firewall story is not the reason any
+more.** Even a host that answered every time would leave the question the
+decision actually turns on: would a failed deploy be impossible to miss, and is
+there anyone but the author to miss it? So two things together would reverse
+this, and either alone would not:
+
+1. **A path from CI that is reliable enough to trust without checking** — which
+   means knowing why eight runs in nine time out, and having that fixed by
+   whoever can see it, not inferred from here.
+2. **More than one person shipping**, at which point "someone types the
+   command" stops being a plan and the cost of an unnoticed non-deploy goes up.
+
+`deploy.yml` is kept intact for exactly that day: the pipeline resumes with a
+single edit to its `on:` block, and nothing in this record is built to be
+permanent. Asking Reclaim what the timeouts are is still worth doing — it is a
+support request, not a project — but it is a line in the runbook rather than a
+dependency, and the answer would inform point 1 rather than settle it.
 
 ## What is not known
 
-- **`deploy/deploy.sh` has never run against the host** (`UNVERIFIED.md` entry
-  41). Its tests prove the orderings and the refusals against stubs; rsync's
-  real behaviour, the host's `pip`, Apache's reading of the modes and the merge
-  against a real `.htaccess` are all out of a stub's reach. The first real run
-  is `docs/DEPLOY.md` step 6's rehearsal against staging.
-- **Whether the firewall rule is what we think it is.** "Permits the author's
-  address, drops GitHub's" is an inference from two observations, both of which
-  are recorded above. A rule keyed on something else — a rate limit, a
-  geo-block, a reputation list — would look identical from here, and only
-  Reclaim can say.
-- **Everything 0007 left open stays open**, and this record closes none of it:
-  the front controller has still never been read by Apache, the CGI path has
-  still never run on the host, and the `.htaccess` merge has still never met a
-  real Directory Privacy password. Moving which machine runs `rsync` does not
-  touch any of that.
+- **A *production* run of `deploy/deploy.sh`** (`UNVERIFIED.md` entry 41). The
+  script has run against the real host once, as `docs/DEPLOY.md` step 6's
+  rehearsal on 2026-11-10: all eleven remote operations completed, the
+  `.htaccess` merge ran on the host, the only-when-absent `backend/.env` logic
+  ran, the host-side `chmod`s set the modes, and `rsync` with no `--chmod`
+  transferred correctly from macOS. But that target was a staging **directory
+  with no subdomain**, so nothing the script wrote was ever served by Apache,
+  and the run that ships to the historians has not happened yet.
+- **Whether the `.deploy.lock` directory keeps two real deploys apart.** The
+  suite takes and releases it against a temp directory; a second
+  `deploy/deploy.sh` arriving while the first is mid-`rsync` has never
+  happened.
+- **Why eight runs in nine time out.** The earlier answer — a firewall keyed on
+  the address — is ruled out by run 3 and is not replaced by another: a rate
+  limit, a connection cap, a reputation list or a bad route would all look
+  identical from here, and only Reclaim can see which. Nor is the *rate* known
+  to be anything but the ratio of nine runs; see *Problem*.
+- **What 0007 left open is now partly closed, and the rest of it is still
+  open.** The 2026-11-09 production deploy, plus the author's confirmation that
+  the live site serves and works, closed the big ones: Apache executes
+  `app.cgi`, the front controller's rules fire, cPanel accepted a document root
+  outside `public_html`, the host's pip 23.2.1 installed the exported
+  `requirements.txt`, and `merge-htaccess.sh` composed an `.htaccess` Apache
+  reads. What is still open is the merge meeting a **real Directory Privacy
+  password**, `index.html`'s missing `no-cache` header on the host
+  (`UNVERIFIED.md` entry 40), and CGI under the load of several historians at
+  once. Moving which machine runs `rsync` touched none of that either way.
