@@ -84,6 +84,8 @@ export class EditMapPane {
         .addTo(map);
     }
     this.layers.addTo(map);
+    // A new stop starts where the author is looking, so the store has to know.
+    map.on('moveend', () => this.publishCenter());
     this.map = map;
     this.mountedStopId = null;
   }
@@ -132,7 +134,15 @@ export class EditMapPane {
       this.mountedStopId = stop.id;
       const focus = fix ?? selected?.anchor ?? stop.overlays[0]?.anchor ?? stop.location;
       map.setView([focus.lat, focus.lng], 19);
+      // An animated setView reports moveend only once it lands; until then
+      // a new stop would start at the previous stop's place.
+      this.store.setMapCenter({ lng: focus.lng, lat: focus.lat });
     }
+  }
+
+  private publishCenter(): void {
+    const c = this.map?.getCenter();
+    if (c) this.store.setMapCenter({ lng: c.lng, lat: c.lat });
   }
 
   private overlayMarker(o: Overlay, selected: boolean): void {

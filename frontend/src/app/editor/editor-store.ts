@@ -38,6 +38,18 @@ export class EditorStore {
     this._panoramaPosition.set(pos);
   }
 
+  private readonly _mapCenter = signal<{ lng: number; lat: number } | null>(null);
+
+  /**
+   * Where the edit map is looking, or null until it has been shown. The map
+   * pane publishes it; a new stop starts there, because the author has just
+   * panned to the place they mean to add. Never part of the document.
+   */
+  readonly mapCenter = this._mapCenter.asReadonly();
+  setMapCenter(c: { lng: number; lat: number } | null): void {
+    this._mapCenter.set(c);
+  }
+
   private readonly _pendingDefaults = signal<{ creator: string; license: string } | null>(null);
 
   /**
@@ -129,6 +141,8 @@ export class EditorStore {
     this._undoStack.set([]);
     this._manualHeadings.set(new Set());
     this._pendingDefaults.set(null);
+    // Where one tour's map was looking says nothing about the next tour.
+    this._mapCenter.set(null);
     // Keyed by imageId, so a stale fix is already ignored for another
     // panorama; cleared anyway, because with no tour open there is no
     // camera standing anywhere.

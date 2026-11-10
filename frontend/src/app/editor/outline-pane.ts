@@ -49,7 +49,7 @@ export class OutlinePane implements OnDestroy {
     [...(this.store.draft()?.stops ?? [])].sort((a, b) => a.order - b.order));
 
   protected addStop(): void {
-    this.store.apply((t) => addStop(t, 'New stop'));
+    this.store.apply((t) => addStop(t, 'New stop', this.store.mapCenter()));
     if (this.store.lastError()) return;
     const stops = this.store.draft()!.stops;
     this.store.select(stops[stops.length - 1].id);

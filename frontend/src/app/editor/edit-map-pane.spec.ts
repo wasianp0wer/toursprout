@@ -7,6 +7,7 @@ import { bearingBetween, distanceBetween } from '../core/geo';
 import { rotationHandleAt } from './footprint';
 import { deriveOverlayHeading } from './document-ops';
 import type { Overlay } from '../core/tour.models';
+import type { Map as LeafletMap } from 'leaflet';
 
 /**
  * Leaflet runs in jsdom, which has no layout: every pixel is 0 and a map has
@@ -199,6 +200,20 @@ describe('EditMapPane', () => {
     const a = anchorOf('o1');
     const viaBuilding = bearingBetween(a, STOP_LOC);
     expect(Math.abs(headingOf('o1') - viaBuilding)).toBeGreaterThan(5);
+  });
+
+  /** The pane's Leaflet map, which it keeps private: these tests need to move it as an author would. */
+  const leaflet = () => (fixture.componentInstance as unknown as { map: LeafletMap }).map;
+
+  it('tells the store where the map is looking, once placed and after every move', async () => {
+    await start([note()], null);
+    // Placed on the panorama position, since this stop has one.
+    expect(store.mapCenter()!.lng).toBeCloseTo(PANO.lng, 6);
+    expect(store.mapCenter()!.lat).toBeCloseTo(PANO.lat, 6);
+
+    leaflet().setView([38.9, -77.2], 19, { animate: false });
+    const c = leaflet().getCenter();
+    expect(store.mapCenter()).toEqual({ lng: c.lng, lat: c.lat });
   });
 
   it('tears the map down with the component', async () => {

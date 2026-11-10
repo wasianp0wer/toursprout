@@ -56,6 +56,12 @@ describe('OutlinePane', () => {
     expect(store.selectedStop()?.order).toBe(3);
   });
 
+  it('adds a stop where the map is looking', () => {
+    store.setMapCenter({ lng: -77.3, lat: 38.8 });
+    click('[data-add-stop]');
+    expect(store.selectedStop()?.location).toEqual({ lng: -77.3, lat: 38.8 });
+  });
+
   it('adds a text overlay to the selected stop', () => {
     expect((q('[data-add-overlay]') as HTMLButtonElement).disabled).toBe(true);
     store.select('a');

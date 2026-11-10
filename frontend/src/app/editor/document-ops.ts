@@ -77,15 +77,16 @@ export function renumberStops(stops: Stop[]): Stop[] {
   return stops.map((s, i) => ({ ...s, order: i + 1 }));
 }
 
-export function addStop(tour: Tour, title: string): Tour {
+export function addStop(tour: Tour, title: string, at?: { lng: number; lat: number } | null): Tour {
   const id = uniqueId(slugify(title), allIds(tour));
   const last = tour.stops[tour.stops.length - 1];
   const stop: Stop = {
     id, order: tour.stops.length + 1, title,
     summary: PLACEHOLDER_SUMMARY,
-    // Start where the previous stop is: an author adds the next stop near the
-    // last one far more often than at the origin, and (0, 0) is in the ocean.
-    location: last ? { ...last.location } : { lng: 0, lat: 0 },
+    // Start where the author is looking (`at`, the map's centre) when known.
+    // Otherwise where the previous stop is: an author adds the next stop near
+    // the last one far more often than at the origin, and (0, 0) is in the ocean.
+    location: at ? { lng: at.lng, lat: at.lat } : last ? { ...last.location } : { lng: 0, lat: 0 },
     osmRef: null,
     panorama: last
       ? { ...last.panorama }

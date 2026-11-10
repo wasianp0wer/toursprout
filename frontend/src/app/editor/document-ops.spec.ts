@@ -42,6 +42,14 @@ describe('stop ordering', () => {
     expect(out.stops[2].id).toBe('a-new-place');
   });
 
+  it('adds a stop where it is told to, when told', () => {
+    const t = tour([stop('s1', 1, [], { location: { lng: 1, lat: 2 } })]);
+    expect(addStop(t, 'New stop', { lng: -77.3, lat: 38.8 }).stops[1].location).toEqual({ lng: -77.3, lat: 38.8 });
+    // Without a place to start, the old rule: where the previous stop is.
+    expect(addStop(t, 'New stop').stops[1].location).toEqual({ lng: 1, lat: 2 });
+    expect(addStop(t, 'New stop', null).stops[1].location).toEqual({ lng: 1, lat: 2 });
+  });
+
   it('moves a stop and renumbers', () => {
     const out = moveStop(tour([stop('a', 1), stop('b', 2), stop('c', 3)]), 'c', -1);
     expect(out.stops.map((s) => s.id)).toEqual(['a', 'c', 'b']);

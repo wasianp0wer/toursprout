@@ -161,6 +161,15 @@ describe('EditorStore', () => {
     expect(store.manualHeadings().size).toBe(0);
   });
 
+  it('forgets where the map was looking when another tour is loaded', () => {
+    store.load(tour());
+    expect(store.mapCenter()).toBeNull();
+    store.setMapCenter({ lng: -77.3, lat: 38.8 });
+    expect(store.mapCenter()).toEqual({ lng: -77.3, lat: 38.8 });
+    store.load(tour());
+    expect(store.mapCenter()).toBeNull();
+  });
+
   it('forgets a pending defaults answer when another tour is loaded', () => {
     store.load(tour());
     store.setPendingDefaults({ creator: 'Ada', license: 'CC0' });
