@@ -778,8 +778,11 @@ into it.*
     tree a **second URL under the parent domain**, where `%{DOCUMENT_ROOT}`
     is the parent's and rule 2's `-f` test therefore does not resolve. What
     that second URL serves has not been reasoned through, let alone tested.
-  The first run should be a rehearsal against a staging path
-  (`workflow_dispatch` with a `target`).
+  The first run should be a rehearsal against a staging path —
+  `deploy/deploy.sh --target /home/USER/tours-staging` from the author's own
+  machine, since entry 41 below explains why the pipeline no longer ships
+  (`workflow_dispatch` with a `target` is still the equivalent, if the host
+  ever permits GitHub's runners again).
 - **Also unproven: that a deploy does not remove the shared password.** This
   branch introduced the risk — the old pipeline shipped no `.htaccess`, and
   this one ships the file cPanel's Directory Privacy writes into — and
