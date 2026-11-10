@@ -1003,6 +1003,51 @@ fixed, and the reasoning for not fixing it is below.*
   then it is a step-7-style change: add it, `curl` the site at once, and keep
   `mv .htaccess .htaccess.broken` on screen first.
 
+## 41. `deploy/deploy.sh` — the thing that now ships, which has never shipped
+
+*Added 2026-11-10 with ADR
+[0008](decisions/0008-ship-from-a-workstation.md). Shipping moved off GitHub
+Actions and onto the author's own machine, because the host's firewall drops
+GitHub's runner addresses. Entry 34 above still describes the pipeline, which is
+intact, manual-only and still unrun; this entry is about the script that ships
+instead. Nothing in 34's host-side list is closed by this one — the same rsyncs
+reach the same host in the same order, from a different machine.*
+
+- **Proven here, and it is worth being precise about how little that is:**
+  `backend/tests/test_deploy_script.py` drives the real script with `ssh`,
+  `rsync`, `make`, `uv` and `git` replaced by stubs on `PATH` that log their own
+  argv. So what is proven is the script's control flow and the arguments it
+  builds: that `.htaccess` is staged and merged before `app.cgi`, before
+  `backend/`, before `content/` and before the `.env` write; that no rsync
+  carries `--delete`; that `--chmod=F644` and `--chmod=F755` are on the two
+  files Apache reads; that the token never reaches an argv; that `make check`
+  runs before the first remote command; that `--target` reaches **every**
+  remote path; that each refusal logged no `ssh` and no `rsync`; and that the
+  first failing remote command is the last thing in the log.
+- **Unproven: that the deploy works.** None of the above is evidence about
+  anything outside the script. Not reachable from a stub, and so not claimed:
+  `rsync`'s real behaviour and its exit codes; whether `--chmod` lands the modes
+  Apache needs on files it creates; the host's `pip` resolving
+  `requirements.txt` into the hand-made venv; `merge-htaccess.sh` meeting a real
+  `.htaccess` with a real Directory Privacy password in it; whether the author's
+  `~/.ssh/known_hosts` entry is enough of a pin in practice, now that there is
+  no `DEPLOY_HOST_KEY` to compare against; and whether `make check` passes at
+  all on a machine with a network, which it cannot here (`uv.lock` is stale —
+  `docs/DEPLOY.md` step 2 — so a bare `uv run` re-resolves, and the rewrite it
+  leaves behind is what the **next** production deploy's clean-tree gate
+  refuses).
+- **Why not here:** the stubs are the point. A test that let the real `rsync` or
+  the real `ssh` through would be talking to the network from a sandbox that has
+  none, and against a live shared host if it had one. There is no Apache and no
+  3.12 interpreter here either (entries 33 and 38), so even a successful ship
+  would prove nothing about what the host then does with the files.
+- **Close it:** `docs/DEPLOY.md` step 6 — `deploy/deploy.sh --target
+  /home/USER/tours-staging` — which is the first time this script will have run
+  against anything. Its *You should see* list is in the order the script
+  prints, so a deploy that stops part-way says exactly how far it got. Then step
+  7's `curl` checks, which are what close entries 33 and 38; a clean ship with a
+  500 tree behind it is a different finding, not this one.
+
 ---
 
 ## Not on this list, deliberately
