@@ -166,8 +166,61 @@ else
 fi
 flush
 
-# shellcheck source=/dev/null
-. "$CONFIG"
+# The config file is READ, not EXECUTED.
+#
+# This was `. "$CONFIG"`, which parsed every value as shell. A Mapillary token
+# is `MLY|<id>|<secret>`, so bash read the first value anyone types as a
+# PIPELINE and tried to run its halves as commands -- `28880946681596088:
+# command not found` -- leaving MAPILLARY_TOKEN set to `MLY`. That failure was
+# certain, not unlucky: every token has two pipes in it. A backtick would have
+# executed, a `$NAME` substituted, a `;` or `&&` run what followed, a `#`
+# truncated the rest, and a trailing backslash swallowed the next line. The
+# quietest of those writes a silently wrong token into backend/.env on the host
+# and reports a successful deploy.
+#
+# So: NAME=VALUE lines, one layer of matching quotes stripped, the value
+# literal either way. Quoting is optional, which is what a person writing a
+# config file expects. Two things are refused rather than ignored -- a line
+# that is not a setting, and a name this script does not use -- because
+# ignoring them turns a mistyped `DEPLOY_PTAH` into "DEPLOY_PATH is empty or
+# absent" twenty lines later, and because `PATH=...` in a sourced file would
+# have quietly replaced this script's own PATH.
+config_lineno=0
+while IFS= read -r config_line || [ -n "$config_line" ]; do
+  config_lineno=$((config_lineno + 1))
+  # Left-trim, so an indented comment is still a comment.
+  config_stripped=${config_line#"${config_line%%[![:space:]]*}"}
+  case "$config_stripped" in
+    '' | '#'*) continue ;;
+  esac
+  case "$config_stripped" in
+    [A-Za-z_]*=*) : ;;
+    *)
+      note "$CONFIG line $config_lineno is neither a comment nor NAME=value: $config_line"
+      continue
+      ;;
+  esac
+  config_name=${config_stripped%%=*}
+  config_value=${config_stripped#*=}
+  case "$config_name" in
+    DEPLOY_HOST | DEPLOY_USER | DEPLOY_PATH | MAPILLARY_TOKEN | SSH_KEY | DEPLOY_PORT) : ;;
+    *)
+      note "$CONFIG line $config_lineno sets $config_name, which this script does not use. The names it reads are DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH, MAPILLARY_TOKEN, SSH_KEY and DEPLOY_PORT; check for a typo."
+      continue
+      ;;
+  esac
+  # One layer of matching quotes, if the value is wrapped in them.
+  case "$config_value" in
+    \'*\') config_value=${config_value#\'}; config_value=${config_value%\'} ;;
+    \"*\") config_value=${config_value#\"}; config_value=${config_value%\"} ;;
+  esac
+  # `\$config_value` and not the value's text: eval expands the NAME on the
+  # left and the variable REFERENCE on the right, so the content is assigned
+  # without being parsed. config_name is checked against the list above, so
+  # nothing else can reach the left-hand side.
+  eval "$config_name=\$config_value"
+done < "$CONFIG"
+flush
 
 # ---- Refusals: the values --------------------------------------------------
 # Named one by one. "The configuration is incomplete" against a file with six

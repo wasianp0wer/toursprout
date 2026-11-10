@@ -173,7 +173,7 @@ def run_deploy(tmp_path):
     }
 
     def _run(args=(), config_set=None, config_mode=0o600, config_path=None, stat_impl=None,
-             symlink=False, **env):
+             symlink=False, config_quote="'", **env):
         if stat_impl is not None:
             stub = bin_dir / "stat"
             stub.write_text(stat_impl)
@@ -198,8 +198,9 @@ def run_deploy(tmp_path):
             # to refuse -- `DEPLOY_HOST=a b` is not a value with a space in
             # it, it is a command named `b` with DEPLOY_HOST in its
             # environment.
+            q = config_quote
             path.write_text(
-                "".join(f"{k}='{v}'\n" for k, v in values.items() if v is not None)
+                "".join(f"{k}={q}{v}{q}\n" for k, v in values.items() if v is not None)
             )
             path.chmod(config_mode)
             if symlink:
@@ -950,3 +951,74 @@ def test_the_shipped_example_config_assigns_exactly_what_the_script_reads(run_de
     config.chmod(0o600)
     result, log = run_deploy(config_path=config)
     assert_refused(result, log, "DEPLOY_HOST")
+
+
+# A real Mapillary token's shape. The `|` separators are not an edge case
+# someone has to go looking for -- every token has two of them, so this is the
+# first value anybody types into the config file.
+MAPILLARY_SHAPED = "MLY|1234567890123456|0f1e2d3c4b5a69780f1e2d3c4b5a6978"
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        MAPILLARY_SHAPED,
+        "tok`id`end",
+        "tok$HOME end",
+        "tok;echo pwned",
+        "tok&&echo pwned",
+        'tok"quoted"end',
+        "tok\\backslash",
+        "tok with spaces",
+        "tok#hash",
+    ],
+    ids=["pipes", "backtick", "dollar", "semicolon", "andand", "dquote", "backslash",
+         "spaces", "hash"],
+)
+def test_an_unquoted_token_is_taken_literally(run_deploy, token):
+    """The config file is read, not executed.
+
+    It used to be `. "$CONFIG"`, which means every value was parsed as shell.
+    A Mapillary token is `MLY|<id>|<secret>`, so bash read it as a PIPELINE and
+    tried to run the two halves as commands -- `28880946681596088: command not
+    found` -- and the deploy went on with MAPILLARY_TOKEN set to `MLY`. That is
+    the first value anyone enters, so the failure was certain rather than
+    unlucky. A backtick would have executed, a `$NAME` substituted, a `;` or
+    `&&` run whatever followed, and a `#` truncated the rest; the quietest of
+    those writes a silently wrong token into backend/.env and reports success.
+
+    Quotes in the file are now optional and the value is literal either way,
+    which is what a person writing a config file expects.
+    """
+    run = run_deploy(config_set={"MAPILLARY_TOKEN": token}, config_quote="")
+
+    assert run.result.returncode == 0, f"{run.result.stdout}\n{run.result.stderr}"
+    written = [text for text in run.stdins if text.startswith("MAPILLARY_TOKEN=")]
+    assert written == [f"MAPILLARY_TOKEN={token}\n"], (
+        f"the token reached the host mangled: {written!r}"
+    )
+
+
+@pytest.mark.parametrize("quoting", ["'", '"', ""], ids=["single", "double", "none"])
+def test_the_three_ways_a_person_writes_a_value_all_work(run_deploy, quoting):
+    """One layer of matching quotes is stripped, and no quoting is fine too."""
+    run = run_deploy(config_set={"MAPILLARY_TOKEN": MAPILLARY_SHAPED}, config_quote=quoting)
+
+    assert run.result.returncode == 0, run.result.stderr
+    assert [t for t in run.stdins if t.startswith("MAPILLARY_TOKEN=")] == [
+        f"MAPILLARY_TOKEN={MAPILLARY_SHAPED}\n"
+    ]
+
+
+def test_a_line_that_is_not_a_setting_is_refused(run_deploy, tmp_path):
+    """A stray word used to be a command the config file ran. Now it is a
+    refusal that names the line, because silently ignoring it is how a
+    mistyped variable name becomes "DEPLOY_PATH is empty"."""
+    path = tmp_path / "broken.env"
+    path.write_text(
+        "DEPLOY_HOST='host.example'\nthis is not a setting\nDEPLOY_USER='deployer'\n"
+    )
+    path.chmod(0o600)
+    result, log = run_deploy(config_path=path)
+
+    assert_refused(result, log, "this is not a setting")
