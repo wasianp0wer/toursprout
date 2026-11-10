@@ -30,6 +30,14 @@
 # Tested in backend/tests/test_deploy_script.py, which is the only thing that
 # will ever run this script before a live host does.
 
+# `pipefail` earns its place on one line of this script -- the .env write,
+# where printf is upstream of ssh. ssh's own failure is caught by `set -e`
+# without it, because ssh is last in the pipeline; what pipefail adds is the
+# case where printf fails because the remote end did not read, which would
+# otherwise be a deploy that reported success and wrote no token. The tests
+# cannot reach that case (it is a SIGPIPE race on a 30-byte write), so it rests
+# on this flag and on the remote command's `cat > /dev/null` rather than on a
+# test.
 set -euo pipefail
 
 # $0's directory, not `git rev-parse --show-toplevel`: this script shells out
@@ -67,13 +75,123 @@ done
 # slashes that decide what rsync copies read the same in both files.
 cd "$REPO_ROOT"
 
+# Every refusal below happens before the first remote command, so a refusal has
+# never done anything. They are collected rather than raised one at a time:
+# fixing one thing, rerunning the whole `make check`, and only then being told
+# about the second is the kind of gate that gets worked around.
+#
+# The prefix is load-bearing for the tests: `set -e` tripping over a missing
+# `source` and `set -u` saying `unbound variable` are also non-zero exits with
+# a path on stderr, and neither is a message anyone can act on.
+PROBLEMS=()
+note() {
+  PROBLEMS+=("$1")
+}
+flush() {
+  if [ "${#PROBLEMS[@]}" -gt 0 ]; then
+    for problem in "${PROBLEMS[@]}"; do
+      echo "deploy.sh refuses: $problem" >&2
+    done
+    exit 1
+  fi
+}
+
+# ---- Refusals: the config file itself --------------------------------------
+if [ ! -f "$CONFIG" ]; then
+  note "there is no config file at $CONFIG. Copy deploy/deploy.env.example to deploy/deploy.env, fill it in, and chmod 600 it."
+  flush
+fi
+
+# The file holds MAPILLARY_TOKEN, so a mode anything else can read is refused.
+#
+# `stat` has no portable spelling: BSD/macOS wants -f '%Lp', GNU wants
+# -c '%a'. Each is tried in its own command substitution and the ANSWER IS
+# VALIDATED, rather than the obvious `stat -f ... || stat -c ...` inside one
+# substitution: GNU's -f takes no format argument, so it reads '%Lp' as a
+# filename, prints the real file's filesystem block on stdout and THEN fails,
+# and a single substitution would hand that block and the second command's
+# output back as one string. `8#` on that is an arithmetic error, not a mode,
+# so the shape of the bug is the script dying with `unbound variable` on Linux
+# -- or, with one `|| echo ""` in the wrong place, deciding the mode is unknown
+# and carrying on.
+read_config_mode() {
+  local candidate
+  for flags in "-f %Lp" "-c %a"; do
+    # Unquoted on purpose: the two words are two arguments.
+    # shellcheck disable=SC2086
+    candidate=$(stat $flags "$1" 2>/dev/null) || continue
+    case "$candidate" in
+      [0-7][0-7][0-7] | [0-7][0-7][0-7][0-7]) printf '%s\n' "$candidate"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
+if mode=$(read_config_mode "$CONFIG"); then
+  if [ $((8#$mode & 8#77)) -ne 0 ]; then
+    note "$CONFIG is mode $mode, so its MAPILLARY_TOKEN is readable beyond its owner. chmod 600 $CONFIG"
+  fi
+else
+  note "cannot read the mode of $CONFIG: neither 'stat -f %Lp' (BSD) nor 'stat -c %a' (GNU) gave one, so whether the token is readable by others is unknown, and unknown is not the same as fine."
+fi
+flush
+
 # shellcheck source=/dev/null
 . "$CONFIG"
+
+# ---- Refusals: the values --------------------------------------------------
+# Named one by one. "The configuration is incomplete" against a file with six
+# variables in it is a guessing game. `${!name:-}` rather than `${!name}`
+# because an ABSENT variable and an EMPTY one are the same mistake, and only
+# the second survives `set -u` long enough to be reported.
+for name in DEPLOY_HOST DEPLOY_USER DEPLOY_PATH MAPILLARY_TOKEN; do
+  if [ -z "${!name:-}" ]; then
+    note "$name is empty or absent in $CONFIG, and it has no default."
+  fi
+done
+flush
 
 DEPLOY_PORT=${DEPLOY_PORT:-22}
 SSH_KEY=${SSH_KEY:-$HOME/.ssh/clio_deploy}
 DEPLOY_DIR=${TARGET:-$DEPLOY_PATH}
 SSH_DEST="$DEPLOY_USER@$DEPLOY_HOST"
+
+# Whitespace in any of the five values that end up inside rsync's --rsh string
+# or beside it. See the RSH comment below: that string is split on whitespace
+# by rsync itself, so a space cannot be quoted through it, only refused. The
+# deploy directory is in the list because it is the one of the five that can
+# come from --target rather than from the config file.
+for name in DEPLOY_HOST DEPLOY_USER DEPLOY_PORT SSH_KEY DEPLOY_DIR; do
+  case "${!name}" in
+    *[[:space:]]*)
+      note "$name contains whitespace ('${!name}'), which rsync's --rsh string cannot carry: it is split on spaces by rsync, so a value with a space in it changes which arguments ssh gets rather than failing."
+      ;;
+  esac
+done
+
+# ---- Refusals: the production gates ----------------------------------------
+# Only for a production deploy. Rehearsing a branch, or a working tree in the
+# middle of something, against a staging directory is what --target is for, so
+# it relaxes both -- which is also why these live here rather than in a push
+# trigger, where "rehearse this branch" could not be expressed.
+if [ -z "$TARGET" ]; then
+  # Plain assignments, not `if git ...; then`: under `set -e` an assignment
+  # from a command substitution still fails the script, where the same command
+  # as an `if` condition would have its failure swallowed and be read as
+  # "clean" or "on main".
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  if [ "$branch" != main ]; then
+    note "production deploys run from main, and this checkout is on '$branch'. Use --target DIR to rehearse a branch against a staging directory."
+  fi
+  # rsync ships the WORKING TREE, not the commit, so an uncommitted change
+  # reaches the host with nothing in the history to say what is running there.
+  dirty=$(git status --porcelain)
+  if [ -n "$dirty" ]; then
+    note "the working tree has uncommitted changes, and rsync ships the tree rather than the commit:
+$dirty"
+  fi
+fi
+flush
 
 # One place the ssh options are written, for both ssh and rsync.
 #
@@ -196,22 +314,32 @@ printf 'MAPILLARY_TOKEN=%s\n' "$MAPILLARY_TOKEN" \
 # Nothing is restarted. There is no resident process to restart: Apache
 # executes app.cgi fresh on every request, so new files are live the moment
 # rsync finishes.
-ssh "${SSH_OPTS[@]}" "$SSH_DEST" "bash -s" <<REMOTE
+#
+# The workflow interpolated $DEPLOY_DIR into this heredoc. Here it is passed as
+# `bash -s`'s positional argument and the heredoc is QUOTED, for two reasons.
+# One: a quoted heredoc expands nothing, so there is no escaping to get right
+# and no way for a local variable to leak into the remote script. Two -- the
+# one that earns the difference from the workflow -- the directory is then in
+# an argv rather than on stdin, which is the only place a test can see it; this
+# is the one remote step that writes nothing by rsync, so a `--target` that
+# failed to reach it would pip-install into production's venv and chmod
+# production's files during a "rehearsal", invisibly.
+ssh "${SSH_OPTS[@]}" "$SSH_DEST" "bash -s '$DEPLOY_DIR'" <<'REMOTE'
 set -euo pipefail
-DIR='$DEPLOY_DIR'
-VENV="\$DIR/.venv"
-if [ ! -x "\$VENV/bin/python" ]; then
-  echo "No interpreter at \$VENV/bin/python. Create the virtualenv once, by hand, as described in docs/DEPLOY.md step 4; the deploy installs into it but never creates it." >&2
+DIR=$1
+VENV="$DIR/.venv"
+if [ ! -x "$VENV/bin/python" ]; then
+  echo "No interpreter at $VENV/bin/python. Create the virtualenv once, by hand, as described in docs/DEPLOY.md step 4; the deploy installs into it but never creates it." >&2
   exit 1
 fi
-"\$VENV/bin/pip" install -r "\$DIR/backend/requirements.txt"
+"$VENV/bin/pip" install -r "$DIR/backend/requirements.txt"
 # NOT redundant with the --chmod flags above: --chmod only applies to files
 # rsync CREATES, so a file already on the host with the wrong mode (an earlier
 # deploy without --chmod, or a hand-edit through the file manager) would never
 # be repaired. Either one costs the whole tree: an app.cgi Apache cannot
 # execute and an .htaccess it cannot read are both 500 on every URL.
-chmod 755 "\$DIR/app.cgi"
-chmod 644 "\$DIR/.htaccess"
+chmod 755 "$DIR/app.cgi"
+chmod 644 "$DIR/.htaccess"
 REMOTE
 
 echo "deploy.sh: shipped to $SSH_DEST:$DEPLOY_DIR"

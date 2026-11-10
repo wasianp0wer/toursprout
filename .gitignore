@@ -4,6 +4,13 @@
 node_modules/
 backend/.env
 backend/*.db
+# deploy/deploy.sh's configuration: it holds MAPILLARY_TOKEN, the same reason
+# backend/.env is above it. deploy/deploy.env.example is the committed one.
+deploy/deploy.env
+# Resolved from uv.lock by the deploy and installed on the host by pip; it is
+# a build artefact, and an untracked one left in the tree would make the
+# deploy's own clean-tree gate refuse every run after the first.
+backend/requirements.txt
 __pycache__/
 .pytest_cache/
 frontend/.angular/
