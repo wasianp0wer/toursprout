@@ -759,6 +759,17 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=exc.status, detail=exc.message) from exc
         return {"places": found}
 
+    @app.post("/api/tools/geocode", dependencies=[Depends(_reject_cross_site)])
+    def tool_geocode(body: tools.GeocodeRequest) -> dict:
+        # The throttle stamp lives in the sessions directory: the one place
+        # every CGI process of this deployment can already write.
+        try:
+            with _tool_client(tools.NOMINATIM_TIMEOUT) as c:
+                found = tools.geocode(c, body.query, stamp_dir=cfg.sessions_dir)
+        except tools.ToolError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
+        return {"results": found}
+
     @app.get("/api/session/export")
     def export_bundle(session: CurrentSession) -> Response:
         if not session.is_open:

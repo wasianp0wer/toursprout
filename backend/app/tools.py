@@ -15,10 +15,13 @@ timeout, so a hung upstream cannot hang the editor.
 from __future__ import annotations
 
 import math
+import os
 import time
+from pathlib import Path
+from typing import Annotated
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 UA = "clio-wired-prototype/0.1 (graduates@rrchnm.org)"
 
@@ -43,6 +46,20 @@ EGRESS_TIMEOUT = 8.0
 # Adjust against your own network.
 OVERPASS_TIMEOUT = 45.0
 OVERPASS_BUDGET = 45.0
+
+# Nominatim's usage policy: an identifying User-Agent (UA above) and at most
+# one request per second. A lookup is one author pressing a button, so 10 s
+# is generous; it only bounds a hung upstream.
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_TIMEOUT = 10.0
+NOMINATIM_INTERVAL = 1.0
+NOMINATIM_LIMIT = 5
+NOMINATIM_STAMP = ".last-nominatim"
+
+# Seams, so tests move a fake clock instead of sleeping. Wall clock, not
+# monotonic: the stamp outlives the process (see `_wait_for_nominatim`).
+_now = time.time
+_sleep = time.sleep
 
 # Churches dominate the Overpass result but are not this tour's subject.
 EXCLUDE_KINDS = {"place_of_worship"}
@@ -136,6 +153,84 @@ def find_places(client: httpx.Client, lng: float, lat: float, radius_m: float,
     return places
 
 
+# --- geocode (Nominatim) -----------------------------------------------------
+
+def _wait_for_nominatim(stamp_dir: Path) -> None:
+    """Keep this deployment to one Nominatim request per second.
+
+    On a FILE, not in memory, for the reason `sessions.sweep_due` gives:
+    under CGI each request is a fresh process, so an in-memory timestamp is
+    always unset and would throttle nothing. The stamp's mtime is the time
+    of the last call. A stamp dated in the future (a clock that stepped)
+    reads as idle rather than stalling every lookup for the skew, and an
+    unreadable or unwritable stamp does not block the lookup: the author
+    pressed a button, and the policy limit is about sustained load.
+
+    Two processes landing in the same instant can both read an old stamp.
+    That is accepted: it takes two authors in the same second, and the
+    alternative is a lock that a killed CGI process could leave held.
+    """
+    stamp = stamp_dir / NOMINATIM_STAMP
+    now = _now()
+    try:
+        age = now - stamp.stat().st_mtime
+    except OSError:
+        age = None
+    if age is not None and 0 <= age < NOMINATIM_INTERVAL:
+        wait = NOMINATIM_INTERVAL - age
+        _sleep(wait)
+        now += wait
+    try:
+        stamp_dir.mkdir(parents=True, exist_ok=True)
+        stamp.touch(exist_ok=True)
+        os.utime(stamp, (now, now))
+    except OSError:
+        pass
+
+
+def _coordinate(value, limit: float) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) and -limit <= number <= limit else None
+
+
+def geocode(client: httpx.Client, query: str, *, stamp_dir: Path) -> list[dict]:
+    """Up to five places matching an address or place name, best first, via
+    OSM Nominatim. Entries without usable coordinates are dropped rather
+    than failing the lookup: the rest are still worth offering."""
+    _wait_for_nominatim(stamp_dir)
+    try:
+        resp = client.get(NOMINATIM_URL, timeout=NOMINATIM_TIMEOUT, params={
+            "q": query, "format": "jsonv2", "limit": NOMINATIM_LIMIT})
+        if resp.status_code >= 400:
+            raise ToolError(502, f"the address lookup failed: HTTP {resp.status_code}")
+        data = resp.json()
+    except ValueError:
+        raise ToolError(502, "the address lookup failed: not JSON") from None
+    except httpx.HTTPError as exc:
+        raise ToolError(502, f"the address lookup failed: {_describe(exc)}") from exc
+    if not isinstance(data, list):
+        raise ToolError(502, "the address lookup failed: unexpected response")
+
+    results = []
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        lat = _coordinate(row.get("lat"), 90)
+        lng = _coordinate(row.get("lon"), 180)
+        if lat is None or lng is None:
+            continue
+        osm_type, osm_id = row.get("osm_type"), row.get("osm_id")
+        results.append({
+            "name": str(row.get("display_name") or row.get("name") or query),
+            "lng": lng, "lat": lat,
+            "osmRef": f"{osm_type}/{osm_id}" if osm_type and osm_id is not None else None,
+        })
+    return results[:NOMINATIM_LIMIT]
+
+
 # --- request bodies ------------------------------------------------------------
 
 class _Point(BaseModel):
@@ -146,3 +241,7 @@ class _Point(BaseModel):
 class PlacesRequest(_Point):
     radiusM: float = Field(default=400, gt=0, le=3000)
     name: str | None = Field(default=None, max_length=200)
+
+
+class GeocodeRequest(BaseModel):
+    query: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
