@@ -56,6 +56,8 @@ export class EditMapPane {
   private tiles: TileLayer | null = null;
   private readonly layers = new LayerGroup();
   private mountedStopId: string | null = null;
+  /** The current stop's location as last painted, so an edit to it can be told from any other repaint. */
+  private paintedLocation: { lng: number; lat: number } | null = null;
 
   protected fixed = () => panoramaFixForStop(this.store.currentStop(), this.store.panoramaPosition());
 
@@ -117,6 +119,13 @@ export class EditMapPane {
       ).addTo(this.layers), 'data-view-wedge');
     }
 
+    // The building, drawn so typing its lat/lng shows somewhere. Only a
+    // marker: it is never the camera and never a bearing reference.
+    this.tag(new Marker([stop.location.lat, stop.location.lng], {
+      icon: new DivIcon({ className: 'stop-location', iconSize: [16, 16], iconAnchor: [8, 8] }),
+      interactive: false, keyboard: false,
+    }).addTo(this.layers), 'data-stop-location');
+
     for (const o of stop.overlays) this.overlayMarker(o, o.id === selected?.id);
 
     if (selected && selected.display.mode === 'inWorld') {
@@ -129,7 +138,13 @@ export class EditMapPane {
     }
 
     // Re-centre only when the stop changes, not after every edit, or the map
-    // would snap back under the author's hand mid-drag.
+    // would snap back under the author's hand mid-drag. The one edit that
+    // moves the view is to the stop's own location: typed lat/lng, or a
+    // searched address, should be shown, and no drag on this map changes it.
+    const loc = stop.location;
+    const moved = this.paintedLocation !== null
+      && (this.paintedLocation.lng !== loc.lng || this.paintedLocation.lat !== loc.lat);
+    this.paintedLocation = { lng: loc.lng, lat: loc.lat };
     if (this.mountedStopId !== stop.id) {
       this.mountedStopId = stop.id;
       const focus = fix ?? selected?.anchor ?? stop.overlays[0]?.anchor ?? stop.location;
@@ -137,6 +152,8 @@ export class EditMapPane {
       // An animated setView reports moveend only once it lands; until then
       // a new stop would start at the previous stop's place.
       this.store.setMapCenter({ lng: focus.lng, lat: focus.lat });
+    } else if (moved) {
+      map.panTo([loc.lat, loc.lng]);
     }
   }
 

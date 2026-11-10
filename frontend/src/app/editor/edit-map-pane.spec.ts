@@ -1,13 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { EditMapPane } from './edit-map-pane';
 import { EditorStore } from './editor-store';
 import { overlay, stop, tour } from './test-builders';
 import { bearingBetween, distanceBetween } from '../core/geo';
 import { rotationHandleAt } from './footprint';
-import { deriveOverlayHeading } from './document-ops';
+import { deriveOverlayHeading, setOverlayAnchor, setStopLocation } from './document-ops';
 import type { Overlay } from '../core/tour.models';
-import type { Map as LeafletMap } from 'leaflet';
+import { Marker, type Map as LeafletMap } from 'leaflet';
 
 /**
  * Leaflet runs in jsdom, which has no layout: every pixel is 0 and a map has
@@ -214,6 +214,51 @@ describe('EditMapPane', () => {
     leaflet().setView([38.9, -77.2], 19, { animate: false });
     const c = leaflet().getCenter();
     expect(store.mapCenter()).toEqual({ lng: c.lng, lat: c.lat });
+  });
+
+  /** The Leaflet marker whose element carries `attr`, so its position can be read without layout. */
+  const markerTagged = (attr: string, value?: string): Marker | undefined => {
+    let found: Marker | undefined;
+    leaflet().eachLayer((l) => {
+      const e = l instanceof Marker ? l.getElement() : undefined;
+      if (e?.hasAttribute(attr) && (value === undefined || e.getAttribute(attr) === value)) found = l as Marker;
+    });
+    return found;
+  };
+
+  it("draws the stop's location as a marker that cannot be dragged", async () => {
+    await start([note()], null);
+    const m = markerTagged('data-stop-location')!;
+    expect(m).toBeTruthy();
+    expect(m.getLatLng()).toMatchObject({ lat: STOP_LOC.lat, lng: STOP_LOC.lng });
+    expect(m.options.draggable).toBeFalsy();
+  });
+
+  it("follows the stop's location when it is edited", async () => {
+    await start([note()], null);
+    const panTo = vi.spyOn(leaflet(), 'panTo');
+    store.apply((t) => setStopLocation(t, 's1', -77.31, 38.85));
+    await settle();
+    expect(markerTagged('data-stop-location')!.getLatLng()).toMatchObject({ lat: 38.85, lng: -77.31 });
+    expect(panTo).toHaveBeenCalledTimes(1);
+    expect(panTo.mock.calls[0][0]).toEqual([38.85, -77.31]);
+  });
+
+  it('holds the view still while an overlay is dragged', async () => {
+    await start([inWorld(), note()], 'o1');
+    const setView = vi.spyOn(leaflet(), 'setView');
+    const panTo = vi.spyOn(leaflet(), 'panTo');
+    await drag(q('[data-overlay-marker="o2"]')!, 60, 0);
+    expect(anchorOf('o2').lng).toBeGreaterThan(-77.3063); // the drag did land
+    expect(setView).not.toHaveBeenCalled();
+    expect(panTo).not.toHaveBeenCalled();
+  });
+
+  it("moves an overlay's marker when its lat and lng are typed", async () => {
+    await start([note()], 'o2');
+    store.apply((t) => setOverlayAnchor(t, 'o2', { lng: -77.305, lat: 38.846 }));
+    await settle();
+    expect(markerTagged('data-overlay-marker', 'o2')!.getLatLng()).toMatchObject({ lat: 38.846, lng: -77.305 });
   });
 
   it('tears the map down with the component', async () => {
