@@ -459,3 +459,5 @@ rewritten (ADR 0004). Caution: `stops.json` has drifted from the hand-tuned comm
 | [0004](decisions/0004-media-comes-in-by-content-and-tools-wrap-the-scripts.md) | Why the client never names a file, and why the scripts became endpoints. |
 | [0005](decisions/0005-schema-v3-locks-the-document.md) | Why v3 is three tightenings and a migration registry, and what AR, theming and Omeka still need to decide. |
 | [0006](decisions/0006-host-it-one-session-per-browser.md) | Why the application is hosted rather than packaged, why there is one session per browser, and what moved off the server because the host cannot reach it. |
+| [0007](decisions/0007-serve-it-through-cgi.md) | Why the application runs as CGI behind an Apache front controller rather than under Passenger, and what the front controller's rule order is protecting. |
+| [0008](decisions/0008-ship-from-a-workstation.md) | Why deploys are run by hand from a workstation rather than on push, and what the measurements showed about reaching the host from CI. |

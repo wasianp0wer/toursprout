@@ -38,8 +38,9 @@ arguments it builds, which is what a transcription gets wrong.
 
 Nothing here claims the deploy works. rsync's behaviour, Apache's reading of
 the modes, the host's Python, the merge on a real `.htaccess` -- none of that is
-in reach of a stub, and `docs/UNVERIFIED.md` says so. The first real run is the
-runbook's rehearsal against a staging directory.
+in reach of a stub, and `docs/UNVERIFIED.md` says so. The runbook's rehearsal
+against a staging directory did run, on 2026-11-10, and worked; a PRODUCTION
+run of this script has still never happened.
 """
 
 from __future__ import annotations
