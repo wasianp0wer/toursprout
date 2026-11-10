@@ -1,0 +1,79 @@
+name: CI
+
+# Build, lint and test, and nothing else. This workflow references no secret
+# and no repository variable anywhere, and that is deliberate rather than
+# incidental: it is what makes a `pull_request` trigger safe here, where
+# deploy.yml -- which holds the SSH key and the host's secrets -- is triggered
+# by hand and by nothing else.
+#
+# The split exists because shipping no longer happens on a runner: the host
+# drops GitHub's hosted-runner addresses, so deploy.yml is manual-only and
+# `deploy/deploy.sh` ships from a workstation. These gates are still wanted on
+# every push and every pull request, so they run here instead.
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- 1. Frontend build -------------------------------------------------
+      # Node 24 is pinned explicitly: Angular 22 rejects Node 25.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Build the frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npx ng build
+      # Frontend tests (vitest + jsdom, no browser needed). `ng build` alone
+      # passes with broken behaviour, so the build is not the gate; this is.
+      - name: Test the frontend
+        working-directory: frontend
+        run: npx ng test --watch=false
+
+      # ---- 2. Backend lint and tests -----------------------------------------
+      # Python 3.12: the host's interpreter measured at 3.12.15, and
+      # backend/pyproject.toml says `requires-python = ">=3.12"`. Testing on
+      # the version the host runs is the whole value of the pin here; the place
+      # it is load-bearing for an artefact is deploy.yml, which resolves
+      # requirements.txt on its own copy of this pin and installs it into a venv
+      # built from the host's interpreter. backend/tests/test_versions.py checks
+      # that pin against the floor, so if the host's minor version changes,
+      # change the floor, deploy.yml and this file together.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # uv comes from PyPI rather than a third-party action. In deploy.yml the
+      # reason is that the job goes on to hold the SSH key; here nothing secret
+      # is in reach, and it is kept only so the two files set the backend up
+      # identically -- a CI job that stands in for the deploy's gates is worth
+      # less the more it differs from them.
+      - name: Install uv
+        run: python -m pip install uv
+
+      # ---- 3. Resolve dependencies -------------------------------------------
+      # `uv sync` (not `--frozen`, not `uv lock --check`) because uv.lock is
+      # known to be STALE: pyproject.toml names a2wsgi but the lockfile was not
+      # regenerated (no network where it was written). Re-resolving is what makes
+      # this work. Once a regenerated uv.lock is committed, `--frozen` is the
+      # better choice here and on deploy.yml's export; do not switch before then
+      # or the build breaks.
+      #
+      # No `uv export` step: requirements.txt is an artefact only the ship half
+      # consumes, so it is produced in deploy.yml beside the rsync that sends it.
+      - name: Resolve dependencies
+        working-directory: backend
+        run: uv sync
+      - name: Lint
+        working-directory: backend
+        run: uv run ruff check app tests ../content/scripts
+      - name: Test
+        working-directory: backend
+        run: uv run pytest -q

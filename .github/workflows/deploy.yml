@@ -1,12 +1,20 @@
 name: Deploy
 
-# Deliberately no `pull_request` trigger: nothing that runs here may be started
-# by a pull request, because this job holds the SSH key and the host's secrets.
-# (The repository is private, which removes the forked-PR path, but the trigger
-# is scoped anyway.)
+# Manual-only, and not as a preference: this workflow cannot reach the host from
+# GitHub's runners. The host's firewall permits the author's own address and
+# drops GitHub's hosted-runner addresses at the TCP level, which the *Check the
+# host is reachable* step below reports in as many words. Shipping therefore
+# happens from `deploy/deploy.sh` on a workstation, and the build-and-test half
+# moved to ci.yml so that a push to main is not permanently red. Nothing here is
+# removed or stubbed: the file is kept intact and triggerable by hand, ready for
+# the day the firewall opens.
+#
+# Still deliberately no `pull_request` trigger, for a reason the firewall has
+# nothing to do with: nothing that runs here may be started by a pull request,
+# because this job holds the SSH key and the host's secrets. (The repository is
+# private, which removes the forked-PR path, but the trigger is scoped anyway.)
+# ci.yml runs on pull requests instead, and can because it references no secret.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       target:

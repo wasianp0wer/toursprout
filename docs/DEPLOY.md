@@ -25,9 +25,9 @@ verify, not a description of what works. Each step says what you should see,
 and what to paste back if you see something else. Where a detail about the
 host is a guess, the text says so.
 
-How it fits together, in four sentences. A push to `main` runs
-`.github/workflows/deploy.yml`, which builds the frontend, runs the lint and
-the tests, and then `rsync`s `app.cgi`, `.htaccess`, `backend/`, the built
+How it fits together. **You ship from your own machine:** `deploy/deploy.sh`
+(step 5b) runs `make check` — the lint, both test suites and the frontend
+build — and then `rsync`s `app.cgi`, `.htaccess`, `backend/`, the built
 frontend and `content/` to the host over SSH. It then creates `backend/.env`
 if the host does not have one yet, and `pip install`s the dependencies into
 `$DEPLOY_PATH/.venv` — a virtualenv you create by hand, once, in step 4, and
@@ -36,6 +36,18 @@ because nothing is resident: Apache executes `app.cgi` fresh for each request
 the front controller (`.htaccess`) routes to it, so new files are live the
 moment `rsync` finishes. Each historian's tour lives outside all of that, in
 `~/.clio-wired/sessions`, so a deploy cannot touch it.
+
+**A push to `main` no longer deploys**, which is the one structural change
+since this runbook was first written. `.github/workflows/deploy.yml` still
+holds the same sequence and is not stubbed or gutted, but it cannot reach the
+host from GitHub's runners — the host's firewall drops their addresses, which
+step 5 explains and [ADR 0008](decisions/0008-ship-from-a-workstation.md)
+records — so it is kept intact and manual-only for the day that changes.
+`.github/workflows/ci.yml` runs the frontend build, both test suites and the
+lint on every push and every pull request, so the gates still fire on a merge;
+they just do not ship anything. The gates that used to live in the trigger —
+production deploys run from `main`, with a clean tree — now live in
+`deploy/deploy.sh`, which refuses otherwise unless you give it `--target`.
 
 ---
 
@@ -266,9 +278,13 @@ and nothing for cPanel to tell us. (`-P` keeps the document root off
 
 **You should see:** `Python 3.12.15` from the last line — the version measured
 on this host in step 3. Anything else means `python3.12` on the account is not
-what it was, and the floor in `backend/pyproject.toml` and the pin in
-`deploy.yml` would both have to move with it (a decision for the author, not a
-fix to make in passing).
+what it was, and the floor in `backend/pyproject.toml` and **every workflow's
+`python-version:` pin** would all have to move with it — there are two of them
+now, `.github/workflows/ci.yml`'s (the one gating every push) and
+`.github/workflows/deploy.yml`'s, and `backend/tests/test_versions.py` checks
+every workflow in the directory against the floor, however the pin is spelled
+(bare, quoted either way, with a patch level, with a trailing comment). A
+decision for the author, not a fix to make in passing.
 
 **Paste back:** the `--version` output if it is not 3.12.x, and the whole
 error if `python3.12 -m venv` fails. If the venv is missing or has no
@@ -277,6 +293,24 @@ interpreter when the deploy runs, the *Install dependencies* step stops with
 something improvised.
 
 ## 5. Configure GitHub
+
+**Do this, and know that it is not the path that ships today.** The pipeline
+cannot reach the host. Its *Check the host is reachable* step says so in as
+many words — `Cannot open TCP 22 to DEPLOY_HOST from this runner` — because
+the host's firewall permits your own address and drops GitHub's hosted-runner
+addresses **at the TCP level**: the connection never gets as far as
+authentication, so there is nothing here to fix with a key or a secret. The same
+key, the same user and the same `DEPLOY_HOST` connect from your Mac. Shipping
+therefore happens from your own machine, which is **step 5b** — do that step if
+all you want is a deploy.
+
+Configure GitHub anyway. `deploy.yml` is kept intact and manual-only, so the day
+Reclaim allowlists a few addresses (asking them is the one thing that would
+bring the pipeline back; see
+[ADR 0008](decisions/0008-ship-from-a-workstation.md)) a deploy is one button
+away rather than an afternoon's archaeology. These secrets are also the
+reference for step 5b's table, which carries the same values under the same
+names.
 
 Repository *Settings*, *Secrets and variables*, *Actions*. The two tabs matter.
 
@@ -287,7 +321,7 @@ Repository *Settings*, *Secrets and variables*, *Actions*. The two tabs matter.
 | `SSH_PRIVATE_KEY` | A private key made for this and nothing else, authorised on the host. **Generate it on your own machine, not on the host** — a private key whose copy lives on the box it unlocks protects nothing, and getting it off again means putting it through a browser and a clipboard. **And it must have no passphrase**: the workflow sets `BatchMode yes`, so ssh cannot prompt and simply fails. cPanel refuses to *generate* a passphraseless key, which is a further reason not to let it: it never needs your private half. So `ssh-keygen -t ed25519 -f ~/.ssh/clio_deploy -N ""`, paste `~/.ssh/clio_deploy.pub` into cPanel under *SSH Access*, *Import Key* (leaving the private-key box empty), then *Manage*, *Authorize* — importing alone does nothing — and paste the whole private file here, `BEGIN` line through `END` line. Nothing about this needs working SSH, which is what makes it the way to bootstrap one. |
 | `DEPLOY_HOST` | The SSH endpoint of the **server**, not the subdomain the app serves at. Find it with `hostname -f` in the cPanel terminal, or in cPanel's *Server Information* sidebar, or in your Reclaim welcome email; confirm it with `ssh -p PORT USER@CANDIDATE 'hostname -f; pwd'`, which should land in `/home/USER`. Your own domain usually resolves to the same server and is still the worse choice: it is a DNS alias, so putting a proxy in front of it or moving the DNS later breaks SSH and invalidates the pinned host key, in a deploy that has nothing to do with DNS. Use the same string for `ssh-keyscan` below — the pin is for this literal text. |
 | `DEPLOY_USER` | Your cPanel username. |
-| `DEPLOY_PATH` | The absolute path of the production deploy directory, which is the production subdomain's document root from step 4, e.g. `/home/USER/tours`. **Set it even if you only mean to rehearse**: the first workflow step refuses to run with any of these empty. A rehearsal does not use it — step 6's `target` input replaces it for that run. |
+| `DEPLOY_PATH` | The absolute path of the production deploy directory, which is the production subdomain's document root from step 4, e.g. `/home/USER/tours`. **Set it even if you only mean to rehearse**: the first workflow step refuses to run with any of these empty. A rehearsal does not use it — a manual run's `target` input replaces it for that run, exactly as `deploy/deploy.sh --target` does from your own machine (step 5b). |
 | `MAPILLARY_TOKEN` | Written into `backend/.env` on the first deploy only. |
 
 **Variables** (the *Variables* tab; the host's public key is not secret):
@@ -331,48 +365,239 @@ console or a network you trust, and compare the fingerprint
 (`ssh-keygen -lf` on the line) with what cPanel's *SSH Access* page shows if it
 shows one. Do not take it from the pipeline.
 
+## 5b. Configure your own machine
+
+This is the path that works. One file, outside git, holding the same values the
+secrets above hold:
+
+```sh
+cp deploy/deploy.env.example deploy/deploy.env && chmod 600 deploy/deploy.env
+```
+
+Then fill it in. **The `600` is not advice.** The file holds
+`MAPILLARY_TOKEN`, and `deploy/deploy.sh` refuses to run while anything but its
+owner can read it — it reads the mode itself, with `stat -f %Lp` on macOS or
+`stat -c %a` on Linux, and refuses if it cannot read it at all rather than
+assuming the best. `deploy/deploy.env` is gitignored;
+`deploy/deploy.env.example` is the committed copy and carries a shorter version
+of this table beside each variable.
+
+**A symlink works, if you would rather the credential lived outside the
+repository directory.** `ln -s ~/secrets/clio.env deploy/deploy.env` is fine:
+the mode check follows the link and reads the mode of the file at the end of
+it. It did not always — a symlink's own mode is always `0755`, and `chmod 600`
+on a symlink changes its target, so the refusal used to be permanent and its
+advice impossible to follow. `chmod 600` the real file.
+
+| Name | Required | What it is |
+| --- | --- | --- |
+| `DEPLOY_HOST` | yes | The same string as the secret of that name: the SSH endpoint of the **server**, not the subdomain the app serves at and not your Cloudflare-proxied domain, which forwards HTTP and drops port 22. Confirm it the way the secret's row says, with `ssh USER@CANDIDATE 'hostname -f; pwd'` landing you in `/home/USER`. |
+| `DEPLOY_USER` | yes | Your cPanel username. |
+| `DEPLOY_PATH` | yes | The absolute path of the **production** deploy directory, which is the production subdomain's document root from step 4, e.g. `/home/USER/tours`. No trailing slash. A rehearsal does not use it — `--target` replaces it for that run — but it is required all the same, because a config file that is only complete enough for a rehearsal is a trap for the day you stop rehearsing. |
+| `MAPILLARY_TOKEN` | yes | Written into `backend/.env` on the host, **and only when that file does not already exist** (see *Settings*, below). Rotating it here does not update the host. |
+| `SSH_KEY` | no | The private half of the deploy key, as a path on this machine rather than a secret pasted into a settings page. Default `$HOME/.ssh/clio_deploy`, which is where the secrets table's `ssh-keygen` puts it. It must have **no passphrase**: the deploy sets `BatchMode=yes`, so nothing in it can answer a prompt. |
+| `DEPLOY_PORT` | no | The SSH port. Defaults to 22, which is still unconfirmed for this hosting plan (step 3). If it is not 22, set it here *and* pass `-p PORT` to the interactive `ssh` below, or the host key goes into `known_hosts` under the wrong name. |
+
+The file is sourced as shell, so quote any value containing a space — and then
+expect the deploy to refuse it by name. `rsync`'s `--rsh` option takes one
+string and splits it on whitespace *itself*, so a space in `DEPLOY_HOST`,
+`DEPLOY_USER`, `DEPLOY_PORT`, `SSH_KEY` or the deploy directory cannot be
+quoted through it; it would change which arguments `ssh` receives rather than
+failing, and an rsync that connects somewhere unintended and says nothing is
+the failure this refusal exists to prevent. For the deploy directory the
+message names **`DEPLOY_PATH`**, or **the `--target` argument** if that is what
+you gave it — whichever of the two you actually typed, rather than the script's
+internal name for the value.
+
+`deploy/deploy.sh --config FILE` reads a different file, if you ever want a
+second host or a second account side by side. A relative `FILE` is resolved
+against the directory you typed the command in, not against the repository
+root, so `--config ../clio.env` means what it looks like. There are only those
+two flags, and an argument that is neither is refused rather than ignored.
+
+### The host key: there is no `DEPLOY_HOST_KEY` here
+
+This is the one substantive difference between the script and the pipeline, and
+the one worth reading twice, because it presents as the same unhelpful message
+as everything else in this area.
+
+The pipeline pins the host's public key from the `DEPLOY_HOST_KEY` variable,
+because a fresh runner has no history with the host and would otherwise trust
+whatever answered at that address. **Your machine does have that history.**
+`deploy/deploy.sh` sets `StrictHostKeyChecking=yes` and names no
+`UserKnownHostsFile`, so the pin is the entry in your own
+`~/.ssh/known_hosts` — put there by one interactive `ssh` whose fingerprint you
+checked. That is a better pin than a blob re-pasted into a repository setting,
+and it is why there is nothing to configure here.
+
+So before the first deploy, connect by hand once:
+
+```sh
+ssh -i ~/.ssh/clio_deploy -o IdentitiesOnly=yes \
+    USER@YOUR-HOST 'hostname -f; pwd'          # add -p PORT if it is not 22
+```
+
+**You should see** the fingerprint prompt (the first time only), then the
+host's own `hostname -f` and `/home/USER`. Check the fingerprint against what
+cPanel's *SSH Access* page shows, or against the host's own console, before you
+type `yes` — that one `yes` is the whole of the trust decision the pipeline
+spends a repository variable on. `IdentitiesOnly=yes` matters if you have other
+keys loaded: without it ssh offers them all and the host may refuse the
+connection before reaching this one.
+
+Two consequences, both wanted:
+
+- **A host key that changes stops the deploy.** `ssh` refuses, the script exits
+  non-zero, and nothing is shipped. Reclaim rebuilding or migrating the server
+  is the innocent explanation and someone answering in its place is the other
+  one; find out which before you touch `known_hosts`.
+- **`Host key verification failed` from `deploy/deploy.sh` means there is no
+  entry yet** — not that anything is wrong with the host. It is the command
+  above that fixes it, and nothing else: do not add
+  `StrictHostKeyChecking=accept-new` to the script, which would trade the pin
+  for a convenience on the one connection that carries the source and the
+  token.
+
 ## 6. Rehearse: deploy to a staging path first
 
-A first-run deploy workflow does not work first try, and a deploy that destroys
-a historian's tour is a failure condition, so rehearse. In GitHub, *Actions*,
-*Deploy*, *Run workflow*, and give **`target`** the absolute path of the
-staging directory from step 4 (e.g. `/home/USER/tours-staging`) — the one with
-its own subdomain and its own `.venv`, and *not* the production `DEPLOY_PATH`.
-Leave `target` empty only for production, which runs from `main` only; a manual
-run of any other branch with an empty target is refused on purpose.
+A first deploy does not work first try, and a deploy that destroys a
+historian's tour is a failure condition, so rehearse. From the repository root
+on your own machine:
 
-**Read step 7 before you press the button.** This deploy copies `.htaccess`
-to the staging directory, so it is the deploy that installs the front
-controller, and an `.htaccess` the host will not accept returns 500 for every
-URL in that directory and below. Step 7 says what that looks like and gives
-you the one command that undoes it; have it in a second terminal. Deploying to
-*staging* first is exactly so that the file is proven somewhere harmless.
+```sh
+deploy/deploy.sh --target /home/USER/tours-staging
+```
 
-**You should see**, in the log, in order: *Check configuration*, *Choose the
-deploy target* ("Rehearsal deploy to the path given as input."), the frontend
-build, *Test the frontend*, `ruff` and `pytest` passing, *Resolve
-dependencies*, *Export requirements.txt for the host (pip, not uv)*, *Set up
-SSH*, *Copy files to the host* listing files (`rsync --itemize-changes`),
-*Write backend/.env (only if absent)*, then ***Install dependencies*** —
-and that is the last step. There is no restart step and there is nothing
-missing: Apache starts a process per request, so the files being in place *is*
-the deployment.
+That is the staging directory from step 4 — the one with its own subdomain and
+its own `.venv` — and *not* the production `DEPLOY_PATH`. `--target` is also
+what relaxes the two production gates: with no `--target` the script refuses to
+run from any branch but `main`, and refuses a working tree with uncommitted
+changes, because `rsync` ships the tree rather than the commit and a deploy you
+cannot name in the history is one you cannot reason about later. Rehearsing a
+branch, mid-change, against a directory nobody uses is the whole point of the
+flag, so it relaxes both.
 
-**Stop and paste back** the failing step's log if any step goes red. The likely
-ones:
+**Do step 2 first if you have not.** `deploy/deploy.sh` delegates the lint, the
+tests and the build to `make check`, which goes through a bare `uv run`, and
+then resolves `requirements.txt` with a bare `uv export`. **Neither carries
+`--frozen`**, so with `uv.lock` still stale either of them fails (no network)
+or re-resolves and rewrites the tracked lockfile (network). The rewrite is the
+one to watch: the clean-tree gate runs *before* both, so the deploy you are
+running now is unaffected, and the **next** production deploy refuses because
+`uv.lock` is modified. The fix is step 2's `uv lock`, committed, not a
+`--target` to get past it.
 
-- *Check configuration*: a missing secret or variable, named in the error.
-- *Resolve dependencies*: a resolution failure now that the floor is 3.12
-  (step 2). This is the first place a dependency that needs 3.13 would show.
-- *Set up SSH* or any `ssh`/`rsync` line: "Host key verification failed" (see
-  step 5), "Permission denied (publickey)" (the key is not authorised), or a
-  connection timeout (wrong `DEPLOY_PORT`).
-- *Install dependencies*: "No interpreter at …/.venv/bin/python" means step 4b
-  was not done for *this* target, or was done in a different directory. A
-  `pip` build error is the other case: paste the whole error, because nothing
-  about what `pip install -r requirements.txt` needs on this host is verified
-  beyond `fastapi` and `a2wsgi` installing (step 3). The surface is as small
-  as it can be made: `requirements.txt` is exported `--no-dev`, and
+**Read step 7 before you press anything.** This deploy copies `.htaccess` to
+the staging directory, so it is the deploy that installs the front controller,
+and an `.htaccess` the host will not accept returns 500 for every URL in that
+directory and below. Step 7 says what that looks like and gives you the one
+command that undoes it; have
+
+```sh
+ssh HOST 'cd /home/USER/tours-staging && mv .htaccess .htaccess.broken'
+```
+
+in a second terminal before you start. Deploying to *staging* first is exactly
+so that the file is proven somewhere harmless.
+
+**You should see**, in order, and nothing before the first one:
+
+1. `make check`'s four stages — `ruff` clean, the backend suite's `N passed`,
+   the frontend suite under `ng test`, then `ng build`. **Everything that leaves
+   this machine happens after this**, so a failing test stops the deploy
+   instead of being noticed with half a tree shipped.
+2. a line or two from `uv export`, which resolves
+   `backend/requirements.txt` for the host's `pip` against `uv.lock`. That file
+   is **gitignored**: it is a build artefact, rewritten on every run, and an
+   untracked file left in the tree would make the script's own clean-tree gate
+   refuse every deploy after the first. Do not "fix" the gitignore. This
+   `uv export` carries no `--frozen` either, so with a stale lockfile and a
+   network it too — not only `make check`'s `uv run` — can rewrite the tracked
+   `uv.lock` on its way past. See the paragraph above; the fix is the same one.
+3. nothing from the `mkdir -p` that makes the directories on the host.
+4. `rsync --itemize-changes` lines, in this order: `.htaccess` (staged as
+   `.htaccess.new`), `deploy/merge-htaccess.sh`, then — silently, because
+   `deploy/merge-htaccess.sh` speaks only when it refuses — the merge of the
+   two on the host, then `app.cgi`, then — silently again — a `chmod 755` on
+   the `app.cgi` that just arrived, then `backend/`, then the built frontend,
+   then `content/`. **The front controller is first on purpose** and that order
+   is pinned by a test: until `.htaccess` is in place the document root is
+   uncontained, and the `.env` write below would publish `MAPILLARY_TOKEN` by
+   URL. **The `chmod` is its own step on purpose too**, rather than being left
+   to the install step at the end: `rsync -rlt` carries no permissions, so a
+   *new* `app.cgi` lands 644, and between the two points sit `backend/`, the
+   bundle, `content/`, the `.env` write and a `pip install` — on a first deploy,
+   minutes of 500 on every URL. Eleven remote commands in all: the `mkdir`, six
+   `rsync`s, and four `ssh`s (the merge, this `chmod`, the `.env` write and the
+   install).
+5. one line from the `.env` step: `backend/.env did not exist: created it.` on
+   a first deploy, or `backend/.env already exists on the host: left alone
+   (token and other settings NOT updated).` on every one after. The token goes
+   over `ssh`'s stdin, so it is in no argument list, no process listing and no
+   shell history.
+6. `pip install`'s output, into `/home/USER/tours-staging/.venv`.
+7. `deploy.sh: shipped to USER@HOST:/home/USER/tours-staging` — and that is the
+   last line. There is no restart step and there is nothing missing: Apache
+   starts a process per request, so the files being in place *is* the
+   deployment.
+
+**Stop and paste back** whatever it printed. The likely failures, in the order
+the script reaches them:
+
+- **`deploy.sh: --target …`**, before the config file is even read. The
+  argument itself is refused in two cases, and the first is worth knowing by
+  heart: **`--target ""` is refused**, because `--target "$STAGING"` with
+  `STAGING` unset is how an empty one gets typed, and an empty one used to mean
+  *production* — it fell through to `DEPLOY_PATH` while an empty `TARGET` also
+  re-armed the `main`-and-clean-tree gates, so on `main` with a clean tree it
+  shipped to the historians while you believed you were rehearsing. Omit
+  `--target` to mean production; there is no other way to say it. A
+  **relative** `--target` is refused too: the host would resolve it against the
+  deploy user's home, which is not where the subdomain's document root is.
+- **`deploy.sh refuses: …`**, one line per problem, with nothing shipped — the
+  refusals all run before the first remote command, so a refusal has never done
+  anything. They are: no config file at that path; a required variable empty or
+  absent, named; the config file readable by group or world (`chmod 600` it),
+  or a `stat` that would not say which; a value containing whitespace, named
+  (the deploy directory is reported as `DEPLOY_PATH`, or as the `--target`
+  argument if you gave one); not on `main`; and a dirty working tree, with
+  `git status --porcelain`'s output quoted so you can see what it means. The
+  last two are the ones `--target` relaxes. More than one is reported at once,
+  deliberately: fixing one, re-running the whole `make check` and only then
+  being told about the second is the kind of gate that gets worked around.
+- **`deploy.sh refuses: …/.deploy.lock exists, so another deploy is running (or
+  one died).`** One deploy at a time: two `rsync`s into the same tree must not
+  interleave, and a script is much easier to run twice than a workflow was —
+  two terminals, or a second go because the first looked stuck during
+  `make check`. The lock is a directory (`mkdir` is atomic everywhere and macOS
+  has no `flock(1)`), taken after the refusals above and before `make check`,
+  and released on exit. If nothing is running, `rmdir` it, as the message says.
+  It is gitignored, so it does not trip the clean-tree gate.
+- **`make check` red.** Not a deploy problem. The one deploy-flavoured case is
+  a `uv` resolution failure now that the floor is 3.12 (step 2), which is where
+  a dependency needing 3.13 would first show.
+- **`Host key verification failed`** — `~/.ssh/known_hosts` has no entry for
+  `DEPLOY_HOST`. One interactive `ssh` to it fixes it; step 5b has the command
+  and says what to check before accepting.
+- **`Permission denied (publickey)`** — the key is not authorised on the host,
+  or `SSH_KEY` points at the wrong file. Note that *importing* a key in cPanel
+  does nothing: *Manage*, *Authorize* is the second half (step 5).
+- **A connection timeout** — the wrong `DEPLOY_PORT`, or `DEPLOY_HOST` is your
+  proxied domain rather than the server (step 5's `DEPLOY_HOST` row). From your
+  own machine this should not be the firewall: the firewall is what stops
+  GitHub's runners, and your address is the one it permits.
+- **`merge-htaccess.sh: …` and the deploy stops.** It refuses, and changes
+  nothing, if the staged copy did not arrive or is empty, or if it cannot read
+  the host's live `.htaccess` — because overwriting a file it could not read
+  might silently remove step 8's shared password. The deploy failing here is
+  the intended outcome; `.htaccess.new` is left on the host and is not served.
+- **`No interpreter at …/.venv/bin/python`** — step 4b was not done for *this*
+  target, or was done in a different directory. The deploy installs into the
+  virtualenv and never creates it.
+- **A `pip` build error.** Paste the whole thing, because nothing about what
+  `pip install -r requirements.txt` needs on this host is verified beyond
+  `fastapi` and `a2wsgi` installing (step 3). The surface is as small as it can
+  be made: `requirements.txt` is exported `--no-dev`, and
   `uvicorn[standard]` — which nothing under `backend/app/` imports, and which
   only `make serve` ever runs — **was moved out of the runtime dependencies
   into the `dev` group** for exactly this reason. It used to ship, so every
@@ -381,6 +606,12 @@ ones:
   loads; any one of those missing a cp312 wheel on CloudLinux is a source
   build, and a source build failing there stopped the whole deploy. What the
   host installs now is what `app/` actually imports.
+
+A remote command that fails stops everything after it. The script runs under
+`set -e` and its tests pin that: the first failing `ssh` or `rsync` is the last
+thing in the log. So a deploy that stopped half-way shipped a prefix of that
+ordered list and no more, which is why the front controller is at the front of
+it.
 
 Then check on the host, over SSH, that the two files Apache reads arrived with
 the modes it needs:
@@ -399,12 +630,20 @@ and these three lines:
 #
 ```
 
-The modes are the thing to look at twice. `rsync -rlt` carries no permissions
-at all, so the workflow sets them with `--chmod=F755` and `--chmod=F644` and
-re-asserts both with an explicit `chmod` on every deploy — belt and braces,
-because `--chmod` only applies to files rsync *creates*, so a file already on
-the host with the wrong mode would otherwise never be repaired. Either one
-costs you the whole tree: an `app.cgi` Apache cannot execute, and an
+The modes are the thing to look at twice, and this check is now the only thing
+that watches them. `rsync -rlt` carries no permissions at all, and **no `rsync`
+in `deploy/deploy.sh` carries a `--chmod` either** — `/usr/bin/rsync` on macOS
+is Apple's openrsync, which rejects a literal mode outright
+(`rsync: --chmod=F644: invalid argument`, exit 1, nothing transferred), so the
+flag the workflow uses on its GNU rsync cannot come along. The modes are set on
+the host instead, by `chmod`: `app.cgi` gets `chmod 755` in its own `ssh` the
+moment it arrives and again in the install step at the end, and `.htaccess`
+needs nothing of its own because `deploy/merge-htaccess.sh` chmods the file 644
+before the atomic `mv` that puts it in place. So what these `ls -l` lines
+verify is that work, not `rsync`'s. The repeat at the end is deliberate: a file
+already on the host with the wrong mode — an older deploy, or a hand-edit
+through the file manager — is not something `rsync` would ever repair. Either
+mode costs you the whole tree: an `app.cgi` Apache cannot execute, and an
 `.htaccess` it cannot read, are both 500 on every URL. **Paste back** the
 `ls -l` lines if the modes differ.
 
@@ -692,8 +931,11 @@ own `.venv` (step 4b) before the first deploy, or *Install dependencies* stops;
 and the front controller's `curl` checks (step 7) are worth repeating there,
 because the two subdomains could differ in what Apache permits.
 
-Merge to `main`. The workflow runs on the push, and with `target` empty it
-deploys to `DEPLOY_PATH`. Once it is green:
+Merge to `main`, check out `main` with a clean tree, and run
+`deploy/deploy.sh` with **no** `--target`: that is what deploys to
+`DEPLOY_PATH`, and the two gates it stops relaxing are exactly the ones that
+make a production deploy nameable afterwards. Nothing happens on the push
+itself (step 5). Once it has printed `shipped to`:
 
 1. `https://HOST/api/health` answers `{"status":"ok"}`, and the six checks in
    step 7 pass against production.
