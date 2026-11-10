@@ -1,11 +1,14 @@
 :host { display: contents; }
 
 /* Over the editor, not beside it: the one decision on this screen that
-   cannot be undone should not have to compete with a map for attention. */
+   cannot be undone should not have to compete with a map for attention.
+   The panes isolate their own layers, so this would win at a small number;
+   it sits above Leaflet's highest (1000) anyway, so one pane losing its
+   isolation cannot bring the map back over the dialog. */
 .scrim {
   position: fixed;
   inset: 0;
-  z-index: 10;
+  z-index: 2000;
   display: flex;
   align-items: center;
   justify-content: center;

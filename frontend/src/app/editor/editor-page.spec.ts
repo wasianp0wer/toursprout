@@ -279,6 +279,27 @@ describe('EditorPage', () => {
     http.expectNone({ method: 'DELETE', url: '/api/session' });
   });
 
+  // jsdom does no layout, so elementFromPoint cannot say what is on top, and
+  // Playwright cannot launch a browser under this sandbox (docs/ENVIRONMENT.md).
+  // What can be checked is the rule that decides it: Leaflet's panes and
+  // controls carry z-indexes of 400 to 1000, and only an isolated pane keeps
+  // them from competing with the dialog in the page's stacking context.
+  it('keeps the close dialog above the map and the panorama', async () => {
+    await mountOpen();
+    store.select(store.draft()!.stops[0].id);
+    q('[data-close-tour]')!.click();
+    fixture.detectChanges();
+
+    for (const pane of ['app-edit-map-pane', 'app-edit-panorama-pane']) {
+      const host = q(pane)!;
+      expect(getComputedStyle(host).isolation, pane).toBe('isolate');
+    }
+    // And above anything a pane might still raise itself to outside the
+    // workspace, including Leaflet's own ceiling.
+    const scrim = q('[data-close-dialog]')!.closest('.scrim')!;
+    expect(Number(getComputedStyle(scrim).zIndex)).toBeGreaterThan(1000);
+  });
+
   it('keeps working when the author changes their mind', async () => {
     await mountOpen();
     q('[data-close-tour]')!.click();

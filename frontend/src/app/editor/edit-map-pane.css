@@ -1,4 +1,5 @@
-:host { display: block; height: 100%; }
+/* Leaflet gives its panes and controls z-indexes of 400 to 1000. Isolated, those only order the map's own layers; otherwise they compete with the rest of the page and the map draws over the close dialog. */
+:host { display: block; height: 100%; isolation: isolate; }
 .edit-map { width: 100%; height: 100%; min-height: 12rem; background: #1b1e24; border-radius: 4px; }
 .empty, .handle-note { color: #9aa0ab; font-size: 0.8rem; margin: 0.5rem 0; }
 
