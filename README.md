@@ -23,7 +23,7 @@ author in their own browser: `docs/DEPLOY.md` is the runbook for the host, and
 | Layer | Choice |
 | --- | --- |
 | Map geometry and place identity | OpenStreetMap (Overpass, raster tiles) |
-| Street-level imagery | Mapillary, CC-BY-SA 4.0 |
+| Street-level imagery | Mapillary, CC-BY-SA 4.0 — 360° panoramas where they exist, and flat or fisheye capture where they do not |
 | Archival photography | Library of Congress, public domain |
 | Narration | The committed tour's clips were synthesised on macOS and are labelled as synthetic; in the editor, narration is recorded from the microphone |
 | Backend | FastAPI, pydantic, Python 3.12 or newer (`requires-python`; CI and the deploy use 3.12) |
@@ -33,6 +33,15 @@ OpenStreetMap has no street-level imagery of its own; that is what Mapillary
 supplies. All six stops were chosen by probing actual Mapillary coverage
 before any content was written — see `content/scripts/probe_coverage.py` and
 `content/coverage-report.json`.
+
+**A stop no longer needs a 360 panorama.** Old Town Fairfax happens to be
+covered by dense 360 imagery from one 2026-08 campaign, and the committed tour
+keeps it, but much of the world is covered only by phone and dashcam capture.
+The editor's search lists flat and fisheye imagery alongside panoramas,
+labelled, so a tour can be authored where no panorama exists. A flat stop
+shows one direction and cannot be turned, which is a property of the imagery
+rather than a limit of the schema — `docs/FOR-HISTORIANS.md` says what that
+means for an author.
 
 ## Prerequisites
 

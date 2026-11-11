@@ -547,9 +547,38 @@ describe('stop location and panorama selection', () => {
     const t = tour();
     expect(t.stops[0].panorama.bearing).toBe(90);
     expect(selectPanorama(t, 's1', { ...CAND, compassAngle: 200.5 })!.tour.stops[0].panorama.bearing).toBe(200.5);
-    expect(selectPanorama(t, 's1', { ...CAND, compassAngle: -10 })!.tour.stops[0].panorama.bearing).toBe(350);
     expect(selectPanorama(t, 's1', CAND)!.tour.stops[0].panorama.bearing).toBe(0);
     expect(selectPanorama(t, 's1', { ...CAND, compassAngle: null })!.tour.stops[0].panorama.bearing).toBe(0);
+  });
+
+  const bearingFor = (compassAngle: number | null) =>
+    selectPanorama(tour(), 's1', { ...CAND, compassAngle })!.tour.stops[0].panorama.bearing;
+
+  it("selectPanorama stores bearing 0 for Mapillary's -1, not 359", () => {
+    // Mapillary reports an unknown compass angle as -1, not null: 25 of
+    // Krumlov's 46 flat images do. Normalising it yields 359, and the stop is
+    // stored facing almost due north on no evidence at all. This assertion
+    // used to read 350 for -10, which was that bug with a rounder number.
+    expect(bearingFor(-1)).toBe(0);
+    expect(bearingFor(-10)).toBe(0);
+  });
+
+  it('selectPanorama treats any negative angle as absent, including -0.0001 and -360', () => {
+    expect(bearingFor(-0.0001)).toBe(0);
+    expect(bearingFor(-360)).toBe(0);
+  });
+
+  it('selectPanorama stores a real 0 as 0 — indistinguishable from unknown, by design', () => {
+    // Panorama.bearing is required and non-nullable and the schema does not
+    // change, so the document cannot tell "facing north" from "direction
+    // unknown". The editor map's wedge is what distinguishes them, and it
+    // reads the viewer's report rather than this number.
+    expect(bearingFor(0)).toBe(0);
+  });
+
+  it('selectPanorama keeps a flat image\'s known angle', () => {
+    expect(bearingFor(293.97)).toBe(293.97);
+    expect(bearingFor(400)).toBe(40);
   });
 
   it('selectPanorama refuses an unknown stop, a blank id and a non-finite position', () => {

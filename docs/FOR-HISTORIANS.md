@@ -38,6 +38,30 @@ On the first screen you can start **a new empty tour** (give it a title, then
 is put together, or drag in a tour you already have. Your changes save
 themselves; the top of the page says **All changes saved** when they have.
 
+## Choosing the street view for a stop
+
+Click **Find panoramas near here** and the editor lists the street-level
+imagery Mapillary has around your stop. Each one is labelled:
+
+- **360°** — a full panorama. A visitor can turn all the way round in it.
+- **flat** — an ordinary photograph, usually taken from a phone or a dashcam.
+
+Pick whichever looks right. In many towns outside the United States there is
+no 360 coverage at all, and the flat pictures are all there is; a stop built on
+one works like any other stop.
+
+**Two things to know about a flat stop.** The view cannot be turned, because
+the camera only ever pointed one way — the visitor sees that one direction and
+no more. And anything you place outside what the camera was pointed at will be
+saved in your tour quite correctly, but will never be visible, because there is
+nowhere for the visitor to turn to see it. So put your photographs roughly
+where the camera was looking. **The editor will not warn you about this** — we
+would rather let you make the stop than get in your way — but the map shows a
+pale green wedge spreading out from the camera, and that is the direction it
+faced. If there is no wedge, Mapillary does not know which way that picture
+was taken, and you will have to judge it from the picture itself. The wedge
+appears once the street view has finished loading.
+
 ## Recording narration
 
 1. Click a stop in the list on the left, so the editor knows where the

@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "content" / "script
 
 from build_tour import in_world_overlay
 from geo import bearing_between
+from probe_coverage import is_strong_candidate, probe_exit_code, site_verdict
 
 CONTENT = Path(__file__).resolve().parents[2] / "content" / "source" / "stops.json"
 
@@ -163,6 +164,47 @@ EXAMPLES_REFERENCES = (
     "app.examples",
     "EXAMPLES_DIRNAME",
 )
+
+
+def test_a_flat_only_site_is_still_reported_as_flat_only():
+    """Panorama counts keep their own verdict: they are still better imagery.
+
+    What changes is the strong-candidate bar below, not this label.
+    """
+    assert site_verdict(46, 0) == "flat only"
+    assert site_verdict(288, 8) == "PANO"
+    assert site_verdict(0, 0) == "NO IMAGERY"
+
+
+def test_flat_imagery_counts_as_coverage():
+    """The probe used to require three PANORAMAS within 40 m, which made the
+    three flat-only European sites failures. The editor can now use their
+    imagery, so the probe must stop contradicting it.
+    """
+    # Cesky Krumlov: 46 flat images, no panoramas, nearest 21.8 m.
+    assert is_strong_candidate(46, 21.8) is True
+    # Rye: 28 flat images, nearest 40 m - exactly on the bar, and inside it.
+    assert is_strong_candidate(28, 40.0) is True
+    assert is_strong_candidate(28, 40.1) is False
+    assert is_strong_candidate(2, 10.0) is False
+    # Dinan and Alberobello returned nothing; this cannot help them.
+    assert is_strong_candidate(0, None) is False
+
+
+def test_four_flat_only_sites_now_exit_zero():
+    stops = [
+        {"image_count": 46, "pano_count": 0, "nearest_m": 21.8},
+        {"image_count": 28, "pano_count": 0, "nearest_m": 40.0},
+        {"image_count": 18, "pano_count": 0, "nearest_m": 30.0},
+        {"image_count": 288, "pano_count": 8, "nearest_m": 5.0},
+    ]
+    assert probe_exit_code(stops) == 0
+
+
+def test_fewer_than_four_usable_sites_still_fails():
+    assert probe_exit_code([{"image_count": 0, "pano_count": 0, "nearest_m": None}] * 6) == 1
+    # Three is not four, however good the three are.
+    assert probe_exit_code([{"image_count": 46, "pano_count": 9, "nearest_m": 5.0}] * 3) == 1
 
 
 def _names_the_examples_directory(text: str) -> list[str]:

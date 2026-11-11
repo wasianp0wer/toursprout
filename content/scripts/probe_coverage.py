@@ -7,8 +7,10 @@ Two phases:
   1. Discover named historic features in a bbox via OSM Overpass, so stop
      coordinates come from OSM entities rather than free-text geocoding
      (which silently resolves e.g. the historic courthouse to the modern one).
-  2. Ask the Mapillary Graph API what imagery exists near each, preferring
-     true 360 panoramas over flat perspective shots.
+  2. Ask the Mapillary Graph API what imagery exists near each. True 360
+     panoramas are still preferred and still counted separately, but flat and
+     fisheye imagery counts as coverage: the editor can build a stop on it,
+     and a site with only flat capture is no longer a failure here.
 
 Usage:  python3 content/scripts/probe_coverage.py [--radius-m 50]
 """
@@ -189,6 +191,43 @@ def ms_to_ym(ms: int | None) -> str:
     return time.strftime("%Y-%m", time.gmtime(ms / 1000)) if ms else "?"
 
 
+# A site is worth building a stop on if it has this much imagery this close.
+# Panoramas are counted and reported separately because they are still the
+# better imagery, but they are no longer the bar: the editor can use flat and
+# fisheye capture, so a flat-only site is coverage, not a failure. Three of six
+# candidate European sites are flat-only, and under a pano bar this probe
+# called them failures while the application was perfectly able to use them.
+STRONG_MIN_IMAGES = 3
+STRONG_MAX_NEAREST_M = 40.0
+STRONG_MIN_SITES = 4
+
+
+def site_verdict(image_count: int, pano_count: int) -> str:
+    """The label for one site. Panoramas still earn their own verdict."""
+    if pano_count:
+        return "PANO"
+    return "flat only" if image_count else "NO IMAGERY"
+
+
+def is_strong_candidate(image_count: int, nearest_m: float | None) -> bool:
+    """Enough imagery, close enough, of whatever projection."""
+    if nearest_m is None:
+        return False
+    return image_count >= STRONG_MIN_IMAGES and nearest_m <= STRONG_MAX_NEAREST_M
+
+
+def strong_candidates(stops: list[dict]) -> list[dict]:
+    return [s for s in stops if is_strong_candidate(s["image_count"], s["nearest_m"])]
+
+
+def probe_exit_code(stops: list[dict]) -> int:
+    """0 when enough sites are usable. Extracted so it can be tested: this
+    script talks to Overpass and Mapillary, and neither CI nor the production
+    host can reach graph.mapillary.com.
+    """
+    return 0 if len(strong_candidates(stops)) >= STRONG_MIN_SITES else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--radius-m", type=float, default=50.0)
@@ -206,7 +245,7 @@ def main() -> int:
         panos = [i for i in images if i["is_pano"]]
         nearest = images[0]["distance_m"] if images else None
         newest = max((i["captured_at"] or 0) for i in images) if images else None
-        verdict = "PANO" if panos else ("flat only" if images else "NO IMAGERY")
+        verdict = site_verdict(len(images), len(panos))
 
         print(f"{site['name'][:40]:<40} {len(images):>5} {len(panos):>5} "
               f"{(f'{nearest:.0f}m' if nearest is not None else '-'):>7}  "
@@ -222,15 +261,16 @@ def main() -> int:
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     OUT_FILE.write_text(json.dumps(report, indent=2))
 
-    strong = [s for s in report["stops"] if s["pano_count"] >= 3 and (s["nearest_m"] or 999) <= 40]
+    strong = strong_candidates(report["stops"])
     print("-" * 88)
     print(f"{sum(1 for s in report['stops'] if s['image_count'])}/{len(sites)} sites have imagery; "
           f"{sum(1 for s in report['stops'] if s['pano_count'])} have panoramas; "
-          f"{len(strong)} are strong candidates (>=3 panos within 40m)")
+          f"{len(strong)} are strong candidates "
+          f"(>={STRONG_MIN_IMAGES} images within {STRONG_MAX_NEAREST_M:.0f}m)")
     for s in strong:
         print(f"    * {s['name']}")
     print(f"\nreport -> {OUT_FILE.relative_to(REPO)}")
-    return 0 if len(strong) >= 4 else 1
+    return probe_exit_code(report["stops"])
 
 
 if __name__ == "__main__":

@@ -83,7 +83,12 @@
         @for (c of cs; track c.imageId) {
           <li [attr.data-candidate]="c.imageId">
             @if (c.thumbUrl) { <img [src]="c.thumbUrl" alt="" width="64" /> }
-            <span>{{ c.distanceM }} m away{{ captured(c.capturedAt) }}</span>
+            <span>{{ c.distanceM }} m away{{ captured(c.capturedAt) }}
+              <!-- is_pano, not camera_type: it is the one signal Mapillary
+                   reports for every image, whether or not SfM has run. -->
+              <span class="badge" [attr.data-candidate-kind]="c.isPano ? 'pano' : 'flat'"
+                >{{ c.isPano ? '360°' : 'flat' }}</span>
+            </span>
             <button type="button" data-use-panorama (click)="usePanorama(c)">Use this panorama</button>
           </li>
         }

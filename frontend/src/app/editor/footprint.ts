@@ -23,6 +23,9 @@
  *    not handled.
  */
 import { bearingBetween, metresToLat, metresToLng, type LngLatLike } from '../core/geo';
+import { knownCompassAngle } from '../core/mapillary-search';
+import { isFlatCamera } from '../panorama/view-turn';
+import type { ImageryReport } from '../panorama/panorama-viewer';
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 const wrapLng = (lng: number) => ((((lng + 180) % 360) + 360) % 360) - 180;
@@ -74,4 +77,60 @@ export function viewWedge(
     pts.push(offset(camera, bearingDeg - fovDeg / 2 + (fovDeg * i) / steps, radiusM));
   }
   return pts;
+}
+
+/**
+ * 360 imagery: unchanged. The stored bearing is a view direction the visitor
+ * can turn to, and this wedge indicates it; a panorama shows every direction,
+ * so the angle has never been a claim about what was captured.
+ */
+export const SPHERICAL_WEDGE_FOV_DEG = 90;
+
+/**
+ * Flat imagery: narrower, and a fixed constant rather than a computed figure.
+ *
+ * Here the wedge means something stronger — this is all the camera caught, and
+ * anything anchored outside it will be in the document, render correctly and
+ * never be visible. Real phone and dashcam capture runs roughly 70-90 degrees
+ * wide, so 60 deliberately under-claims: an indicator that is too narrow
+ * disappoints, one that is too wide misleads. Mapillary does return
+ * `camera_parameters`, from which the true field of view could be derived;
+ * doing so is out of scope.
+ */
+export const FLAT_WEDGE_FOV_DEG = 60;
+
+/**
+ * Which view wedge the edit map should draw for a stop, or null for none.
+ *
+ * | Reported camera type | Wedge |
+ * | --- | --- |
+ * | `spherical`, or unknown | the stored bearing, SPHERICAL_WEDGE_FOV_DEG |
+ * | flat, compass angle known | the REPORTED angle, FLAT_WEDGE_FOV_DEG |
+ * | flat, compass angle unknown (`-1` or absent) | none |
+ * | nothing reported yet, or a report for another image | none |
+ *
+ * The stored bearing is not consulted for flat imagery, and deliberately: it
+ * is a fact about where the camera happened to point, not a direction the
+ * author chose, and when Mapillary does not know the angle the document can
+ * only hold `0`, which is indistinguishable from due north. So the viewer
+ * reports what it actually loaded and this trusts that over the document —
+ * the same discipline as panoramaFixForStop, which refuses a position fix
+ * that belongs to a different image.
+ *
+ * A document opened fresh therefore draws no wedge until its panorama loads.
+ * That is correct, not a degradation: the alternative is a confident
+ * 90-degree wedge drawn from a number that may mean nothing.
+ */
+export function wedgeFor(
+  panorama: { imageId: string; bearing: number },
+  report: ImageryReport | null,
+): { bearingDeg: number; fovDeg: number } | null {
+  if (!report || report.imageId !== panorama.imageId) return null;
+  if (!isFlatCamera(report.cameraType)) {
+    return { bearingDeg: panorama.bearing, fovDeg: SPHERICAL_WEDGE_FOV_DEG };
+  }
+  // knownCompassAngle, not a null check: Mapillary's "unknown" is -1, which
+  // would otherwise draw a wedge pointing within a degree of north.
+  const angle = knownCompassAngle(report.compassAngle);
+  return angle === null ? null : { bearingDeg: angle, fovDeg: FLAT_WEDGE_FOV_DEG };
 }

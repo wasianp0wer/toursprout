@@ -188,6 +188,7 @@ describe('EditorStore', () => {
     store.markHeadingManual('o1', true);
     store.setPendingDefaults({ creator: 'Ada', license: 'CC0' });
     store.setPanoramaPosition({ imageId: 'img-1', lng: -77.3, lat: 38.84 });
+    store.setImageryReport({ imageId: 'img-1', cameraType: 'perspective', compassAngle: -1 });
 
     store.clear();
 
@@ -199,5 +200,40 @@ describe('EditorStore', () => {
     expect(store.manualHeadings().size).toBe(0);
     expect(store.pendingDefaults()).toBeNull();
     expect(store.panoramaPosition()).toBeNull();
+    expect(store.imageryReport()).toBeNull();
+  });
+
+  // The report says what the viewer actually loaded: the projection, and the
+  // compass angle Mapillary has for it. It is keyed by image id for the same
+  // reason panoramaPosition is — a panorama pane can lag a selection change.
+  describe('the viewer\'s imagery report', () => {
+    const REPORT = { imageId: 'img-1', cameraType: 'perspective', compassAngle: -1 };
+
+    it('holds the latest report, and the newest wins', () => {
+      store.load(tour());
+      store.setImageryReport(REPORT);
+      expect(store.imageryReport()).toEqual(REPORT);
+      const next = { imageId: 'img-2', cameraType: 'spherical', compassAngle: 90 };
+      store.setImageryReport(next);
+      expect(store.imageryReport()).toEqual(next);
+    });
+
+    it('carries the image id, so a stale report can be told apart', () => {
+      // Nothing here filters one: the key travels with the report and the
+      // reader (wedgeFor) compares it to the stop's own panorama, exactly as
+      // panoramaFixForStop does for the position fix.
+      store.load(tour([stop('s1', 1), stop('s2', 2)]));
+      store.select('s2'); // s2's panorama is img-2
+      store.setImageryReport(REPORT); // ...but the pane is still on img-1
+      expect(store.imageryReport()!.imageId).toBe('img-1');
+      expect(store.currentStop()!.panorama.imageId).toBe('img-2');
+    });
+
+    it('drops the report when another tour is loaded', () => {
+      store.load(tour());
+      store.setImageryReport(REPORT);
+      store.load(tour());
+      expect(store.imageryReport()).toBeNull();
+    });
   });
 });

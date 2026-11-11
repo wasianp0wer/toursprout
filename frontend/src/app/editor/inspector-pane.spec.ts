@@ -301,7 +301,8 @@ describe('InspectorPane: placing a stop', () => {
     qa(sel)[i].click(); await new Promise((r) => setTimeout(r)); await settle();
   };
   const cand = (imageId: string, lng: number, lat: number): PanoramaCandidate => ({
-    imageId, lng, lat, capturedAt: 1_500_000_000_000, thumbUrl: null, distanceM: 12.3,
+    imageId, lng, lat, sequenceId: null,
+    capturedAt: 1_500_000_000_000, thumbUrl: null, distanceM: 12.3,
   });
   const ANCHOR = { type: 'geo' as const, lng: -77.3, lat: 38.841, altitudeM: 2 };
   const A = cand('cam-A', -77.31, 38.85);
@@ -347,6 +348,25 @@ describe('InspectorPane: placing a stop', () => {
     await click('[data-find-panoramas]');
     expect(panoramas).toHaveBeenCalledWith(STOP_LOC.lng, STOP_LOC.lat);
     expect(qa('[data-candidate]').map((n) => n.getAttribute('data-candidate'))).toEqual(['cam-A', 'cam-B']);
+  });
+
+  it('badges every candidate 360 or flat, in one list with nothing to tick', async () => {
+    // Where coverage is phone and dashcam capture there is no 360 imagery to
+    // prefer, so flat candidates are listed by default and simply labelled.
+    // An opt-in control would be one more way for the search to come back
+    // empty for no visible reason, which is the failure this removes.
+    panoramas.mockResolvedValue([{ ...A, isPano: true }, { ...B, isPano: false }]);
+    await click('[data-find-panoramas]');
+    const badges = qa('[data-candidate-kind]');
+    expect(badges.map((b) => b.getAttribute('data-candidate-kind'))).toEqual(['pano', 'flat']);
+    expect(badges.map((b) => b.textContent!.trim())).toEqual(['360°', 'flat']);
+    expect(q('input[type=checkbox]')).toBeNull();
+  });
+
+  it('badges a candidate flat when Mapillary says nothing about is_pano', async () => {
+    panoramas.mockResolvedValue([A]);
+    await click('[data-find-panoramas]');
+    expect(q('[data-candidate-kind]')!.getAttribute('data-candidate-kind')).toBe('flat');
   });
 
   it('clears the candidate list when the stop location is edited', async () => {

@@ -10,6 +10,32 @@ export interface OverlayMarker {
 }
 
 /**
+ * What mapillary-js says about the image the viewer actually loaded, as
+ * against what the document claims about it.
+ *
+ * The document cannot hold these: `Panorama` says nothing about projection,
+ * and its `bearing` is a required non-nullable number, so a stop whose imagery
+ * has no compass angle stores `0` and *facing north* is indistinguishable from
+ * *direction unknown*. The viewer is the only place that knows, and it knows
+ * only once the image has loaded.
+ */
+export interface ImageryReport {
+  /**
+   * Which image this is about. Keyed exactly as PanoramaFix is, because a
+   * panorama pane can lag a selection change and an unkeyed report would
+   * silently be the previous image's.
+   */
+  imageId: string;
+  /** 'spherical' | 'fisheye' | 'perspective', or undefined if SfM has not been run. */
+  cameraType: string | undefined;
+  /**
+   * As Mapillary reports it, sentinel and all: an unknown angle comes back as
+   * **-1**, not null. Read it with `knownCompassAngle`, never directly.
+   */
+  compassAngle: number | null;
+}
+
+/**
  * The seam that contains mapillary-js and three.js. Nothing outside the
  * panorama folder should import either directly — mapillary-js was last
  * published in 2023 and is expected to be replaced.
@@ -34,6 +60,12 @@ export interface PanoramaViewer {
   onPositionChange(
     handler: (position: { lng: number; lat: number }, imageId: string) => void,
   ): void;
+  /**
+   * Fires with the same move, carrying what mapillary-js says about the image
+   * it landed on. The editor's map draws its view wedge from this rather than
+   * from the document, because a flat image's stored bearing may mean nothing.
+   */
+  onImageryReport(handler: (report: ImageryReport) => void): void;
 
   destroy(): void;
 }

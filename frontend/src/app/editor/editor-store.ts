@@ -7,6 +7,7 @@
  */
 import { Injectable, computed, signal } from '@angular/core';
 import type { PanoramaFix } from './document-ops';
+import type { ImageryReport } from '../panorama/panorama-viewer';
 import type { Overlay, Stop, Tour } from '../core/tour.models';
 
 /** How many past documents the undo stack keeps, so a long session cannot grow without bound. */
@@ -36,6 +37,26 @@ export class EditorStore {
   readonly panoramaPosition = this._panoramaPosition.asReadonly();
   setPanoramaPosition(pos: PanoramaFix | null): void {
     this._panoramaPosition.set(pos);
+  }
+
+  private readonly _imageryReport = signal<ImageryReport | null>(null);
+
+  /**
+   * What the viewer says about the image it has actually loaded — its
+   * projection, and the compass angle Mapillary holds for it — or null until
+   * a panorama has loaded. Keyed by imageId for exactly the reason
+   * panoramaPosition is: a pane that lags a selection change would otherwise
+   * pass the previous image's camera off as this one's.
+   *
+   * The edit map's view wedge is drawn from this rather than from the
+   * document. A flat image's stored bearing is a fact about the camera, not a
+   * view direction the author chose, and when Mapillary does not know the
+   * angle the document can only store 0 — so the number alone cannot be told
+   * apart from "facing north". Never part of the document; cleared by `load`.
+   */
+  readonly imageryReport = this._imageryReport.asReadonly();
+  setImageryReport(report: ImageryReport | null): void {
+    this._imageryReport.set(report);
   }
 
   private readonly _mapCenter = signal<{ lng: number; lat: number } | null>(null);
@@ -145,8 +166,9 @@ export class EditorStore {
     this._mapCenter.set(null);
     // Keyed by imageId, so a stale fix is already ignored for another
     // panorama; cleared anyway, because with no tour open there is no
-    // camera standing anywhere.
+    // camera standing anywhere. The imagery report goes for the same reason.
     this._panoramaPosition.set(null);
+    this._imageryReport.set(null);
   }
 
   select(id: string | null): void {

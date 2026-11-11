@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { bearingBetween, distanceBetween } from '../core/geo';
-import { footprintCorners, headingFromHandle, rotationHandleAt, viewWedge } from './footprint';
+import {
+  FLAT_WEDGE_FOV_DEG, SPHERICAL_WEDGE_FOV_DEG,
+  footprintCorners, headingFromHandle, rotationHandleAt, viewWedge, wedgeFor,
+} from './footprint';
+import type { ImageryReport } from '../panorama/panorama-viewer';
 
 const A = { lng: -77.3065, lat: 38.8456 };
 const M = 111_320;
@@ -119,5 +123,67 @@ describe('viewWedge', () => {
     expect(first).toBeCloseTo(45, 1);
     expect(last).toBeCloseTo(135, 1);
     expect(distanceBetween(A, w[1])).toBeCloseTo(20, 1);
+  });
+});
+
+/**
+ * Which wedge, if any, the edit map should draw. The wedge says where the
+ * camera looked; it is not a claim about what is visible, and it is on the
+ * authoring map only — the visitor never sees it.
+ */
+describe('wedgeFor', () => {
+  const PANORAMA = { imageId: 'img-1', bearing: 113 };
+  const report = (over: Partial<ImageryReport> = {}): ImageryReport =>
+    ({ imageId: 'img-1', cameraType: 'spherical', compassAngle: 90, ...over });
+
+  it('spherical: the full wedge from the STORED bearing, as today', () => {
+    expect(wedgeFor(PANORAMA, report())).toEqual({ bearingDeg: 113, fovDeg: SPHERICAL_WEDGE_FOV_DEG });
+    expect(SPHERICAL_WEDGE_FOV_DEG).toBe(90);
+  });
+
+  it('flat with a known angle: the REPORTED angle, and narrower', () => {
+    // Krumlov 514486621381530 reports 190; 953230175442807 reports 293.97.
+    expect(wedgeFor(PANORAMA, report({ cameraType: 'perspective', compassAngle: 190 })))
+      .toEqual({ bearingDeg: 190, fovDeg: FLAT_WEDGE_FOV_DEG });
+    expect(wedgeFor(PANORAMA, report({ cameraType: 'fisheye', compassAngle: 293.97 })))
+      .toEqual({ bearingDeg: 293.97, fovDeg: FLAT_WEDGE_FOV_DEG });
+    expect(FLAT_WEDGE_FOV_DEG).toBeLessThan(SPHERICAL_WEDGE_FOV_DEG);
+  });
+
+  it('flat with a known angle ignores the stored bearing entirely', () => {
+    // The stored number is a fact about the camera, not a direction the
+    // author chose, and for these stops the viewer never reads it.
+    const w = wedgeFor({ imageId: 'img-1', bearing: 0 },
+      report({ cameraType: 'perspective', compassAngle: 190 }));
+    expect(w!.bearingDeg).toBe(190);
+  });
+
+  it('flat with an unknown angle: no wedge at all', () => {
+    // Krumlov 304177654440052 reports -1. Drawing 359 degrees here would be a
+    // confident 90-degree wedge pointing within a degree of north, on nothing.
+    expect(wedgeFor(PANORAMA, report({ cameraType: 'perspective', compassAngle: -1 }))).toBeNull();
+    expect(wedgeFor(PANORAMA, report({ cameraType: 'perspective', compassAngle: null }))).toBeNull();
+    expect(wedgeFor(PANORAMA, report({ cameraType: 'fisheye', compassAngle: -1 }))).toBeNull();
+  });
+
+  it('nothing reported yet: no wedge', () => {
+    // A document opened fresh draws none until its panorama loads. That is
+    // correct: the alternative is a wedge from a number that may mean nothing.
+    expect(wedgeFor(PANORAMA, null)).toBeNull();
+  });
+
+  it("a report for ANOTHER image is not this stop's camera", () => {
+    expect(wedgeFor(PANORAMA, report({ imageId: 'img-other' }))).toBeNull();
+    expect(wedgeFor(PANORAMA, report({ imageId: 'img-other', cameraType: 'perspective', compassAngle: 190 })))
+      .toBeNull();
+  });
+
+  it('an unknown or absent camera type behaves as spherical', () => {
+    // cameraType is undefined if SfM has not been run, and Mapillary may add
+    // a projection. Either way, today's behaviour is preserved.
+    expect(wedgeFor(PANORAMA, report({ cameraType: undefined })))
+      .toEqual({ bearingDeg: 113, fovDeg: SPHERICAL_WEDGE_FOV_DEG });
+    expect(wedgeFor(PANORAMA, report({ cameraType: 'equirectangular' })))
+      .toEqual({ bearingDeg: 113, fovDeg: SPHERICAL_WEDGE_FOV_DEG });
   });
 });

@@ -117,6 +117,21 @@ describe('EditPanoramaPane', () => {
       expect(panoramaFixForStop(store.currentStop(), store.panoramaPosition())).toBeNull();
     });
 
+    it("publishes the viewer's imagery report, so the map can draw an honest wedge", async () => {
+      await start([photo()]);
+      const report = { imageId: 'img-1', cameraType: 'perspective', compassAngle: -1 };
+      fake.emitImageryReport(report);
+      expect(store.imageryReport()).toEqual(report);
+    });
+
+    it('publishes a report for the LOADED image, even when it is not this stop\'s', async () => {
+      // Walking a step away is a real move; the report says which image it is
+      // about, and wedgeFor is what refuses it for this stop.
+      await start([photo()]);
+      fake.emitImageryReport({ imageId: 'img-neighbour', cameraType: 'spherical', compassAngle: 12 });
+      expect(store.imageryReport()!.imageId).toBe('img-neighbour');
+    });
+
     it('does not mark a requested image as loaded before the viewer reports it', async () => {
       await start([photo()]);
       expect(fake.loaded).toHaveLength(1);

@@ -1,9 +1,16 @@
-import type { OverlayMarker, PanoramaViewer } from './panorama-viewer';
+import type { ImageryReport, OverlayMarker, PanoramaViewer } from './panorama-viewer';
 import type { InWorldPlacement } from './in-world-placement';
 
 /** Records interactions so component behaviour can be asserted without WebGL. */
 export class FakeViewer implements PanoramaViewer {
   loaded: { imageId: string; bearing: number }[] = [];
+  /**
+   * Every report the viewer has made. MapillaryViewer gets these from
+   * mapillary-js; nothing here can, so pane and store tests drive them
+   * through emitImageryReport, which is what lets the wedge be tested with
+   * no WebGL.
+   */
+  imageryReports: ImageryReport[] = [];
   markers: OverlayMarker[][] = [];
   inWorldPlacements: InWorldPlacement[][] = [];
   opacity: Record<string, number> | null = null;
@@ -23,6 +30,7 @@ export class FakeViewer implements PanoramaViewer {
   private positionHandler:
     | ((position: { lng: number; lat: number }, imageId: string) => void)
     | null = null;
+  private reportHandler: ((report: ImageryReport) => void) | null = null;
 
   attach(container: HTMLElement): void {
     this.attachedTo = container;
@@ -70,6 +78,15 @@ export class FakeViewer implements PanoramaViewer {
 
   emitPositionChange(position: { lng: number; lat: number }, imageId: string): void {
     this.positionHandler?.(position, imageId);
+  }
+
+  onImageryReport(handler: (report: ImageryReport) => void): void {
+    this.reportHandler = handler;
+  }
+
+  emitImageryReport(report: ImageryReport): void {
+    this.imageryReports.push(report);
+    this.reportHandler?.(report);
   }
 
   destroy(): void {

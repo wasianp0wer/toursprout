@@ -9,13 +9,12 @@ import { EditorStore } from './editor-store';
 import {
   panoramaFixForStop, setOverlayAnchorKeepingHeading, setOverlayHeadingManual, setStopLocation,
 } from './document-ops';
-import { footprintCorners, headingFromHandle, rotationHandleAt, viewWedge } from './footprint';
+import { footprintCorners, headingFromHandle, rotationHandleAt, viewWedge, wedgeFor } from './footprint';
 import type { Overlay } from '../core/tour.models';
 
-/** How far in front of the face the rotation handle sits, and the wedge's size. */
+/** How far in front of the face the rotation handle sits, and the wedge's reach. */
 const HANDLE_OFFSET_M = 6;
 const WEDGE_RADIUS_M = 25;
-const WEDGE_FOV_DEG = 90;
 
 /**
  * The editable map: where a top-down view can show position and heading,
@@ -30,6 +29,12 @@ const WEDGE_FOV_DEG = 90;
  * panoramaFixForStop, the project's single gate: stop.location is the
  * building, not the camera, and is never used as the camera or as a bearing
  * reference.
+ *
+ * The view wedge follows the same discipline one step further: it comes from
+ * wedgeFor over the VIEWER's report of the image it loaded, not from
+ * stop.panorama.bearing, because on flat imagery that stored number is a fact
+ * about the camera and may stand for "unknown". Until the panorama has
+ * loaded there is no wedge.
  */
 @Component({
   selector: 'app-edit-map-pane',
@@ -113,10 +118,17 @@ export class EditMapPane {
         icon: new DivIcon({ className: 'pano-dot', iconSize: [14, 14], iconAnchor: [7, 7] }),
         interactive: false, keyboard: false,
       }).addTo(this.layers), 'data-panorama-position');
-      this.tag(new Polygon(
-        viewWedge(fix, stop.panorama.bearing, WEDGE_FOV_DEG, WEDGE_RADIUS_M).map((p) => [p.lat, p.lng] as [number, number]),
-        { className: 'view-wedge', interactive: false },
-      ).addTo(this.layers), 'data-view-wedge');
+      // The dot says where the camera stood; the wedge says which way it
+      // looked, and wedgeFor may well say it is not known. A dot with no
+      // wedge is the correct picture for a flat image with no compass angle.
+      const wedge = wedgeFor(stop.panorama, this.store.imageryReport());
+      if (wedge) {
+        this.tag(new Polygon(
+          viewWedge(fix, wedge.bearingDeg, wedge.fovDeg, WEDGE_RADIUS_M)
+            .map((p) => [p.lat, p.lng] as [number, number]),
+          { className: 'view-wedge', interactive: false },
+        ).addTo(this.layers), 'data-view-wedge');
+      }
     }
 
     this.stopLocationMarker(stop.id, stop.location);

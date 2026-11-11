@@ -7,6 +7,7 @@ import { bearingBetween, distanceBetween } from '../core/geo';
 import { rotationHandleAt } from './footprint';
 import { addStop, deriveOverlayHeading, setOverlayAnchor, setStopLocation } from './document-ops';
 import type { Overlay } from '../core/tour.models';
+import type { ImageryReport } from '../panorama/panorama-viewer';
 import { Marker, Point, type Map as LeafletMap } from 'leaflet';
 
 /**
@@ -36,9 +37,21 @@ describe('EditMapPane', () => {
   const STOP_LOC = { lng: -77.3, lat: 38.84 };
   const PANO = { imageId: 'img-1', lng: -77.3069, lat: 38.8455 };
 
-  const start = async (overlays: Overlay[], selected: string | null, fix: typeof PANO | null = PANO) => {
+  /**
+   * A spherical report for img-1 is the default, because that is what every
+   * stop in the committed tour is: these tests should keep describing today's
+   * behaviour unless they say otherwise. Pass null for "the panorama has not
+   * loaded yet", which draws no wedge.
+   */
+  const SPHERICAL: ImageryReport = { imageId: 'img-1', cameraType: 'spherical', compassAngle: 113 };
+
+  const start = async (
+    overlays: Overlay[], selected: string | null, fix: typeof PANO | null = PANO,
+    report: ImageryReport | null = SPHERICAL,
+  ) => {
     store.load(tour([stop('s1', 1, overlays, { location: STOP_LOC })]));
     if (fix) store.setPanoramaPosition(fix);
+    if (report) store.setImageryReport(report);
     store.select(selected ?? 's1');
     if (selected) store.select(selected);
     fixture = TestBed.createComponent(EditMapPane);
@@ -162,6 +175,33 @@ describe('EditMapPane', () => {
     expect(q('[data-handle-unavailable]')).toBeTruthy();
     // The footprint needs no panorama, so the author still sees the plane.
     expect(q('[data-footprint]')).toBeTruthy();
+  });
+
+  it('draws no wedge until the viewer has reported, but still draws the dot', async () => {
+    // A document opened fresh has no report until its panorama loads. The
+    // camera's position is known from the fix; which way it looked is not.
+    await start([inWorld()], 'o1', PANO, null);
+    expect(q('[data-panorama-position]')).toBeTruthy();
+    expect(q('[data-view-wedge]')).toBeNull();
+  });
+
+  it('draws no wedge for a flat image whose compass angle Mapillary does not know', async () => {
+    await start([inWorld()], 'o1', PANO,
+      { imageId: 'img-1', cameraType: 'perspective', compassAngle: -1 });
+    expect(q('[data-panorama-position]')).toBeTruthy();
+    expect(q('[data-view-wedge]')).toBeNull();
+  });
+
+  it('draws a wedge for a flat image whose compass angle is known', async () => {
+    await start([inWorld()], 'o1', PANO,
+      { imageId: 'img-1', cameraType: 'perspective', compassAngle: 190 });
+    expect(q('[data-view-wedge]')).toBeTruthy();
+  });
+
+  it('draws no wedge from a report that belongs to another image', async () => {
+    await start([inWorld()], 'o1', PANO,
+      { imageId: 'img-other', cameraType: 'spherical', compassAngle: 12 });
+    expect(q('[data-view-wedge]')).toBeNull();
   });
 
   it("ignores a fix that belongs to another stop's panorama", async () => {

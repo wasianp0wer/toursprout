@@ -44,6 +44,13 @@ password (entry 34); `index.html`'s missing `no-cache` header, which nothing
 has touched (**entry 40**); and CGI under the load of several historians at
 once (entry 39).
 
+**Flat (non-360) Mapillary imagery added entry 42, and nothing in it has been
+seen at all.** It is the only entry whose first check can send the design back:
+if `Image.cameraType` is undefined for a flat image the viewer renders, the
+"unknown is spherical" fallback is wrong for exactly the imagery the feature
+exists for. Start there if a tester outside the United States reports that a
+stop will not face the right way.
+
 Only unproven things are listed. What was verified (the live Mapillary and
 loc.gov response shapes, the Overpass `[timeout:12]` query, the direct
 `tile.loc.gov` image path, the bootstrap procedure and the example's session
@@ -1186,6 +1193,90 @@ served by Apache. The lock has still never met a second deploy.*
   and the only honest way to see it work is to start a second
   `deploy/deploy.sh` while the first is inside `make check` and read the
   refusal.
+
+## 42. Flat (non-360) Mapillary imagery, which nobody has seen render
+
+*Check 3 can change the design. Do it first.*
+
+- **Unproven:** that **any** of this works in a browser. Nobody has seen a
+  flat Mapillary image render in this application. The design rests on
+  mapillary-js drawing `"perspective"` and `"fisheye"` itself
+  (`mapillary.d.ts:1249`) and on `camera-sync.ts` handing three.js
+  mapillary's own view and projection matrices, which should make the
+  in-world renderer projection-agnostic by construction — "should" being the
+  word that this entry exists for. Specifically at risk: the view turning on
+  imagery it cannot turn. `setCenter` works in basic image coordinates, and
+  the shift of `delta / 360` assumes x spans the full circle; on a
+  perspective image x spans the camera's 70-90 degree field of view, so the
+  same shift over-rotates by a factor of four or five.
+  `panorama/view-turn.ts` declines to turn anything Mapillary positively
+  calls `perspective` or `fisheye`, and `view-turn.spec.ts` pins that, but a
+  spec cannot show the resulting view is the right way up.
+- **Why not here:** no browser engine launches in the sandbox, and the
+  frontend suite runs under vitest with jsdom and no WebGL, so nothing that
+  touches mapillary-js is reachable from a test. That is why the four
+  decisions live in pure functions with their own specs —
+  `thinBySpacing` and `knownCompassAngle` (`core/mapillary-search.ts`),
+  `centerForBearing` (`panorama/view-turn.ts`), `wedgeFor`
+  (`editor/footprint.ts`) — and why `fake-viewer.ts` grew
+  `emitImageryReport`. `graph.mapillary.com` is also unreachable from CI and
+  from the host, so even the field names below were confirmed by hand from a
+  workstation rather than by anything automated.
+- **Close it**, in this order:
+  1. **`Image.cameraType` is actually populated for a flat image the viewer
+     renders.** Everything else rests on this. mapillary-js documents it as
+     "undefined if SfM has not been run" (`mapillary.d.ts:1950`), and
+     `isFlatCamera` therefore treats unknown as spherical, which preserves
+     today's behaviour for every image that works today. If it comes back
+     undefined for flat imagery, **that fallback is wrong for exactly the
+     images this feature is for**, and the rule inverts to "turn only when
+     positively spherical". Read it in the console on a loaded flat image, or
+     watch the report the editor publishes.
+  2. A stop built on a flat candidate loads and shows the street.
+  3. The view does **not** whip round on load. This is the over-rotation
+     above, confirmed absent.
+  4. A draped archival photograph inside the camera's wedge appears and fades.
+  5. The ground arrows still walk between flat images in a sequence.
+  6. The map's wedge is **absent** on a flat stop whose compass angle is `-1`,
+     and **present** on one whose angle is known.
+- **Subjects**, probed 2026-11-11. Mapillary imagery can be withdrawn
+  upstream, so an id that no longer resolves means re-probing, not a defect.
+  - **Český Krumlov, `48.8109, 14.3153`** — the main subject. 46 flat images,
+    0 panoramas, 17 sequences within 50 m. Today the search returns nothing
+    here and the stop cannot be made at all.
+
+    | image id | distance | sequence | compass |
+    | --- | --- | --- | --- |
+    | `304177654440052` | 21.8 m | `KkmbK5LiUsI_cQBJ6LuHpw` | **-1** |
+    | `953230175442807` | 23.0 m | `9NrMXWUXTiSDWGqNL2irrA` | 293.97 |
+    | `313605866995776` | 23.0 m | `9NrMXWUXTiSDWGqNL2irrA` | 298.12 |
+    | `514486621381530` | 27.0 m | `dOwlXaqhImEkvyRAMYgPUW` | 190 |
+
+    The first row is check 6's "no wedge" case: an unknown compass angle, so
+    it stores bearing `0` and must draw nothing. The fourth has a known angle
+    and must draw one. Rows two and three are 0.9 m apart in one sequence, so
+    only one of them should reach the list.
+  - **Visby, Sweden, `57.6409, 18.2960`** — 8 panoramas against 280 flat
+    images. The panoramas must still occupy the top of the list: this is the
+    check that an author with 360 coverage sees no change in what they are
+    offered first.
+  - **Rye, England, `50.9509, 0.7311`** — 28 flat images, all in sequence
+    `Q9GMfRjnXOskmoyDrIFabv`, nearest 40 m. Thinning must leave **several**
+    candidates here, not one. One-frame-per-sequence would have left one, and
+    that is the edge case the spatial rule exists for.
+- **Also unseen, and not in the list above:** whether 10 m
+  (`MIN_CANDIDATE_SPACING_M`) is the right spacing on real coverage, and
+  whether `FLAT_WEDGE_FOV_DEG` (60, a deliberate under-claim against the
+  70-90 degrees real flat capture runs) reads as useful or as misleadingly
+  narrow. Both are module constants, and both are judgement calls that want
+  an author's eye rather than a test. Note also that the thinner applies to
+  **360** imagery as well: a dense panorama campaign spaced under 10 m will
+  be thinned too, which nobody has looked at on Fairfax.
+- **`make e2e` cannot run here either** (entry 30).
+  `frontend/tests/e2e/flat-imagery.spec.ts` drives the Krumlov list against
+  the real Graph API and **skips with a reason** unless `MAPILLARY_TOKEN` is
+  in the environment, because a stub returns an empty list and would prove
+  the opposite of the point.
 
 ---
 

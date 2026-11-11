@@ -22,10 +22,39 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 413 backend (pytest), 606 frontend (Vitest); lint and production
-build clean via `make check`. Eager bundle 2.15 MB raw / 372.02 kB transferred;
-the editor is a lazy chunk, 102.13 kB raw / 23.74 kB transferred, and the
-welcome screen is another, 11.85 kB raw / 3.91 kB transferred.
+**Tests:** 696 backend (pytest), 740 frontend (Vitest); lint and production
+build clean via `make check`. Eager bundle 2.15 MB raw / 372.22 kB transferred;
+the editor is a lazy chunk, 105.34 kB raw / 24.68 kB transferred, and the
+welcome screen is another, 12.56 kB raw / 4.08 kB transferred.
+
+*(This line read 413 backend / 606 frontend until 2026-11-11 and had gone
+stale by a long way: `main` at `e24845a` already ran 692 backend, the
+workstation-deploy branch having added `test_deploy_script.py`. The frontend
+figure was never re-measured after that branch either. Take the numbers above
+as the ones a run actually printed.)*
+
+**Flat (non-360) Mapillary imagery landed on 2026-11-11, and none of it has
+been seen in a browser.** Until this branch a stop's base imagery had to be a
+true 360 panorama: the editor's search discarded everything else, so an author
+in a town covered only by phone and dashcam capture got an empty list and
+could not make a stop at all. Three of six candidate European sites probed on
+2026-11-11 were flat-only. The search now lists flat and fisheye imagery,
+badged `360°` or `flat`, thinned to distinct vantage points
+(`MIN_CANDIDATE_SPACING_M`, 10 m); the view declines to turn on imagery whose
+x axis is not the full circle (`panorama/view-turn.ts` — the old arithmetic
+over-rotated a perspective image by a factor of four or five); an unknown
+compass angle is Mapillary's `-1` sentinel rather than null and now stores
+bearing `0` instead of 359 (`knownCompassAngle`); and the edit map's view
+wedge is drawn from the viewer's report of the image it loaded rather than
+from the document, so a flat stop with no known angle draws none at all
+(`wedgeFor`). **No schema change, no migration, no new dependency.** The
+design is
+`docs/superpowers/specs/2026-11-11-flat-mapillary-imagery-design.md` and the
+plan is `docs/superpowers/plans/2026-11-11-flat-mapillary-imagery.md`.
+Its six browser checks are open as **`UNVERIFIED.md` entry 42**, whose first
+check — whether `Image.cameraType` is populated at all for a flat image — can
+send the design back, and should be done first. The branch stops before
+deploying; shipping to testers is a separate act (`docs/DEPLOY.md`).
 
 Two warnings in that run predate this branch and are not yours to chase: the
 backend suite reports two deprecations from inside starlette and fastapi

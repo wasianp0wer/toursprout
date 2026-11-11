@@ -6,7 +6,10 @@ import { ConfigStore } from './config-store';
 const MAPILLARY_IMAGES = 'https://graph.mapillary.com/images';
 // A stalled connection must not leave the search button disabled until the browser gives up.
 const TIMEOUT_MS = 15_000;
-const FIELDS = 'id,computed_geometry,geometry,is_pano,captured_at,compass_angle,thumb_256_url';
+// `sequence` was confirmed against the live API on 2026-11-11; `sequence_id` is
+// accepted but returns nothing, so do not reach for it. One bad name fails the
+// whole request, and neither CI nor the host can make the call to find out.
+const FIELDS = 'id,computed_geometry,geometry,is_pano,sequence,captured_at,compass_angle,thumb_256_url';
 
 export interface PanoramaCandidate {
   imageId: string;
@@ -14,6 +17,8 @@ export interface PanoramaCandidate {
   lng: number;
   lat: number;
   isPano?: boolean;
+  /** Mapillary's `sequence`: one capture run. Dense runs are thinned — see thinBySpacing. */
+  sequenceId: string | null;
   capturedAt: number | string | null;
   compassAngle?: number | null;
   thumbUrl: string | null;
@@ -37,6 +42,27 @@ export function haversineM(lng1: number, lat1: number, lng2: number, lat2: numbe
   return 2 * r * Math.asin(Math.sqrt(a));
 }
 
+/**
+ * A compass angle Mapillary actually knows, normalised to 0-360, or null.
+ *
+ * **Mapillary reports an unknown compass angle as `-1`, not `null`** — 25 of
+ * Český Krumlov's 46 flat images do. A null check does not catch it: `-1` is a
+ * finite number, so the usual `((v % 360) + 360) % 360` turns "unknown" into
+ * `359`, and a stop is then stored facing almost due north on no evidence
+ * whatever, passing every schema validation because 359 is a legal bearing.
+ * Nothing is guessed here — a sentinel is simply read as data — but it is the
+ * same failure as the hand-guessed bearings this project has already been
+ * bitten by, one of which was wrong by 138 degrees.
+ *
+ * This is the one home for that fact, because both readers of a compass angle
+ * get theirs from Mapillary: `selectPanorama` (a search candidate) and the
+ * editor map's `wedgeFor` (the viewer's report of what it loaded).
+ */
+export function knownCompassAngle(v: number | null | undefined): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return null;
+  return ((v % 360) + 360) % 360;
+}
+
 type Raw = Record<string, unknown>;
 
 /** A [lng, lat] pair from a GeoJSON-ish point, or null if it is missing or malformed. */
@@ -50,6 +76,12 @@ function coordinatesOf(geom: unknown): [number, number] | null {
 
 /**
  * Imagery near a point, true 360 panoramas first, nearest first.
+ *
+ * Flat and fisheye imagery is included: the rule is "whatever the viewer can
+ * draw", and mapillary-js draws all three projections. `panoOnly` survives as
+ * an argument because the specs exercise it, but no caller passes it — where
+ * coverage is phone and dashcam capture, filtering it out leaves the author
+ * with an empty list and no way to make a stop at all.
  *
  * `lng`/`lat` on each candidate are where the CAMERA stood (Mapillary's
  * `computed_geometry`, else `geometry`), never the query point. The editor
@@ -70,8 +102,10 @@ export function rankCandidates(
     if (!at) continue;
     const isPano = Boolean(img['is_pano']);
     if (panoOnly && !isPano) continue;
+    const sequence = img['sequence'];
     out.push({
       imageId: String(img['id']), lng: at[0], lat: at[1], isPano,
+      sequenceId: typeof sequence === 'string' && sequence ? sequence : null,
       capturedAt: (img['captured_at'] as number | string | null | undefined) ?? null,
       compassAngle: (img['compass_angle'] as number | null | undefined) ?? null,
       thumbUrl: (img['thumb_256_url'] as string | null | undefined) ?? null,
@@ -79,7 +113,54 @@ export function rankCandidates(
     });
   }
   out.sort((a, b) => Number(!a.isPano) - Number(!b.isPano) || a.distanceM - b.distanceM);
-  return out.slice(0, limit);
+  // Thinning runs between the sort and the limit. Either way round matters:
+  // thinning a list already cut to 20 would return fewer than 20 where 20
+  // distinct vantage points exist.
+  return thinBySpacing(out).slice(0, limit);
+}
+
+/**
+ * How near two frames of one capture run have to be before the second is
+ * redundant. The pano-only filter used to do this job without anyone naming
+ * it: on Fairfax's 360 coverage the 20 images kept were 20 distinct vantage
+ * points, and on phone and dashcam capture they are not. Český Krumlov
+ * returns 46 flat images in 17 sequences within 50 m, one sequence
+ * contributing 11 frames ninety centimetres apart.
+ */
+export const MIN_CANDIDATE_SPACING_M = 10;
+
+/**
+ * Drop candidates that stand where a better-ranked frame of the SAME capture
+ * run already stands, so the list offers distinct vantage points.
+ *
+ * Walk the ranked list in order and keep a candidate unless an already-kept
+ * candidate from its own sequence lies within `minSpacingM`. One frame per
+ * sequence would be the wrong rule: Rye's 28 flat images are a single
+ * sequence, and the author would be offered one candidate for the whole
+ * street. A candidate with no sequence id is never thinned — Graph can omit
+ * the field, and two absent ids are not the same capture run.
+ *
+ * Spacing is measured between the candidates' own positions, not between
+ * their `distanceM`: two frames can be equidistant from the query point and
+ * still be the same vantage point, or metres apart.
+ */
+export function thinBySpacing(
+  candidates: PanoramaCandidate[], minSpacingM = MIN_CANDIDATE_SPACING_M,
+): PanoramaCandidate[] {
+  const keptBySequence = new Map<string, PanoramaCandidate[]>();
+  const out: PanoramaCandidate[] = [];
+  for (const c of candidates) {
+    if (c.sequenceId === null) {
+      out.push(c);
+      continue;
+    }
+    const kept = keptBySequence.get(c.sequenceId) ?? [];
+    if (kept.some((k) => haversineM(k.lng, k.lat, c.lng, c.lat) < minSpacingM)) continue;
+    kept.push(c);
+    keptBySequence.set(c.sequenceId, kept);
+    out.push(c);
+  }
+  return out;
 }
 
 /**
@@ -94,11 +175,17 @@ export class MapillarySearch {
   private readonly config = inject(ConfigStore);
 
   async panoramas(
-    lng: number, lat: number, radiusM = 50, panoOnly = true, limit = 20,
+    lng: number, lat: number, radiusM = 50, panoOnly = false, limit = 20,
   ): Promise<PanoramaCandidate[]> {
     const token = this.config.mapillaryToken();
     if (!token) throw new Error('no Mapillary token is configured (set MAPILLARY_TOKEN)');
     try {
+      // A known, unaddressed limit: Graph's `limit` is not nearest-first, so
+      // on coverage denser than 500 images in 50 m, images nearer than the
+      // ones returned can be dropped before ranking ever sees them. Visby,
+      // the densest site probed, returned 288 and did not reach the cap. The
+      // fix is a smaller radius or paging; neither is worth doing before a
+      // real site hits it.
       const res = await firstValueFrom(this.http.get<{ data?: unknown[] }>(MAPILLARY_IMAGES, {
         params: { access_token: token, bbox: bboxAround(lng, lat, radiusM), fields: FIELDS, limit: 500 },
       }).pipe(timeout(TIMEOUT_MS)));

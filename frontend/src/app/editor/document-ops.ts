@@ -11,6 +11,7 @@
  * project's development environment at all.
  */
 import { bearingBetween, type LngLatLike } from '../core/geo';
+import { knownCompassAngle } from '../core/mapillary-search';
 import type {
   Credit, Display, InWorldDisplay, Overlay, OverlayKind, Stop, Tour,
 } from '../core/tour.models';
@@ -553,10 +554,16 @@ export function selectPanorama(
   if (!tour.stops.some((s) => s.id === stopId)) return null;
   if (typeof imageId !== 'string' || !imageId.trim()) return null;
   if (!isNum(lng) || !isNum(lat) || Math.abs(lng) > 180 || Math.abs(lat) > 90) return null;
-  const bearing = isNum(candidate.compassAngle) ? ((candidate.compassAngle % 360) + 360) % 360 : 0;
+  // knownCompassAngle, not a finite-number check: Mapillary's "unknown" is the
+  // sentinel -1, which normalises to a confident 359 if it is read as data.
+  const bearing = knownCompassAngle(candidate.compassAngle) ?? 0;
   const next = mapStop(tour, stopId, (s) => ({
     // bearing and cachedMediaId belonged to the image being replaced. The new
-    // view starts where the camera faced, or north when that is unknown.
+    // view starts where the camera faced, or north when that is unknown —
+    // Panorama.bearing is non-nullable, so 0 is all "unknown" can be, and the
+    // two are indistinguishable here by design. What tells the author the
+    // direction is unknown is the edit map's wedge, which is drawn from the
+    // viewer's report of the loaded image rather than from this number.
     ...s, panorama: { ...s.panorama, imageId, cachedMediaId: null, bearing },
   }));
   return { tour: next, fix: { imageId, lng, lat } };

@@ -91,6 +91,11 @@ export class EditPanoramaPane {
       this.store.setPanoramaPosition({ imageId, lng: position.lng, lat: position.lat }),
     );
 
+    // The same seam, for the same reason: the projection and compass angle of
+    // the image the viewer really loaded. The edit map draws its view wedge
+    // from this, because a flat image's stored bearing may mean nothing.
+    this.viewer.onImageryReport((report) => this.store.setImageryReport(report));
+
     effect(() => {
       const imageId = this.imageId();
       if (!imageId) return;
