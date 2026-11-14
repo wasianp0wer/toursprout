@@ -81,6 +81,20 @@ describe('resolveTheme', () => {
     expect(r.muted).toBe(mix(r.ink, r.panel, 0.45));
     expect(r.mutedWeak).toBe(mix(r.muted, r.panel, 0.45));
     expect(r.onAccent).toBe(readableOn(r.accent));
+    expect(r.chip).toBe(mix(r.panel, r.ink, 0.07));
+    expect(r.chipSelected).toBe(mix(r.panel, r.accent, 0.14));
+    expect(r.attributionBar).toBe(mix(r.paper, r.ink, 0.08));
+    expect(r.panoCanvas).toBe(mix(r.paper, r.ink, 0.12));
+    expect(r.onWayfinding).toBe(readableOn(r.wayfinding));
+  });
+
+  it('derives the same way for every preset that does not pin', () => {
+    for (const preset of ['civic', 'fieldNotes'] as const) {
+      const r = resolveTheme(themed({ preset }));
+      expect(r.chip).toBe(mix(r.panel, r.ink, 0.07));
+      expect(r.rule).toBe(mix(r.panel, r.ink, 0.18));
+      expect(r.onWayfinding).toBe(readableOn(r.wayfinding));
+    }
   });
 
   it('never lets an override change error or pinRing', () => {
@@ -95,6 +109,35 @@ describe('resolveTheme', () => {
     expect(r.accent).toBe('#9c5a24');
   });
 
+  it('ignores an override that is not six hex digits, keeping the preset value', () => {
+    // The injection boundary for a published site: these reach CSS custom
+    // properties, so none may survive resolution.
+    for (const bad of ['red', '#fff', '#12345g', '#ffffff; x: y', 'url(x)', '#ffffff}', '', '#ffffffff']) {
+      const r = resolveTheme(themed({ preset: 'archival', overrides: { accent: bad, panel: bad } }));
+      expect(r.accent, bad).toBe('#9c5a24');
+      expect(r.panel, bad).toBe('#fbf6ea');
+    }
+  });
+
+  it('survives overrides that are not an object, or hold non-strings', () => {
+    for (const overrides of ['x', 7, [], true]) {
+      const r = resolveTheme(themed({ preset: 'civic', overrides: overrides as never }));
+      expect(r.accent).toBe('#1f5c8f');
+    }
+    const r = resolveTheme(themed({ preset: 'civic', overrides: { accent: 5 } as never }));
+    expect(r.accent).toBe('#1f5c8f');
+  });
+
+  it('honours every one of the thirteen overridable tokens', () => {
+    // Guards against a token being added to ThemeOverrides and forgotten in
+    // the resolver, which would drop the author's choice silently.
+    const keys = ['paper', 'panel', 'ink', 'accent', 'wayfinding', 'destination', 'soft',
+      'muted', 'rule', 'chip', 'chipSelected', 'attributionBar', 'onAccent'] as const;
+    const overrides = Object.fromEntries(keys.map((k, i) => [k, '#0' + (i + 1).toString(16) + '0a0b']));
+    const r = resolveTheme(themed({ overrides }));
+    for (const k of keys) expect(r[k], k).toBe(overrides[k]);
+  });
+
   it('ignores a null override, as the backend sends them', () => {
     const r = resolveTheme(themed({ overrides: { accent: null } as never }));
     expect(r.accent).toBe('#e8b04b');
@@ -105,12 +148,16 @@ describe('colour helpers', () => {
   it('picks a readable label on an accent, deterministically at the boundary', () => {
     expect(readableOn('#ffffff')).toBe('#121212');
     expect(readableOn('#000000')).toBe('#ffffff');
-    // A mid-grey scores near-equally against both candidates, so pin
-    // readableOn to contrastRatio rather than to a hand-computed hex.
-    const c = '#767676';
-    const expected = contrastRatio('#ffffff', c) >= contrastRatio('#121212', c)
-      ? '#ffffff' : '#121212';
-    expect(readableOn(c)).toBe(expected);
+    // Mid-greys score near-equally against both candidates, so pin readableOn
+    // to contrastRatio rather than to hand-computed hexes. The rule is strict:
+    // white must beat #121212 to win, so a tie goes to #121212. No 8-bit grey
+    // ties exactly (#797979 is the closest), so the direction is mirrored here
+    // with `>`, not `>=`, to match the documented rule rather than its opposite.
+    for (const c of ['#767676', '#777777', '#787878', '#797979', '#7a7a7a', '#7b7b7b']) {
+      const expected = contrastRatio('#ffffff', c) > contrastRatio('#121212', c)
+        ? '#ffffff' : '#121212';
+      expect(readableOn(c), c).toBe(expected);
+    }
   });
 
   it('mixes two colours in sRGB', () => {

@@ -113,11 +113,18 @@ const DEFAULT_PAIRING: TypePairing = 'georgia';
 const DEFAULT_SCALE: TypeScale = 'comfortable';
 const DEFAULT_LAYOUT: LayoutName = 'widePanel';
 
-/** The tokens an author may override. `error` and `pinRing` deliberately are not. */
-const OVERRIDABLE: readonly (keyof ThemeOverrides)[] = [
-  'paper', 'panel', 'ink', 'accent', 'wayfinding', 'destination', 'soft', 'muted',
-  'rule', 'chip', 'chipSelected', 'attributionBar', 'onAccent',
-];
+/**
+ * The tokens an author may override (`error` and `pinRing` deliberately are
+ * not). Written as a Record over every key of ThemeOverrides so that adding a
+ * fourteenth field to the interface and forgetting it here is a compile error,
+ * not an author's override silently dropped.
+ */
+const OVERRIDABLE_TOKENS: Record<keyof ThemeOverrides, true> = {
+  paper: true, panel: true, ink: true, accent: true, wayfinding: true,
+  destination: true, soft: true, muted: true, rule: true, chip: true,
+  chipSelected: true, attributionBar: true, onAccent: true,
+};
+const OVERRIDABLE = Object.keys(OVERRIDABLE_TOKENS) as (keyof ThemeOverrides)[];
 
 const HEX = /^#[0-9a-f]{6}$/;
 
@@ -231,11 +238,15 @@ export function resolveTheme(theme: Theme | null | undefined): ResolvedTheme {
   };
 }
 
-const CSS_TOKENS: readonly ColourToken[] = [
-  'paper', 'panel', 'ink', 'accent', 'wayfinding', 'destination', 'soft', 'muted',
-  'rule', 'chip', 'chipSelected', 'attributionBar', 'onAccent', 'onWayfinding',
-  'mutedWeak', 'panoCanvas', 'error', 'pinRing',
-];
+// A Record over ColourToken for the same reason as OVERRIDABLE_TOKENS: a new
+// token missing here is a compile error rather than a missing CSS variable.
+const CSS_TOKEN_SET: Record<ColourToken, true> = {
+  paper: true, panel: true, ink: true, accent: true, wayfinding: true,
+  destination: true, soft: true, muted: true, rule: true, chip: true,
+  chipSelected: true, attributionBar: true, onAccent: true, onWayfinding: true,
+  mutedWeak: true, panoCanvas: true, error: true, pinRing: true,
+};
+const CSS_TOKENS = Object.keys(CSS_TOKEN_SET) as ColourToken[];
 
 /** One custom property per colour token: `chipSelected` becomes `--chip-selected`. */
 export function cssVariablesFor(r: ResolvedTheme): Record<string, string> {
