@@ -400,11 +400,29 @@ arranged.
 `compact` 0.88, `comfortable` 1.0, `generous` 1.14, as `--type-scale`.
 
 Each `font-size` in the viewer's stylesheets becomes
-`calc(<existing value> * var(--type-scale))` — about twenty declarations.
-Deliberately not done by scaling the root font size, which would mean theming
-`:root` (§5.6), and deliberately not done by converting `rem` to `em`, because
-the viewer nests font-sized elements (`.kind` inside `.overlay-list button`)
-and `em` would compound.
+`calc(<existing value> * var(--type-scale))` — **twelve** declarations, counted
+(an earlier draft estimated "about twenty"). Deliberately not done by scaling
+the root font size, which would mean theming `:root` (§5.6), and deliberately
+not done by converting `rem` to `em`, because the viewer nests font-sized
+elements (`.kind` inside `.overlay-list button`) and `em` would compound.
+
+**Wrapping those twelve is not sufficient, and an earlier draft of this
+document missed why.** The viewer's longest prose carries no `font-size` of its
+own: the overlay body paragraph in `stop-panel.html` has no rule sizing it,
+`.summary` has none, and `.controls button` is `font: inherit`. All three
+inherit from `body`, which keeps its literal — so an author choosing `generous`
+would get larger headings, chips and labels while the actual reading text, the
+stop summary and the Prev/Next labels stayed put. That reads as a bug, not a
+design.
+
+So the viewer host also takes `font-size: calc(1rem * var(--type-scale))`.
+This is safe against the compounding the paragraph above rules out, for a
+reason worth stating: every sized descendant is declared in `rem`, which is
+relative to the **root** element and therefore indifferent to the host's own
+size, so `.kind` stays at `calc(0.62rem * scale)` rather than multiplying by
+it. Only elements with no size of their own inherit the host's, which is
+exactly the set that was being left behind. And it is on the host, not `:root`,
+so §5.6's rule is untouched.
 
 ### 5.6 How it reaches the pixels
 
