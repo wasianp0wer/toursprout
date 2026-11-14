@@ -517,8 +517,13 @@ it('falls back to the Nocturne values when no theme is set', () => { … });
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd frontend && npx ng test --watch=false src/app/map src/app/editor/edit-panorama-pane.spec.ts`
+Run: `cd frontend && npx ng test --watch=false`
 Expected: FAIL — `setMarkerColours` is not a function; pins contain `#e8b04b`.
+
+(The frontend suite runs whole — `npx ng test --watch=false`, as the Makefile's
+`frontend-test` target does. Bare `npx vitest run` fails across the suite with
+"window is not defined", and path filters are not available here, so every
+frontend step below runs all 740 tests. It is fast enough.)
 
 - [ ] **Step 3: Add `setMarkerColours` to the `PanoramaViewer` interface and both implementations**
 
