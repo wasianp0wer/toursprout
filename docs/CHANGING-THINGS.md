@@ -143,10 +143,10 @@ the editor unmigrated cannot even be saved. Migration is the only door.
    `backend/tests/test_bundle.py`, helpers in `test_models.py`).
 
 **Freeze a fixture of the version you are leaving.** `backend/tests/fixtures/`
-holds `fairfax-old-town-v1.json` and `fairfax-old-town-v2.json`, each a
+holds `fairfax-old-town-v1.json`, `-v2.json` and `-v3.json`, each a
 snapshot of the repository's real tour at that version, never refreshed. They
 are what makes the chain testable against real content instead of comparing
-an already-current document to itself. Add `…-v3.json` before you bump.
+an already-current document to itself. Add `…-v4.json` before you bump.
 
 **Fails if incomplete:** `backend/tests/test_migration.py` (add cases for each
 migrated shape; `test_the_real_tour_migrates_and_validates`,
@@ -159,7 +159,9 @@ real content through the chain);
 and `test_a_v1_bundle_is_migrated_on_import` in `backend/tests/test_bundle.py`;
 `test_a_version_newer_than_this_build_is_refused` and
 `test_unsupported_schema_version_is_refused` in `test_migration.py`. **Nothing fails** if `tour.models.ts`
-is left behind and no code uses the changed field; the schema's TypeScript
+is left behind and no code uses the changed field, *except* that the frontend's
+`integration/real-tour.spec.ts` reads the committed seed tour and asserts its
+`schemaVersion`, so bump that literal too; beyond it the schema's TypeScript
 mirror has no drift test (see "the third duplication" under entry 8). Also note
 that migration runs on **import**, not at startup: a stale `tour.json` already
 in a session directory is not migrated by restarting the backend. Re-import the

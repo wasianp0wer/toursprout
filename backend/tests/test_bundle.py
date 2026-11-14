@@ -150,7 +150,12 @@ def test_a_theme_survives_export_and_import(tmp_path):
     assert back["theme"] == doc["theme"]
 
 
-def test_an_imported_bundle_lowercases_an_uppercase_override(tmp_path):
+def test_a_tour_lowercases_an_imported_override(tmp_path):
+    """The MODEL normalises, not the stored file: import swaps the staged tree
+    in without rewriting tour.json, so the document on disk keeps the author's
+    spelling (and the shipped tour must round-trip byte-identically). That is
+    safe: the pattern has already refused anything but six hex digits, CSS hex
+    is case-insensitive, and every server-side reader goes through Tour."""
     doc = _minimal_doc() | {"theme": {"overrides": {"accent": "#9C5A24"}}}
     work = _make_work(tmp_path, doc, {"m.jpg": JPEG})
     zip_path = tmp_path / "upper.zip"
