@@ -5,12 +5,20 @@
    because below the 900px breakpoint `.layout` is `height: auto` and the
    stacked content can run longer than the viewport, or shorter, and either way
    the colour has to reach the bottom. `color` is here for the same reason:
-   `body`'s light text would be unreadable on a light paper. */
+   `body`'s light text would be unreadable on a light paper.
+
+   `font-size` is here so text with no size of its own (the overlay prose, the
+   stop summary, the Prev/Next labels) follows the type scale instead of
+   staying at `body`'s 16px. It cannot compound: every sized descendant is
+   declared in `rem`, which is relative to the root element and so ignores this
+   host's size; `.kind` stays at `calc(0.62rem * scale)`. Only elements with no
+   size of their own inherit it. It is on the host, never `:root`. */
 :host {
   display: block;
   min-height: 100vh;
   background: var(--paper);
   color: var(--ink);
+  font-size: calc(1rem * var(--type-scale));
 }
 .layout {
   display: grid;

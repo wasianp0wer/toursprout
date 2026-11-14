@@ -8,7 +8,7 @@ import { FakeViewer } from '../panorama/fake-viewer';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Tour } from '../core/tour.models';
-import { LAYOUT_NAMES } from '../core/theme';
+import { LAYOUT_NAMES, cssVariablesFor, resolveTheme } from '../core/theme';
 
 const TOUR: Tour = JSON.parse(
   readFileSync(join(process.cwd(), '..', 'content', 'tours', 'fairfax-old-town.json'), 'utf8'),
@@ -168,7 +168,27 @@ describe('ViewerPage', () => {
     });
 
     it('defines a grid for every layout name', () => {
-      for (const name of LAYOUT_NAMES) expect(css).toContain(`[data-layout='${name}']`);
+      // A grid-template-areas inside the layout's own .layout block, so a
+      // block that only nudged a border, or a mention in a comment, fails.
+      for (const name of LAYOUT_NAMES) {
+        const re = new RegExp(
+          `:host\\(\\[data-layout='${name}'\\]\\)\\s+\\.layout\\s*\\{[^}]*grid-template-areas:`);
+        expect(css, name).toMatch(re);
+      }
+    });
+
+    it('stacks every layout the same way below 900px', () => {
+      const media = css.slice(css.indexOf('@media (max-width: 900px)'));
+      expect(media).toContain('@media (max-width: 900px)');
+      // Equal specificity to the layout blocks, so source order decides; and
+      // `[data-layout]` without a value so it covers all three.
+      expect(media).toMatch(/:host\(\[data-layout\]\)\s+\.layout\s*\{[^}]*grid-template-areas:\s*"pano"\s+"map"\s+"panel"\s+"attr"/);
+    });
+
+    it('scales inherited text by sizing the host in rem', () => {
+      // Prose, the stop summary and the Prev/Next labels declare no font-size
+      // and inherit from the host; without this they would stay at 16px.
+      expect(css).toMatch(/:host\s*\{[^}]*font-size:\s*calc\(1rem \* var\(--type-scale\)\)/);
     });
 
     it('holds no colour literals', () => {
@@ -194,10 +214,22 @@ describe('ViewerPage', () => {
       });
     }
 
+    it('names only tokens that cssVariablesFor emits', () => {
+      // A var() nobody emits renders as nothing, silently: jsdom, lint and
+      // the production build all let it through.
+      const known = new Set([...Object.keys(cssVariablesFor(resolveTheme(null))), '--type-scale']);
+      for (const f of files) {
+        const css = readFileSync(join(process.cwd(), f), 'utf8');
+        for (const m of css.matchAll(/var\((--[\w-]+)/g)) {
+          expect(known.has(m[1]), `${f}: ${m[1]}`).toBe(true);
+        }
+      }
+    });
+
     it('themes only the pin ring in styles.css, leaving the editor literals', () => {
       const css = readFileSync(join(process.cwd(), 'src/styles.css'), 'utf8');
       expect(css).toMatch(/\.stop-pin span\s*\{[^}]*border:\s*2px solid var\(--pin-ring\)/);
-      // Twelve hex literals today; the ring was the one this task converts.
+      // Twelve hex literals before this task; the pin ring was converted, so 11 remain.
       expect(css.match(/#[0-9a-f]{3,8}\b/gi)?.length).toBe(11);
     });
   });
