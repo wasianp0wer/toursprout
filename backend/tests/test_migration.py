@@ -225,11 +225,11 @@ def _v2_text(oid="t1"):
 def test_a_v1_document_reaches_the_current_version_in_one_call():
     """The point of the registry: callers ask for "current", not for a hop."""
     out = migrate(_v1_doc([_v1_text()]))
-    assert out["schemaVersion"] == SCHEMA_VERSION == 3
+    assert out["schemaVersion"] == SCHEMA_VERSION == 4
 
 
 def test_a_v2_document_reaches_the_current_version():
-    assert migrate(_v2_doc())["schemaVersion"] == 3
+    assert migrate(_v2_doc())["schemaVersion"] == SCHEMA_VERSION
 
 
 def test_migrating_a_current_document_is_a_no_op():
@@ -306,9 +306,9 @@ def test_the_real_v2_tour_migrates_and_validates():
     ]
 
 
-def test_the_v1_fixture_migrates_through_both_steps_to_the_current_version():
-    """The chain, against real content: v1 -> v2 -> v3 in one call, with the
-    v1-only shapes (rephoto, geoQuad) and the v3-only ones (cachedMediaId)
+def test_the_v1_fixture_migrates_through_three_steps_to_the_current_version():
+    """The chain, against real content: v1 -> v2 -> v3 -> v4 in one call, with
+    the v1-only shapes (rephoto, geoQuad) and the v3-only ones (cachedMediaId)
     both landing correctly."""
     raw = json.loads(V1_FIXTURE.read_text())
     tour = Tour.model_validate(migrate(raw))
@@ -327,3 +327,28 @@ def test_a_blank_attribution_text_is_refused_loudly():
     with pytest.raises(ValueError, match="attribution"):
         migrate(_v2_doc(attribution=[{"text": "   ", "url": None,
                                       "license": "ODbL"}]))
+
+
+# --- v4: the theme step ------------------------------------------------------
+#
+# A frozen v3 snapshot of the repository's real tour, taken before it was
+# bumped to v4 by hand. Same rule as V1_FIXTURE and V2_FIXTURE: do NOT refresh
+# it. Its whole purpose is to stay v3 forever, so these tests keep exercising
+# the chain against real content instead of an already-current document.
+V3_FIXTURE = Path(__file__).parent / "fixtures" / "fairfax-old-town-v3.json"
+
+
+def test_v3_to_v4_is_a_version_bump_and_changes_nothing_else():
+    doc = json.loads(V3_FIXTURE.read_text())
+    assert doc["schemaVersion"] == 3
+    before = deepcopy(doc)
+    out = migrate(doc)
+    assert doc == before  # pure: the input is never mutated
+    assert out["schemaVersion"] == SCHEMA_VERSION == 4
+    assert {k: v for k, v in out.items() if k != "schemaVersion"} == \
+           {k: v for k, v in doc.items() if k != "schemaVersion"}
+
+
+def test_the_v3_fixture_migrates_and_validates():
+    tour = Tour.model_validate(migrate(json.loads(V3_FIXTURE.read_text())))
+    assert tour.theme is None

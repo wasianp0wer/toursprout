@@ -22,7 +22,7 @@ class LngLat(Strict):
     lat: Annotated[float, Field(ge=-90.0, le=90.0)]
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class GeoAnchor(Strict):
@@ -260,12 +260,69 @@ class Attribution(Strict):
     license: NonBlank
 
 
+# --- the theme ---------------------------------------------------------------
+#
+# Lives in the document, not in config.json: config.json is derived state and
+# is excluded from an exported bundle, so a theme kept there would not travel
+# with the tour. Everything an author can store is an enumerated name or a hex
+# colour; nothing is free-form, so a theme can never carry markup, `url(...)`
+# or a stray `;` into the stylesheet it is eventually written into.
+
+# Six digits and a hash, one spelling: no `#fff`, no named colours, no `rgb()`.
+# Upper case is accepted and stored lower-cased, so a hand-authored `#FFF000`
+# is not a frustrating refusal but tour.json still holds exactly one spelling.
+HexColor = Annotated[
+    str,
+    Field(pattern=r"^#[0-9a-fA-F]{6}$"),
+    AfterValidator(lambda v: v.lower()),
+]
+
+
+class ThemeOverrides(Strict):
+    """The thirteen colours an author may set. Every one is nullable and absent
+    by default, so an untouched token is not stored and a later improvement to
+    a preset's palette still reaches a tour that merely picked that preset."""
+
+    paper: HexColor | None = None
+    panel: HexColor | None = None
+    ink: HexColor | None = None
+    accent: HexColor | None = None
+    wayfinding: HexColor | None = None
+    destination: HexColor | None = None
+    soft: HexColor | None = None
+    muted: HexColor | None = None
+    rule: HexColor | None = None
+    chip: HexColor | None = None
+    chip_selected: HexColor | None = Field(default=None, alias="chipSelected")
+    attribution_bar: HexColor | None = Field(default=None, alias="attributionBar")
+    on_accent: HexColor | None = Field(default=None, alias="onAccent")
+
+
+class Theme(Strict):
+    """Only names of things we serve are enumerated: a type pairing names font
+    files in our own bundle and a layout names a grid we have laid out, so both
+    are Literals. Colour is not a file, so colour is free (within HexColor).
+    The defaults are Nocturne with no overrides, today's appearance, which is
+    what an absent `Tour.theme` means."""
+
+    preset: Literal["nocturne", "archival", "civic", "fieldNotes"] = "nocturne"
+    type_pairing: Literal[
+        "georgia", "garamond", "franklin", "plex", "franklinGaramond"
+    ] = Field(default="georgia", alias="typePairing")
+    type_scale: Literal["compact", "comfortable", "generous"] = Field(
+        default="comfortable", alias="typeScale"
+    )
+    layout: Literal["widePanel", "panelLeft", "immersive"] = "widePanel"
+    overrides: ThemeOverrides = Field(default_factory=ThemeOverrides)
+
+
 class Tour(Strict):
     id: str = Field(min_length=1)
-    schema_version: Literal[3] = Field(alias="schemaVersion")
+    schema_version: Literal[4] = Field(alias="schemaVersion")
     title: str = Field(min_length=1)
     description: str
     defaults: TourDefaults | None = None
+    theme: Theme | None = None
     attribution: list[Attribution] = Field(default_factory=list)
     stops: list[Stop] = Field(min_length=1)
 

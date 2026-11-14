@@ -239,11 +239,24 @@ def _rename_colliding_overlay_ids(doc: dict[str, Any]) -> None:
             taken.add(ov["id"])
 
 
+def _v3_to_v4(doc: dict[str, Any]) -> dict[str, Any]:
+    """v4 adds an optional `theme` and nothing else, so this is a version bump.
+
+    No tour acquires a `theme` key: absent means Nocturne with no overrides,
+    which is how every existing tour already looks. `extra="forbid"` is why
+    even an additive field needs a bump at all (ADR 0005).
+    """
+    out = deepcopy(doc)
+    out["schemaVersion"] = 4
+    return out
+
+
 # --- the chain --------------------------------------------------------------
 
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _v1_to_v2,
     2: _v2_to_v3,
+    3: _v3_to_v4,
 }
 
 

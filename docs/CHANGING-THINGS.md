@@ -151,7 +151,7 @@ an already-current document to itself. Add `…-v3.json` before you bump.
 **Fails if incomplete:** `backend/tests/test_migration.py` (add cases for each
 migrated shape; `test_the_real_tour_migrates_and_validates`,
 `test_the_real_v2_tour_migrates_and_validates` and
-`test_the_v1_fixture_migrates_through_both_steps_to_the_current_version` run
+`test_the_v1_fixture_migrates_through_three_steps_to_the_current_version` run
 real content through the chain);
 `test_the_shipped_tour_is_valid_at_the_current_version` and
 `test_build_tour_emits_the_current_schema_shapes`

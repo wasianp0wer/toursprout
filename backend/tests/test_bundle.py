@@ -70,7 +70,7 @@ def _referenced_media(doc: dict) -> dict[str, bytes]:
 
 def _minimal_doc(media_id="m.jpg", cached=None):
     return {
-        "id": "t", "schemaVersion": 3, "title": "T", "description": "d",
+        "id": "t", "schemaVersion": 4, "title": "T", "description": "d",
         "attribution": [], "stops": [{
             "id": "s1", "order": 1, "title": "S", "summary": "sum",
             "location": {"lng": -77.3, "lat": 38.84}, "osmRef": None,
@@ -130,6 +130,37 @@ def test_a_v1_bundle_is_migrated_on_import(tmp_path):
     migrated = json.loads((dest / "tour.json").read_text())
     assert migrated["schemaVersion"] == SCHEMA_VERSION
     Tour.model_validate(migrated)
+
+
+def test_a_theme_survives_export_and_import(tmp_path):
+    """The whole reason the theme is in the document and not config.json:
+    config.json is derived state and is not in a bundle; tour.json is."""
+    doc = _minimal_doc() | {"theme": {
+        "preset": "archival", "typePairing": "garamond",
+        "typeScale": "generous", "layout": "immersive",
+        "overrides": {"accent": "#4f6b2a"}}}
+    work = _make_work(tmp_path, doc, {"m.jpg": JPEG})
+    zip_path = tmp_path / "themed.zip"
+    write_bundle(work, zip_path)
+
+    dest = tmp_path / "back"
+    read_bundle(zip_path, dest)
+
+    back = json.loads((dest / "tour.json").read_text())
+    assert back["theme"] == doc["theme"]
+
+
+def test_an_imported_bundle_lowercases_an_uppercase_override(tmp_path):
+    doc = _minimal_doc() | {"theme": {"overrides": {"accent": "#9C5A24"}}}
+    work = _make_work(tmp_path, doc, {"m.jpg": JPEG})
+    zip_path = tmp_path / "upper.zip"
+    write_bundle(work, zip_path)
+
+    dest = tmp_path / "back"
+    read_bundle(zip_path, dest)
+
+    tour = Tour.model_validate(json.loads((dest / "tour.json").read_text()))
+    assert tour.theme.overrides.accent == "#9c5a24"
 
 
 @pytest.mark.parametrize("entry", [

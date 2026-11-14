@@ -7,7 +7,9 @@ import pytest
 from pydantic import ValidationError
 
 from app import models
-from app.models import DISPLAY_MODES_BY_KIND, GeoAnchor, Overlay, Stop, Tour
+from app.models import (
+    DISPLAY_MODES_BY_KIND, GeoAnchor, Overlay, Stop, Theme, ThemeOverrides, Tour,
+)
 
 VALID_CREDIT = {
     "type": "sourced",
@@ -61,7 +63,7 @@ def _stop(**over):
 def _tour(**over):
     base = {
         "id": "fairfax-old-town",
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "title": "Old Town Fairfax",
         "description": "A walking tour of six historic sites.",
         "attribution": [
@@ -425,3 +427,29 @@ def test_the_frontend_mode_table_matches_this_one():
             assert f"'{mode}'" in line, f"{kind} should allow {mode}"
         for mode in {"marker", "inWorld", "ambient"} - set(modes):
             assert f"'{mode}'" not in line, f"{kind} should not allow {mode}"
+
+
+def test_a_hex_colour_must_be_six_digits_with_a_hash():
+    for bad in ("#fff", "red", "#12345g", "url(x)", "#ffffff;", "", "#ffffffff"):
+        with pytest.raises(ValidationError):
+            ThemeOverrides(accent=bad)
+
+
+def test_a_hex_colour_is_stored_lowercased():
+    assert ThemeOverrides(accent="#AABBCC").accent == "#aabbcc"
+
+
+def test_a_theme_defaults_to_nocturne_with_no_overrides():
+    t = Theme()
+    assert (t.preset, t.type_pairing, t.type_scale, t.layout) == (
+        "nocturne", "georgia", "comfortable", "widePanel")
+    assert t.overrides.model_dump(exclude_none=True) == {}
+
+
+def test_a_tour_has_no_theme_by_default():
+    assert Tour.model_validate(_tour()).theme is None
+
+
+def test_an_unknown_preset_is_refused():
+    with pytest.raises(ValidationError):
+        Theme(preset="brutalist")
