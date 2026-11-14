@@ -30,7 +30,7 @@ export function stop(
 
 export function tour(stops: Stop[] = [stop('s1', 1)]): Tour {
   return {
-    id: 't', schemaVersion: 3, title: 'T', description: '',
+    id: 't', schemaVersion: 4, title: 'T', description: '',
     defaults: { creator: 'M. Harrington', license: 'CC-BY-4.0' },
     attribution: [], stops,
   };

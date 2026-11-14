@@ -10,6 +10,7 @@ from app import models
 from app.models import (
     DISPLAY_MODES_BY_KIND, GeoAnchor, Overlay, Stop, Theme, ThemeOverrides, Tour,
 )
+from .theme_vocabulary import interface_fields, names_in
 
 VALID_CREDIT = {
     "type": "sourced",
@@ -453,3 +454,26 @@ def test_a_tour_has_no_theme_by_default():
 def test_an_unknown_preset_is_refused():
     with pytest.raises(ValidationError):
         Theme(preset="brutalist")
+
+
+def test_the_frontend_theme_vocabulary_matches_this_one():
+    """frontend/src/app/core/theme.ts spells the four enumerated choices out
+    again so a viewer with no Python in the path can validate them. Same idiom
+    as test_the_frontend_mode_table_matches_this_one: read the TypeScript as
+    text so the two copies cannot drift."""
+    for name, field in (
+        ("PRESET_NAMES", "preset"),
+        ("TYPE_PAIRINGS", "type_pairing"),
+        ("TYPE_SCALES", "type_scale"),
+        ("LAYOUT_NAMES", "layout"),
+    ):
+        want = list(get_args(Theme.model_fields[field].annotation))
+        assert names_in(name) == want, name
+
+
+def test_the_frontend_theme_overrides_have_the_same_thirteen_fields():
+    """A fourteenth token must not be addable on one side only. The TypeScript
+    uses the camelCase JSON spelling, which is each field's alias if it has one."""
+    want = [f.alias or n for n, f in ThemeOverrides.model_fields.items()]
+    assert len(want) == 13
+    assert interface_fields("ThemeOverrides") == want

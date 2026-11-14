@@ -42,7 +42,7 @@ const INWORLD_NO_MEDIA: Overlay = {
 
 function tour(): Tour {
   return {
-    id: 't', schemaVersion: 3, title: 'T', description: '', defaults: null, attribution: [],
+    id: 't', schemaVersion: 4, title: 'T', description: '', defaults: null, attribution: [],
     stops: [1, 2].map((n) => ({
       id: `s${n}`, order: n, title: `Stop ${n}`, summary: '',
       location: { lng: -77.3, lat: 38.84 }, osmRef: null,

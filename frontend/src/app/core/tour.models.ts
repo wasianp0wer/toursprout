@@ -6,6 +6,9 @@
  * is, `display` is how it is drawn.
  */
 
+import type { Theme } from './theme';
+export type { Theme, ThemeOverrides } from './theme';
+
 export interface OriginalCredit {
   type: 'original';
   creator: string;
@@ -112,12 +115,12 @@ export interface Attribution {
 export interface Tour {
   id: string;
   /**
-   * Narrowed to the literal pydantic enforces (`Literal[3]` in
+   * Narrowed to the literal pydantic enforces (`Literal[4]` in
    * backend/app/models.py), not `number`: a file-backed viewer with no
    * Python in the path (the migration lives only in app.migration) must
    * fail to compile against an older document rather than accept it silently.
    */
-  schemaVersion: 3;
+  schemaVersion: 4;
   title: string;
   description: string;
   /**
@@ -129,6 +132,12 @@ export interface Tour {
   defaults?: TourDefaults | null;
   attribution: Attribution[];
   stops: Stop[];
+  /**
+   * Optional and nullable for the same reason as `defaults`: a tour authored
+   * before theming has no key at all, and the API sends `null`. Absent means
+   * Nocturne, which is today's appearance.
+   */
+  theme?: Theme | null;
 }
 
 export interface TourSummary {

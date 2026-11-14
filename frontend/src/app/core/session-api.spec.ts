@@ -7,7 +7,7 @@ import type { Tour } from './tour.models';
 
 function tour(): Tour {
   return {
-    id: 't', schemaVersion: 3, title: 'Old Town Fairfax', description: '',
+    id: 't', schemaVersion: 4, title: 'Old Town Fairfax', description: '',
     defaults: null, attribution: [], stops: [],
   } as unknown as Tour;
 }
