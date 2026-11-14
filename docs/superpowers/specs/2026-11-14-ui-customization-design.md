@@ -265,14 +265,26 @@ lifted from the current source, not chosen:
 | `chip` | `#252a32` | `.overlay-list button` |
 | `chipSelected` | `#2d323c` | `.overlay-list button.active` |
 | `attributionBar` | `#0f1114` | `.attribution` |
+| `onWayfinding` | `#ffffff` | `map-pane.ts` other pin's number — pinned, see below |
 | `mutedWeak` | `#6d7480` | `.controls button:disabled` |
 | `panoCanvas` | `#111111` | `panorama-pane.css` `.panorama` |
 | `error` | `#e8825b` | `.fatal` |
 
-`onAccent` and `onWayfinding` resolve by the contrast rule to `#121212` and
-`#ffffff`, which is what `map-pane.ts` writes today (`#14161a` for the current
-pin's number, near enough to be indistinguishable; the token is the honest
-value and the one-off literal goes).
+`onAccent` resolves by the contrast rule to `#121212` (9.58 against
+`#e8b04b`, against 1.95 for white), which is what `map-pane.ts` writes today
+for the current pin's number — it writes `#14161a`, near enough to be
+indistinguishable, and the token is the honest value, so the one-off literal
+goes.
+
+**`onWayfinding` is pinned, and an earlier draft of this document had it
+wrong.** That draft claimed the contrast rule resolves it to `#ffffff`. It does
+not: `#2f7fd4` scores **4.56** against `#121212` and only **4.11** against
+white, so the rule picks dark — while `map-pane.ts` writes `#ffffff` for
+another stop's number today. Deriving it would therefore change an existing
+tour's appearance, which goal 4 forbids. Nocturne pins
+`onWayfinding: #ffffff`, making it a sixteenth pinned value; the rule that a
+preset may pin any token is what makes this expressible. The other three
+presets derive it, because they have no legacy appearance to preserve.
 
 The other three presets supply their core six and an `error`, and let the
 derivations do the rest. These values came from the approved mockups except the
