@@ -1,4 +1,17 @@
-:host { display: block; height: 100vh; }
+/* The page colour is painted here, not left to `body`. The tokens live on this
+   host element (see ViewerPage), so the host is the only thing that can read
+   `--paper`; `body` keeps its literal for the editor and welcome screen and is
+   simply never visible behind the viewer. `min-height` rather than `height`
+   because below the 900px breakpoint `.layout` is `height: auto` and the
+   stacked content can run longer than the viewport, or shorter, and either way
+   the colour has to reach the bottom. `color` is here for the same reason:
+   `body`'s light text would be unreadable on a light paper. */
+:host {
+  display: block;
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+}
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
@@ -7,28 +20,65 @@
   height: 100vh;
 }
 .panorama-slot { grid-area: pano; min-height: 0; position: relative; }
-.map-slot { grid-area: map; min-height: 0; border-top: 1px solid #333944; }
-.panel-slot { grid-area: panel; min-height: 0; border-left: 1px solid #333944; }
+.map-slot { grid-area: map; min-height: 0; border-top: 1px solid var(--rule); }
+.panel-slot { grid-area: panel; min-height: 0; border-left: 1px solid var(--rule); }
 .attribution {
   grid-area: attr;
   display: flex;
   gap: 1rem;
   align-items: center;
   padding: 0.4rem 0.85rem;
-  font-size: 0.68rem;
-  background: #0f1114;
+  font-size: calc(0.68rem * var(--type-scale));
+  background: var(--attribution-bar);
 }
-.attribution a { color: #9aa0ab; text-decoration: none; }
+.attribution a { color: var(--muted); text-decoration: none; }
 .attribution a:hover { text-decoration: underline; }
-.tour-title { color: #e8b04b; letter-spacing: 0.05em; text-transform: uppercase; }
+.tour-title { color: var(--accent); letter-spacing: 0.05em; text-transform: uppercase; }
 .loading, .fatal { padding: 2rem; }
-.fatal { color: #e8825b; }
+.fatal { color: var(--error); }
 
+/* widePanel is the default above: panorama over map on the left, the stop
+   panel full height on the right. It is spelled out as well so that every
+   layout name has a block here, and so the default does not depend on the
+   attribute having been written yet. */
+:host([data-layout='widePanel']) .layout {
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  grid-template-areas: "pano panel" "map panel" "attr attr";
+}
+
+/* The mirror. The divider moves to the panel's other edge with it. */
+:host([data-layout='panelLeft']) .layout {
+  grid-template-columns: minmax(320px, 1fr) minmax(0, 2fr);
+  grid-template-areas: "panel pano" "panel map" "attr attr";
+}
+:host([data-layout='panelLeft']) .panel-slot {
+  border-left: 0;
+  border-right: 1px solid var(--rule);
+}
+
+/* Panorama across the top; the panel and a narrower map side by side below. */
+:host([data-layout='immersive']) .layout {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-areas: "pano pano" "panel map" "attr attr";
+}
+:host([data-layout='immersive']) .panel-slot {
+  border-left: 0;
+  border-right: 1px solid var(--rule);
+}
+
+/* Every layout stacks the same way on a narrow screen: panorama, map, panel,
+   attribution. Three bespoke phone layouts would be three more things nobody
+   can look at. The selector repeats the layouts' own specificity so that, being
+   later, this wins; and the panel's divider returns to today's left edge. */
 @media (max-width: 900px) {
-  .layout {
+  :host([data-layout]) .layout {
     grid-template-columns: 1fr;
     grid-template-rows: 45vh 25vh 1fr auto;
     grid-template-areas: "pano" "map" "panel" "attr";
     height: auto;
+  }
+  :host([data-layout]) .panel-slot {
+    border-left: 1px solid var(--rule);
+    border-right: 0;
   }
 }

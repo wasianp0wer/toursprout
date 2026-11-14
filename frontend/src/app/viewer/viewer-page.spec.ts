@@ -8,6 +8,7 @@ import { FakeViewer } from '../panorama/fake-viewer';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Tour } from '../core/tour.models';
+import { LAYOUT_NAMES } from '../core/theme';
 
 const TOUR: Tour = JSON.parse(
   readFileSync(join(process.cwd(), '..', 'content', 'tours', 'fairfax-old-town.json'), 'utf8'),
@@ -101,5 +102,103 @@ describe('ViewerPage', () => {
     expect(footer.textContent).toContain('Photographs by the author');
     const links = [...footer.querySelectorAll('a')].map((a) => a.textContent?.trim());
     expect(links).toEqual(['Map data (c) OpenStreetMap contributors']);
+  });
+
+  async function mountWith(tour: Tour): Promise<{ fixture: ReturnType<typeof TestBed.createComponent<ViewerPage>>; host: HTMLElement }> {
+    const fixture = TestBed.createComponent(ViewerPage);
+    fixture.detectChanges();
+    http.expectOne('tour-data/config.json').flush({
+      mapillaryToken: '',
+      tileUrl: 'https://tile.example/{z}/{x}/{y}.png',
+      attribution: [],
+    });
+    http.expectOne('tour-data/tour.json').flush(tour);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return { fixture, host: fixture.nativeElement as HTMLElement };
+  }
+
+  const ARCHIVAL: Tour = {
+    ...TOUR,
+    theme: {
+      preset: 'archival', typePairing: 'garamond', typeScale: 'generous',
+      layout: 'panelLeft', overrides: {},
+    },
+  };
+
+  describe('theming', () => {
+    it('writes the resolved tokens onto its own host, not the document root', async () => {
+      const { host } = await mountWith(ARCHIVAL);
+      expect(host.style.getPropertyValue('--paper')).toBe('#f4ecdd');
+      expect(document.documentElement.style.getPropertyValue('--paper')).toBe('');
+    });
+
+    it('writes the type scale factor onto the host', async () => {
+      const { host } = await mountWith(ARCHIVAL);
+      expect(host.style.getPropertyValue('--type-scale')).toBe('1.14');
+    });
+
+    it('reflects the layout and the type pairing as attributes', async () => {
+      const { host } = await mountWith(ARCHIVAL);
+      expect(host.getAttribute('data-layout')).toBe('panelLeft');
+      expect(host.getAttribute('data-type-pairing')).toBe('garamond');
+    });
+
+    it('still renders a tour that carries no theme, in Nocturne', async () => {
+      const bare = { ...TOUR } as Tour;
+      delete bare.theme;
+      const { fixture, host } = await mountWith(bare);
+      expect(host.querySelector('[data-ready]')).not.toBeNull();
+      expect(host.style.getPropertyValue('--paper')).toBe('#14161a');
+      expect(host.getAttribute('data-layout')).toBe('widePanel');
+      expect(fixture.componentInstance.resolved().paper).toBe('#14161a');
+    });
+  });
+
+  // jsdom computes no cascade, so what the browser will paint is asserted on
+  // the stylesheet's text, as entry-page.spec.ts does for its own load-bearing
+  // rule.
+  describe('viewer-page.css', () => {
+    const css = readFileSync(join(process.cwd(), 'src/app/viewer/viewer-page.css'), 'utf8');
+
+    it('paints the page colour on the host so body never shows through', () => {
+      expect(css).toMatch(/:host\s*\{[^}]*background:\s*var\(--paper\)/);
+      expect(css).toMatch(/:host\s*\{[^}]*min-height:\s*100vh/);
+    });
+
+    it('defines a grid for every layout name', () => {
+      for (const name of LAYOUT_NAMES) expect(css).toContain(`[data-layout='${name}']`);
+    });
+
+    it('holds no colour literals', () => {
+      expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    });
+  });
+
+  describe('viewer stylesheets', () => {
+    const files = [
+      'src/app/viewer/viewer-page.css',
+      'src/app/stop/stop-panel.css',
+      'src/app/map/map-pane.css',
+      'src/app/panorama/panorama-pane.css',
+    ];
+    for (const f of files) {
+      it(`${f} reads colours from tokens and scales every font-size`, () => {
+        const css = readFileSync(join(process.cwd(), f), 'utf8');
+        expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+        expect(css).not.toMatch(/rgba?\(/);
+        for (const m of css.matchAll(/(?<![-\w])font-size:\s*([^;}]*)/g)) {
+          expect(m[1]).toMatch(/^calc\(.+ \* var\(--type-scale\)\)$/);
+        }
+      });
+    }
+
+    it('themes only the pin ring in styles.css, leaving the editor literals', () => {
+      const css = readFileSync(join(process.cwd(), 'src/styles.css'), 'utf8');
+      expect(css).toMatch(/\.stop-pin span\s*\{[^}]*border:\s*2px solid var\(--pin-ring\)/);
+      // Twelve hex literals today; the ring was the one this task converts.
+      expect(css.match(/#[0-9a-f]{3,8}\b/gi)?.length).toBe(11);
+    });
   });
 });

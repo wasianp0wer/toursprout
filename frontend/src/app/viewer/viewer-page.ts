@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, effect, ElementRef, inject, signal } from '@angular/core';
 import { ConfigStore } from '../core/config-store';
+import { cssVariablesFor, resolveTheme } from '../core/theme';
 import { TourApi } from '../core/tour-api';
 import { TourStore } from '../core/tour-store';
 import { MapPane } from '../map/map-pane';
@@ -16,7 +17,10 @@ import { StopPanel } from '../stop/stop-panel';
 export class ViewerPage {
   private readonly api = inject(TourApi);
   private readonly config = inject(ConfigStore);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly store = inject(TourStore);
+  /** Public: Task 4 hands it to the map and the panorama. */
+  readonly resolved = computed(() => resolveTheme(this.store.tour()?.theme));
   protected readonly ready = signal(false);
   protected readonly error = signal<string | null>(null);
 
@@ -25,6 +29,20 @@ export class ViewerPage {
       // Diagnostics only: lets tour state be watched while walking the street.
       (window as unknown as { __tour?: unknown }).__tour = this.store;
     }
+    // On the viewer's own element, never :root. EntryPage routes from this
+    // page to /edit within one page load, so tokens on the document would
+    // outlive the viewer and sit there while the editor is on screen.
+    effect(() => {
+      const r = this.resolved();
+      const el = this.host.nativeElement;
+      for (const [name, value] of Object.entries(cssVariablesFor(r))) {
+        el.style.setProperty(name, value);
+      }
+      // Not a colour, so cssVariablesFor does not carry it.
+      el.style.setProperty('--type-scale', String(r.scaleFactor));
+      el.setAttribute('data-layout', r.layout);
+      el.setAttribute('data-type-pairing', r.typePairing);
+    });
     void this.bootstrap();
   }
 

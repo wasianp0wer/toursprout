@@ -19,7 +19,7 @@ body {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  border: 2px solid #fff;
+  border: 2px solid var(--pin-ring);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   font: 700 12px Georgia, serif;
 }
