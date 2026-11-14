@@ -337,7 +337,7 @@ it('names a CSS variable per colour token', () => {
 
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `cd frontend && npx vitest run src/app/core/theme.spec.ts`
+Run: `cd frontend && npx ng test --watch=false`
 Expected: FAIL — cannot resolve `./theme`.
 
 - [ ] **Step 3: Implement `frontend/src/app/core/theme.ts`**
@@ -384,7 +384,7 @@ side only.
 
 - [ ] **Step 6: Run both suites**
 
-Run: `cd frontend && npx vitest run && cd ../backend && uv run pytest -q`
+Run: `cd frontend && npx ng test --watch=false && cd ../backend && uv run pytest -q`
 Expected: PASS.
 
 - [ ] **Step 7: Commit**
@@ -440,7 +440,7 @@ it('defines a grid for every layout name', () => {
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd frontend && npx vitest run src/app/viewer/viewer-page.spec.ts`
+Run: `cd frontend && npx ng test --watch=false`
 Expected: FAIL — no `--paper` on the host.
 
 - [ ] **Step 3: Apply the tokens in `viewer-page.ts`**
@@ -465,7 +465,7 @@ literals stay.
 
 - [ ] **Step 5: Run the frontend suite and the production build**
 
-Run: `cd frontend && npx vitest run && cd .. && make check`
+Run: `cd frontend && npx ng test --watch=false && cd .. && make check`
 Expected: PASS, `All checks passed!`. A `var()` typo shows up as a lint or
 build failure, not a test failure, which is why `make check` runs here.
 
@@ -517,7 +517,7 @@ it('falls back to the Nocturne values when no theme is set', () => { … });
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd frontend && npx vitest run src/app/panorama src/app/map src/app/editor/edit-panorama-pane.spec.ts`
+Run: `cd frontend && npx ng test --watch=false src/app/map src/app/editor/edit-panorama-pane.spec.ts`
 Expected: FAIL — `setMarkerColours` is not a function; pins contain `#e8b04b`.
 
 - [ ] **Step 3: Add `setMarkerColours` to the `PanoramaViewer` interface and both implementations**
@@ -537,7 +537,7 @@ from `viewer-page.html`.
 
 - [ ] **Step 5: Run the suite and the build**
 
-Run: `cd frontend && npx vitest run && cd .. && make check`
+Run: `cd frontend && npx ng test --watch=false && cd .. && make check`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -672,7 +672,7 @@ it('refuses a malformed hex by returning the same reference', () => {
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd frontend && npx vitest run src/app/editor/document-ops.spec.ts`
+Run: `cd frontend && npx ng test --watch=false`
 Expected: FAIL — `setThemePreset` is not exported.
 
 - [ ] **Step 3: Implement the seven ops in `document-ops.ts`**
@@ -711,7 +711,7 @@ it('ships no explanatory mockup copy', () => {
 
 - [ ] **Step 5: Run to verify they fail, then implement the pane**
 
-Run: `cd frontend && npx vitest run src/app/editor/theme-pane.spec.ts`
+Run: `cd frontend && npx ng test --watch=false`
 Expected: FAIL — no such component.
 
 Build `ThemePane` per spec §5.8: preset dropdown; six colour rows (page, panel,
@@ -726,7 +726,7 @@ ship. Add `<app-theme-pane />` to the sidebar in `editor-page.html` beneath
 
 - [ ] **Step 6: Run everything**
 
-Run: `cd frontend && npx vitest run && cd .. && make check`
+Run: `cd frontend && npx ng test --watch=false && cd .. && make check`
 Expected: PASS. Confirm the editor chunk is still lazy and the eager bundle has
 not grown — report both figures from the build output.
 
