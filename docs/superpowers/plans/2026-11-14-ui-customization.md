@@ -215,8 +215,10 @@ snapshot and is migrated on import.
 
 - [ ] **Step 7: Run the whole backend suite and fix the fallout**
 
-Run: `cd backend && uv run pytest -q`
-Expected: PASS. Known breakages to fix, not work around:
+Run: `cd backend && uv run ruff check app tests ../content/scripts && uv run pytest -q`
+Expected: PASS, and ruff clean. **Lint is part of `make check` (`check: lint
+backend-test frontend-test build`), so a ruff error leaves the branch red even
+with every test green.** Known breakages to fix, not work around:
 `test_migration.py` line ~228 asserts `SCHEMA_VERSION == 3` literally;
 `test_session.py` checks the skeleton's version via `SCHEMA_VERSION`, which
 needs nothing; `_minimal_doc` in `test_bundle.py` and any helper that writes
@@ -386,10 +388,13 @@ Also assert `ThemeOverrides.model_fields.keys()` matches the `ThemeOverrides`
 field names found in `theme.ts`, so a thirteenth token cannot be added on one
 side only.
 
-- [ ] **Step 6: Run both suites**
+- [ ] **Step 6: Run the whole check, not just the suites**
 
-Run: `cd frontend && npx ng test --watch=false && cd ../backend && uv run pytest -q`
-Expected: PASS.
+Run: `make check`
+Expected: `All checks passed!`. **Run `make check` rather than the two suites: it
+is `lint backend-test frontend-test build`, and a ruff error in a new test
+module leaves the branch red with every test passing.** That happened on this
+branch — `I001` and two `FURB167`s went unnoticed for a whole task.
 
 - [ ] **Step 7: Commit**
 

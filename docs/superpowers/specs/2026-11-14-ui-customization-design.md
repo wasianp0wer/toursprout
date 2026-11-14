@@ -427,12 +427,24 @@ The viewer host therefore also takes `background: var(--paper)` and
 it is and is simply never visible behind the viewer — including under the
 mobile breakpoint, where `.layout` is `height: auto`.
 
-About **34** colour literals in the viewer's five stylesheets become `var()`
-references. The inventory, counted rather than estimated: `stop-panel.css` 18,
-`viewer-page.css` 6, `map-pane.css` 4, `panorama-pane.css` 2, and 4 of
-`styles.css`'s 13 — **the other nine in that file are the editor's form
-controls and keep their literals**. The 90 literals in `editor/`, `welcome/`
-and `entry/` are not touched at all.
+About **31** colour literals in the viewer's five stylesheets become `var()`
+references: `stop-panel.css` 18, `viewer-page.css` 6, `map-pane.css` 4,
+`panorama-pane.css` 2, and — of `styles.css`'s 13 — **exactly one**, the
+`.stop-pin span` border, which becomes `var(--pin-ring)`.
+
+An earlier draft of this document said "4 of `styles.css`'s 13", counting that
+file's viewer-*side* literals rather than the ones that convert. Three of those
+four stay, each for a reason: `body`'s `background` and `color` keep their
+literals so the editor and welcome screen keep them, the viewer host painting
+`var(--paper)` and `var(--ink)` over them instead; and the pin's `box-shadow`
+rgba is a shadow, not a theme colour. The remaining nine in that file are the
+editor's form controls and are not the viewer's at all.
+
+The 90 literals in `editor/`, `welcome/` and `entry/` are not touched.
+
+`--type-scale` is not one of the eighteen colour tokens, so `cssVariablesFor`
+does not emit it; the viewer writes it from `ResolvedTheme.scaleFactor`
+alongside them.
 
 #### Three colours are not in CSS, and custom properties cannot reach them
 
