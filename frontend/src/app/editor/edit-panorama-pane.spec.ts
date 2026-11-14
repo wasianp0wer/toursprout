@@ -50,6 +50,14 @@ describe('EditPanoramaPane', () => {
   });
 
   describe('rendering', () => {
+    // The structural promise: the editor is never themed. It shares a
+    // PanoramaViewer with the tour viewer, so the only thing keeping a tour's
+    // colours out of it is that this pane never sets any.
+    it('never sets marker colours, so the editor keeps the defaults', async () => {
+      await start([photo(), note()]);
+      expect(fake.markerColours).toBeNull();
+    });
+
     it('attaches and loads the current stop panorama', async () => {
       await start([photo()]);
       expect(fake.attachedTo).toBeTruthy();

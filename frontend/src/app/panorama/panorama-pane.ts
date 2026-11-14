@@ -9,6 +9,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { ConfigStore } from '../core/config-store';
+import { markerColoursFor, resolveTheme } from '../core/theme';
 import { TourApi } from '../core/tour-api';
 import { TourStore } from '../core/tour-store';
 import type { OverlayMarker } from './panorama-viewer';
@@ -47,6 +48,13 @@ export class PanoramaPane {
     this.viewer.onMarkerClick((id) => this.store.selectOverlay(id));
     this.viewer.onPositionChange((position, imageId) =>
       this.store.updateViewerPosition(position, imageId),
+    );
+
+    // Read from the tour, not a themed store: see PanoramaViewer.setMarkerColours.
+    // Declared before the marker effect so the colours are in place when
+    // the first markers are built.
+    effect(() =>
+      this.viewer.setMarkerColours(markerColoursFor(resolveTheme(this.store.tour()?.theme))),
     );
 
     effect(() => {

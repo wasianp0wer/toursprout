@@ -3,14 +3,29 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  computed,
   effect,
   inject,
+  input,
   viewChild,
 } from '@angular/core';
 import { DivIcon, Map as LeafletMap, Marker, Polyline, TileLayer } from 'leaflet';
 import { ConfigStore } from '../core/config-store';
+import { resolveTheme, type ResolvedTheme } from '../core/theme';
 import { TourStore } from '../core/tour-store';
 import { routeGeoJson } from './route';
+
+/** A numbered pin's markup; the current stop takes the accent, the rest wayfinding. */
+export function pinHtml(order: number, current: boolean, theme: ResolvedTheme): string {
+  const background = current ? theme.accent : theme.wayfinding;
+  const colour = current ? theme.onAccent : theme.onWayfinding;
+  return `<span style="background:${background};color:${colour}">${order}</span>`;
+}
+
+/** Inline colours, because Leaflet's SVG and DOM icons cannot read CSS custom properties from here. */
+export function routeStyle(theme: ResolvedTheme): { color: string; weight: number; opacity: number } {
+  return { color: theme.accent, weight: 4, opacity: 0.85 };
+}
 
 /**
  * The tour minimap.
@@ -30,6 +45,10 @@ export class MapPane implements AfterViewInit {
   private readonly config = inject(ConfigStore);
   private readonly container = viewChild.required<ElementRef<HTMLElement>>('container');
 
+  /** The resolved tour theme; without one the map is Nocturne, as it always was. */
+  readonly theme = input<ResolvedTheme | null>(null);
+  private readonly colours = computed(() => this.theme() ?? resolveTheme(null));
+
   private map: LeafletMap | null = null;
   private route: Polyline | null = null;
   private markers = new Map<string, Marker>();
@@ -38,6 +57,8 @@ export class MapPane implements AfterViewInit {
     inject(DestroyRef).onDestroy(() => this.map?.remove());
 
     effect(() => {
+      // A late or changed theme repaints the route and pins already on the map.
+      this.colours();
       const stop = this.store.currentStop();
       if (!this.map || !stop) return;
       this.map.setView([stop.location.lat, stop.location.lng], 17);
@@ -86,8 +107,9 @@ export class MapPane implements AfterViewInit {
       );
       if (this.route) {
         this.route.setLatLngs(path);
+        this.route.setStyle(routeStyle(this.colours()));
       } else {
-        this.route = new Polyline(path, { color: '#e8b04b', weight: 4, opacity: 0.85 }).addTo(map);
+        this.route = new Polyline(path, routeStyle(this.colours())).addTo(map);
       }
     }
 
@@ -139,12 +161,9 @@ export class MapPane implements AfterViewInit {
 
   /** A numbered pin, highlighted when it is the stop the tour is on. */
   private pin(order: number, current: boolean): DivIcon {
-    const background = current ? '#e8b04b' : '#2f7fd4';
-    const colour = current ? '#14161a' : '#ffffff';
     return new DivIcon({
       className: 'stop-pin',
-      html:
-        `<span style="background:${background};color:${colour}">${order}</span>`,
+      html: pinHtml(order, current, this.colours()),
       iconSize: [26, 26],
       iconAnchor: [13, 13],
     });

@@ -1,4 +1,5 @@
 import type { InWorldPlacement } from './in-world-placement';
+import type { MarkerColours } from '../core/theme';
 
 export interface OverlayMarker {
   id: string;
@@ -44,6 +45,16 @@ export interface PanoramaViewer {
   attach(container: HTMLElement, accessToken: string): void;
   load(imageId: string, bearing: number): Promise<void>;
   setMarkers(markers: OverlayMarker[]): void;
+  /**
+   * The colours markers are painted with. A parameter on the viewer and not a
+   * root-provided theme store, on purpose: EditPanoramaPane calls setMarkers on
+   * this same PanoramaViewer, so a store read inside the implementation would
+   * theme the editor's markers with the open tour's colours. As a parameter the
+   * editor simply never calls this, the implementation keeps its defaults, and
+   * "the editor is never themed" holds by construction. Do not simplify it into
+   * a store.
+   */
+  setMarkerColours(colours: MarkerColours): void;
   onMarkerClick(handler: (id: string) => void): void;
 
   /** Photographs draped in the world. */

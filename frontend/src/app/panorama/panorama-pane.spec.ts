@@ -260,4 +260,23 @@ describe('PanoramaPane', () => {
     await fixture.whenStable();
     expect(fake.opacity!['court-1863']).toBeCloseTo(0.25, 3);
   });
+
+  it('hands the tour colours to the viewer', async () => {
+    const t = tour();
+    t.theme = { preset: 'archival', typePairing: 'georgia', typeScale: 'comfortable',
+                layout: 'widePanel', overrides: {} };
+    store.load(t);
+    await render();
+    expect(fake.markerColours).toEqual({
+      accent: '#9c5a24', wayfinding: '#4a6274', destination: '#4f6b2a',
+    });
+  });
+
+  it('hands over the Nocturne colours for a tour with no theme', async () => {
+    store.load(tour());
+    await render();
+    expect(fake.markerColours).toEqual({
+      accent: '#e8b04b', wayfinding: '#2f7fd4', destination: '#5fd08a',
+    });
+  });
 });

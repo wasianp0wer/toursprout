@@ -5,7 +5,7 @@
     <section class="panorama-slot">
       <app-panorama-pane />
     </section>
-    <section class="map-slot"><app-map-pane /></section>
+    <section class="map-slot"><app-map-pane [theme]="resolved()" /></section>
     <aside class="panel-slot"><app-stop-panel /></aside>
     <footer class="attribution">
       <span class="tour-title">{{ tourTitle() }}</span>

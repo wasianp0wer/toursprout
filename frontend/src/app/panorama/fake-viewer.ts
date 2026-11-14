@@ -1,5 +1,6 @@
 import type { ImageryReport, OverlayMarker, PanoramaViewer } from './panorama-viewer';
 import type { InWorldPlacement } from './in-world-placement';
+import type { MarkerColours } from '../core/theme';
 
 /** Records interactions so component behaviour can be asserted without WebGL. */
 export class FakeViewer implements PanoramaViewer {
@@ -12,6 +13,8 @@ export class FakeViewer implements PanoramaViewer {
    */
   imageryReports: ImageryReport[] = [];
   markers: OverlayMarker[][] = [];
+  /** The last colours set; null until called, which is what the editor must stay at. */
+  markerColours: MarkerColours | null = null;
   inWorldPlacements: InWorldPlacement[][] = [];
   opacity: Record<string, number> | null = null;
   destinationBearing: number | null = null;
@@ -46,6 +49,10 @@ export class FakeViewer implements PanoramaViewer {
 
   setMarkers(markers: OverlayMarker[]): void {
     this.markers.push(markers);
+  }
+
+  setMarkerColours(colours: MarkerColours): void {
+    this.markerColours = colours;
   }
 
   onMarkerClick(handler: (id: string) => void): void {

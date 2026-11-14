@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { routeGeoJson } from './route';
+import { pinHtml, routeStyle } from './map-pane';
+import { resolveTheme } from '../core/theme';
 import type { LineString } from 'geojson';
 import type { Stop } from '../core/tour.models';
 
@@ -47,5 +49,30 @@ describe('routeGeoJson', () => {
     const stops = [stop(2, -77.2, 38.85), stop(1, -77.3, 38.84)];
     routeGeoJson(stops);
     expect(stops.map((s) => s.order)).toEqual([2, 1]);
+  });
+});
+
+describe('the map pane colours', () => {
+  const archival = resolveTheme({
+    preset: 'archival', typePairing: 'georgia', typeScale: 'comfortable',
+    layout: 'widePanel', overrides: {},
+  });
+
+  it('builds the current pin from the accent and the others from wayfinding', () => {
+    expect(pinHtml(1, true, archival)).toContain('background:#9c5a24');
+    expect(pinHtml(1, true, archival)).toContain(`color:${archival.onAccent}`);
+    expect(pinHtml(2, false, archival)).toContain('background:#4a6274');
+    expect(pinHtml(2, false, archival)).toContain(`color:${archival.onWayfinding}`);
+  });
+
+  it('draws the route in the accent', () => {
+    expect(routeStyle(archival).color).toBe('#9c5a24');
+  });
+
+  it('falls back to the Nocturne values when no theme is set', () => {
+    const nocturne = resolveTheme(null);
+    expect(pinHtml(1, true, nocturne)).toContain('background:#e8b04b');
+    expect(pinHtml(2, false, nocturne)).toContain('background:#2f7fd4');
+    expect(routeStyle(nocturne).color).toBe('#e8b04b');
   });
 });

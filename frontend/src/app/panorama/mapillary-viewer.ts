@@ -11,10 +11,17 @@ import type { ImageryReport, OverlayMarker, PanoramaViewer } from './panorama-vi
 import type { InWorldPlacement } from './in-world-placement';
 import { diagnosticsEnabled } from './diagnostics';
 import { InWorldRenderer } from './in-world-renderer';
+import type { MarkerColours } from '../core/theme';
 
-const SELECTED = '#e8b04b';
-const UNSELECTED = '#2f7fd4';
-const DESTINATION = '#5fd08a';
+/**
+ * Nocturne's values, and what the editor sees: the editor never calls
+ * setMarkerColours, so these stay in force there.
+ */
+const DEFAULT_MARKER_COLOURS: MarkerColours = {
+  accent: '#e8b04b',
+  wayfinding: '#2f7fd4',
+  destination: '#5fd08a',
+};
 
 /** The edge kinds mapillary-js draws as arrows on the ground. */
 const GROUND_ARROW_DIRECTIONS = new Set<NavigationDirection>([
@@ -34,6 +41,7 @@ const GROUND_ARROW_DIRECTIONS = new Set<NavigationDirection>([
  */
 export class MapillaryViewer implements PanoramaViewer {
   private viewer: Viewer | null = null;
+  private markerColours: MarkerColours = DEFAULT_MARKER_COLOURS;
   private markerComponent: MarkerComponent | null = null;
   private directionComponent: DirectionComponent | null = null;
   private inWorldRenderer: InWorldRenderer | null = null;
@@ -129,7 +137,11 @@ export class MapillaryViewer implements PanoramaViewer {
     this.markerComponent.add(
       markers.map((m) => {
         const colour =
-          m.kind === 'destination' ? DESTINATION : m.selected ? SELECTED : UNSELECTED;
+          m.kind === 'destination'
+            ? this.markerColours.destination
+            : m.selected
+              ? this.markerColours.accent
+              : this.markerColours.wayfinding;
         return new SimpleMarker(m.id, { lng: m.lng, lat: m.lat }, {
           color: colour,
           ballColor: colour,
@@ -138,6 +150,11 @@ export class MapillaryViewer implements PanoramaViewer {
         });
       }),
     );
+  }
+
+  /** Applies to markers set afterwards; PanoramaPane re-sets markers on every change. */
+  setMarkerColours(colours: MarkerColours): void {
+    this.markerColours = colours;
   }
 
   onMarkerClick(handler: (id: string) => void): void {
