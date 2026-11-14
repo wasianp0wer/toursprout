@@ -169,11 +169,24 @@ Four decisions are packed into that, and each is deliberate:
 - **`theme` is nullable and absent means the default**, which is Nocturne with
   no overrides — today's appearance. This is what makes the migration a version
   bump and nothing else (§5.7).
-- **Six hex digits, one spelling.** No three-digit form, no named colours, no
-  `rgb()`. Uppercase input is accepted and stored lowercased, so a
-  hand-authored `#FFF000` is not a frustrating refusal, but `tour.json` holds
-  one spelling. This is the whole of constraint 3's compliance: the pattern
-  cannot express `url(…)`, a semicolon, or a closing brace.
+- **Six hex digits.** No three-digit form, no named colours, no `rgb()`.
+  Uppercase input is accepted and lowercased by the model, so a hand-authored
+  `#FFF000` is not a frustrating refusal. This is the whole of constraint 3's
+  compliance: the pattern cannot express `url(…)`, a semicolon, or a closing
+  brace.
+
+  **What "lowercased" does and does not mean.** An earlier draft of this
+  document claimed `tour.json` holds one spelling. It does not, and should not:
+  nothing in `backend/app/` calls `model_dump`, so both the import path and
+  `Session.write_tour` persist the document exactly as authored, and
+  `test_the_shipped_tour_round_trips_byte_identically` is a deliberate
+  guarantee that rewriting it through pydantic would break. So the rule is
+  narrower — **the model normalises, and every server-side reader sees one
+  spelling; an authored document may keep its own spelling on disk.** That is
+  harmless: the pattern has already refused anything that is not six hex
+  digits, and CSS hex is case-insensitive, so `#9C5A24` reaching the browser
+  renders identically. `resolveTheme` lowercases override values on the
+  TypeScript side as well, so comparisons there do not depend on case.
 - **Only names of things we serve are enumerated.** A type pairing names font
   files in our own bundle, and a layout names a grid we have had to lay out, so
   both are `Literal`s. Colour is not a file, so colour is free.
