@@ -320,7 +320,13 @@ it('moves chip, rule and chipSelected when panel is overridden', () => { … });
 it('picks a readable label on an accent, deterministically at the boundary', () => {
   expect(readableOn('#ffffff')).toBe('#121212');
   expect(readableOn('#000000')).toBe('#ffffff');
-  expect(readableOn('#767676')).toBe(readableOn('#767676')); // Review Focus 5
+  // Review Focus 5. A mid-grey scores near-equally against both candidates,
+  // so pin readableOn to contrastRatio rather than to a hand-computed hex:
+  // the relationship is the behaviour, and it cannot encode a wrong value.
+  const c = '#767676';
+  const expected = contrastRatio('#ffffff', c) >= contrastRatio('#121212', c)
+    ? '#ffffff' : '#121212';
+  expect(readableOn(c)).toBe(expected);
 });
 it('mixes two colours in sRGB', () => { expect(mix('#000000', '#ffffff', 0.5)).toBe('#808080'); });
 it('computes WCAG contrast', () => { expect(contrastRatio('#ffffff', '#000000')).toBeCloseTo(21, 1); });
@@ -351,6 +357,11 @@ change `schemaVersion: 3` to `schemaVersion: 4`. Fix the compile errors this
 causes in `editor/document-ops.ts` and `editor/test-builders.ts`.
 
 - [ ] **Step 5: Add the backend drift test** in `backend/tests/test_models.py`
+
+Put the regex reader in `backend/tests/theme_vocabulary.py` as
+`names_in(array_name: str) -> list[str]`, not inline: Task 5 needs the same
+reader for the type pairings, and two regexes over one file is the drift these
+tests exist to prevent.
 
 ```python
 def test_the_frontend_theme_vocabulary_matches_this_one():
@@ -567,7 +578,7 @@ an estimate and must not be carried forward as fact.
 def test_every_type_pairing_has_its_faces_declared():
     """A pairing an author can choose must resolve to a family we ship."""
     css = (REPO / "frontend/src/styles.css").read_text()
-    for pairing in _pairings_from_theme_ts():
+    for pairing in names_in("TYPE_PAIRINGS"):   # theme_vocabulary, from Task 2
         assert f"[data-type-pairing='{pairing}']" in css
 
 def test_the_font_licences_reach_the_build_output():
@@ -683,8 +694,12 @@ it('shows a contrast warning without disabling anything', () => {
 it('labels each colour row preset, derived or set', () => { … });
 it('uses only token names the viewer also defines', () => {
   const mine = varNames(readFileSync('src/app/editor/theme-preview.css', 'utf8'));
+  // styles.css is in the set on purpose: --display and --body are declared
+  // there (Task 5), not in a component stylesheet, so a subset test that read
+  // only the four component files would fail on a correct preview.
   const theirs = new Set([...varNames(viewerCss), ...varNames(stopPanelCss),
-                          ...varNames(mapPaneCss), ...varNames(panoramaPaneCss)]);
+                          ...varNames(mapPaneCss), ...varNames(panoramaPaneCss),
+                          ...varNames(globalCss)]);
   for (const name of mine) expect(theirs).toContain(name);
 });
 it('ships no explanatory mockup copy', () => {
