@@ -8,8 +8,15 @@ from pydantic import ValidationError
 
 from app import models
 from app.models import (
-    DISPLAY_MODES_BY_KIND, GeoAnchor, Overlay, Stop, Theme, ThemeOverrides, Tour,
+    DISPLAY_MODES_BY_KIND,
+    GeoAnchor,
+    Overlay,
+    Stop,
+    Theme,
+    ThemeOverrides,
+    Tour,
 )
+
 from .theme_vocabulary import interface_fields, names_in
 
 VALID_CREDIT = {

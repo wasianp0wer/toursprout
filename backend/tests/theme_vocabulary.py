@@ -27,6 +27,6 @@ def names_in(array_name: str) -> list[str]:
 def interface_fields(interface_name: str) -> list[str]:
     """Field names of `export interface <interface_name> { ... }` in theme.ts."""
     match = re.search(rf"export interface {interface_name} \{{(.*?)\n\}}",
-                      THEME_TS.read_text(), re.S)
+                      THEME_TS.read_text(), re.DOTALL)
     assert match, f"interface {interface_name} not found in {THEME_TS}"
-    return re.findall(r"^\s+(\w+)\??:", match.group(1), re.M)
+    return re.findall(r"^\s+(\w+)\??:", match.group(1), re.MULTILINE)
