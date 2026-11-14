@@ -323,8 +323,12 @@ it('picks a readable label on an accent, deterministically at the boundary', () 
   // Review Focus 5. A mid-grey scores near-equally against both candidates,
   // so pin readableOn to contrastRatio rather than to a hand-computed hex:
   // the relationship is the behaviour, and it cannot encode a wrong value.
+  // Mirror the rule's direction exactly — dark wins a tie — or the test
+  // asserts the inverse of what the implementation documents. Note the tie
+  // itself is unreachable: no 8-bit grey ties (nearest is #797979, gap
+  // 0.0498), so this mirrors the rule and cannot prove it.
   const c = '#767676';
-  const expected = contrastRatio('#ffffff', c) >= contrastRatio('#121212', c)
+  const expected = contrastRatio('#ffffff', c) > contrastRatio('#121212', c)
     ? '#ffffff' : '#121212';
   expect(readableOn(c)).toBe(expected);
 });
