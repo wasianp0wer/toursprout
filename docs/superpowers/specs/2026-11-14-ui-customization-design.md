@@ -353,7 +353,27 @@ subset. **The count and the total size must be measured, not taken from this
 document**; the working estimate used in conversation was ~25 kB a file and
 ~250 kB in total, and it is an estimate.
 
-They go in `frontend/src/assets/fonts/` and are referenced relatively from
+**Who applies the stacks, which an earlier draft left to nobody.** This
+document said the pairings set `--display` and `--body`, and §5.6 said the
+stylesheets consume the tokens — but no task was ever told to write a
+`font-family` rule, and none did, so the two tokens were defined and read by
+nothing. The gap closed in Task 5: `app-viewer-page` takes
+`font-family: var(--body)` and its `h1, h2, h3` take `var(--display)`, both as
+descendant-scoped rules in `styles.css` so neither can reach the editor, the
+welcome screen or the entry page.
+
+**The token definitions are scoped by attribute, not by tag.** The five
+`[data-type-pairing='…']` rules match any element carrying the attribute
+rather than `app-viewer-page` alone, because the editor's live preview (§5.8)
+sits inside the editor and not inside the viewer, so a tag-scoped rule would
+leave the preview with no fonts at all. The alternative — restating five
+pairings against the preview's own tag — is the duplication these tokens exist
+to avoid. Scoping by attribute is still not global: an element gets the tokens
+only by asking for them, and only the viewer and the preview ever set the
+attribute. The `font-family` *application* stays per-component, so nothing
+inherits a family by accident.
+
+The files go in `frontend/src/assets/fonts/` and are referenced relatively from
 `styles.css`, **not** in `frontend/public/`. The reason is constraint 7: the
 `@angular/build:application` builder processes and fingerprints a `url()` it
 can resolve and **fails the build on one it cannot**, so a wrong path is caught
