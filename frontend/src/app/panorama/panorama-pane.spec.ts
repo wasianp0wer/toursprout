@@ -279,4 +279,18 @@ describe('PanoramaPane', () => {
       accent: '#e8b04b', wayfinding: '#2f7fd4', destination: '#5fd08a',
     });
   });
+
+  // The colours effect must precede the marker effect: colours apply only to
+  // markers set afterwards, so the first markers of a themed tour would
+  // otherwise paint Nocturne.
+  it('has the tour colours in place when the first markers are set', async () => {
+    const t = tour();
+    t.theme = { preset: 'archival', typePairing: 'georgia', typeScale: 'comfortable',
+                layout: 'widePanel', overrides: {} };
+    store.load(t);
+    await render();
+    expect(fake.markerCalls[0].colours).toEqual({
+      accent: '#9c5a24', wayfinding: '#4a6274', destination: '#4f6b2a',
+    });
+  });
 });

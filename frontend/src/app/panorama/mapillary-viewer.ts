@@ -207,6 +207,10 @@ export class MapillaryViewer implements PanoramaViewer {
     this.viewer?.remove();
     this.viewer = null;
     this.markerComponent = null;
+    // PANORAMA_VIEWER is one root instance shared with the editor, so colours
+    // set for a tour must not survive its pane. Here and not in attach(): the
+    // pane sets colours before it attaches.
+    this.markerColours = DEFAULT_MARKER_COLOURS;
   }
 
   private applyHighlight(): void {

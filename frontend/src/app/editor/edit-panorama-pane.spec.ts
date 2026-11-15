@@ -50,9 +50,11 @@ describe('EditPanoramaPane', () => {
   });
 
   describe('rendering', () => {
-    // The structural promise: the editor is never themed. It shares a
-    // PanoramaViewer with the tour viewer, so the only thing keeping a tour's
-    // colours out of it is that this pane never sets any.
+    // Half of the editor-is-never-themed promise: this pane never calls the
+    // setter. The other half is MapillaryViewer.destroy() resetting its
+    // colours (tested in mapillary-viewer.spec.ts), because the viewer is one
+    // root singleton. This test uses a fresh FakeViewer per test, so it cannot
+    // see singleton residue, nor a theme read inside MapillaryViewer itself.
     it('never sets marker colours, so the editor keeps the defaults', async () => {
       await start([photo(), note()]);
       expect(fake.markerColours).toBeNull();

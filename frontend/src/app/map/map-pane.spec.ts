@@ -73,6 +73,9 @@ describe('the map pane colours', () => {
     const nocturne = resolveTheme(null);
     expect(pinHtml(1, true, nocturne)).toContain('background:#e8b04b');
     expect(pinHtml(2, false, nocturne)).toContain('background:#2f7fd4');
+    // Here the two label colours differ (derived vs pinned), so a swap shows.
+    expect(pinHtml(1, true, nocturne)).toContain('color:#121212');
+    expect(pinHtml(2, false, nocturne)).toContain('color:#ffffff');
     expect(routeStyle(nocturne).color).toBe('#e8b04b');
   });
 });

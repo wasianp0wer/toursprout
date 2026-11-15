@@ -13,6 +13,8 @@ export class FakeViewer implements PanoramaViewer {
    */
   imageryReports: ImageryReport[] = [];
   markers: OverlayMarker[][] = [];
+  /** Each setMarkers call with the colours in force at that moment, to pin effect order. */
+  markerCalls: { markers: OverlayMarker[]; colours: MarkerColours | null }[] = [];
   /** The last colours set; null until called, which is what the editor must stay at. */
   markerColours: MarkerColours | null = null;
   inWorldPlacements: InWorldPlacement[][] = [];
@@ -49,6 +51,7 @@ export class FakeViewer implements PanoramaViewer {
 
   setMarkers(markers: OverlayMarker[]): void {
     this.markers.push(markers);
+    this.markerCalls.push({ markers, colours: this.markerColours });
   }
 
   setMarkerColours(colours: MarkerColours): void {

@@ -78,3 +78,57 @@ describe('MapillaryViewer turning the view', () => {
     expect(centers).toEqual([[0.75, 0.4]]);
   });
 });
+
+/**
+ * The colour mapping is the path the feature exists for, and WebGL hides it
+ * from every other test: FakeViewer substitutes the whole adapter. SimpleMarker
+ * keeps its colours in private fields, which is the only place to read them.
+ */
+describe('MapillaryViewer marker colours', () => {
+  const TOUR = { accent: '#111111', wayfinding: '#222222', destination: '#333333' };
+  const NOCTURNE = { accent: '#e8b04b', wayfinding: '#2f7fd4', destination: '#5fd08a' };
+
+  const stub = () => {
+    const viewer = new MapillaryViewer();
+    const painted: { _ballColor: string }[] = [];
+    const component = {
+      removeAll: () => undefined,
+      add: (ms: { _ballColor: string }[]) => { painted.push(...ms); },
+    };
+    Object.assign(viewer, { markerComponent: component });
+    const reattach = () => Object.assign(viewer, { markerComponent: component });
+    const paint = () => {
+      painted.length = 0;
+      viewer.setMarkers([
+        { id: 'sel', lng: 0, lat: 0, selected: true, kind: 'overlay' },
+        { id: 'not', lng: 0, lat: 0, selected: false, kind: 'overlay' },
+        { id: 'dest', lng: 0, lat: 0, selected: false, kind: 'destination' },
+      ]);
+      return painted.map((m) => m._ballColor);
+    };
+    return { viewer, paint, reattach };
+  };
+
+  it('paints selected, unselected and destination from accent, wayfinding, destination', () => {
+    const { viewer, paint } = stub();
+    viewer.setMarkerColours(TOUR);
+    expect(paint()).toEqual(['#111111', '#222222', '#333333']);
+  });
+
+  it('keeps the Nocturne defaults when nothing was set', () => {
+    expect(stub().paint()).toEqual(['#e8b04b', '#2f7fd4', '#5fd08a']);
+  });
+
+  // The viewer is one root-provided instance shared with the editor, so a
+  // tour's colours must not outlive the pane that set them: /edit -> /view ->
+  // /edit would otherwise paint the editor's markers in the tour's accent.
+  // It is destroy(), not attach(), that resets: the colours effect runs
+  // before the attaching one, so an attach-time reset would wipe them.
+  it('goes back to the defaults when destroyed', () => {
+    const { viewer, paint, reattach } = stub();
+    viewer.setMarkerColours(TOUR);
+    viewer.destroy();
+    reattach(); // destroy() drops the component, as attach() would restore it
+    expect(paint()).toEqual(['#e8b04b', '#2f7fd4', '#5fd08a']);
+  });
+});
