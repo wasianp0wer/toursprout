@@ -495,11 +495,31 @@ been less plumbing and is the wrong answer, because `editor/edit-panorama-pane.t
 calls `setMarkers` on *the same* `PanoramaViewer`. A store would quietly theme
 the editor's panorama markers with the tour's colours, breaking the one
 structural promise this design makes. As a parameter, the editor pane simply
-never calls `setMarkerColours`, `mapillary-viewer.ts` keeps today's three
-constants as its defaults, and "the editor is never themed" stays true by
-construction rather than by vigilance. The editor's map is already a separate
-component (`editor/edit-map-pane.ts`, with its own 17 literals), so it needs
-nothing.
+never calls `setMarkerColours`, and `mapillary-viewer.ts` keeps today's three
+constants as its defaults. The editor's map is already a separate component
+(`editor/edit-map-pane.ts`, with its own 17 literals), so it needs nothing.
+
+**But "by construction" was too strong, and the Task 4 review caught why.**
+`PANORAMA_VIEWER` is `providedIn: 'root'` with `factory: () => new
+MapillaryViewer()`, and `editor/edit-panorama-pane.ts:68` injects that same
+token — **one viewer instance for the whole app session**. `markerColours` is
+mutable instance state, so refusing to read a store is only half the job: once
+the viewer has run, the field still holds the tour's colours, and
+`app.routes.ts` documents `/view` precisely as an author round-trip ("for an
+author who wants to see their open tour as a reader will"). So `/edit` →
+`/view` → `/edit` leaves the editor's markers painted in the tour's accent —
+the same visible outcome the store was rejected for.
+
+The parameter design is still right; it just needs the residue cleared.
+**`destroy()` must restore `DEFAULT_MARKER_COLOURS`.** It must be `destroy()`
+and **not** `attach()`: the colours effect in `panorama-pane.ts` is declared
+*before* the effect that attaches, so resetting on attach would wipe the
+viewer's own colours on the way in.
+
+The honest statement of the guarantee is therefore: the editor never *asks*
+for a themed marker, and the viewer hands the instance back in its default
+state. Both halves are needed, and the second is a line of teardown rather
+than an architectural property.
 
 **And this is verifiable here**, which is the part that makes it acceptable
 under constraint 5. Handing a resolved hex to a library API is not document
