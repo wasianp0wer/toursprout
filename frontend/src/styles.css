@@ -3,6 +3,53 @@
 @import 'mapillary-js/dist/mapillary.css';
 @import 'leaflet/dist/leaflet.css';
 
+/* Typefaces for the viewer's type pairings. The files live in src/assets/, not
+   public/, on purpose: the builder resolves and fingerprints a relative url()
+   and fails the build on one it cannot find, whereas a file in public/ is
+   copied verbatim and a wrong path is a runtime 404 that nothing here can see.
+   Faces are fetched only when a rule using the family matches, so a visitor
+   downloads just the pairing their tour uses. The upright faces are variable
+   files, so one file covers 400 and 600. The licences are not url()s and
+   never reach dist/ this way; angular.json copies them (OFL-*.txt). */
+@font-face {
+  font-family: 'EB Garamond'; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: url('assets/fonts/ebgaramond.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'EB Garamond'; font-style: italic; font-weight: 400; font-display: swap;
+  src: url('assets/fonts/ebgaramond-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Libre Franklin'; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: url('assets/fonts/librefranklin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Libre Franklin'; font-style: italic; font-weight: 400; font-display: swap;
+  src: url('assets/fonts/librefranklin-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: url('assets/fonts/ibmplexsans.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans'; font-style: italic; font-weight: 400; font-display: swap;
+  src: url('assets/fonts/ibmplexsans-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500; font-display: swap;
+  src: url('assets/fonts/ibmplexmono-500.woff2') format('woff2');
+}
+
+/* Scoped to the viewer so the editor, welcome and entry pages keep Georgia.
+   The host takes the body face; component styles use font: inherit. */
+app-viewer-page { --display: Georgia, 'Times New Roman', serif; --body: var(--display); font-family: var(--body); }
+app-viewer-page h1, app-viewer-page h2, app-viewer-page h3 { font-family: var(--display); }
+app-viewer-page[data-type-pairing='georgia'] { --display: Georgia, 'Times New Roman', serif; --body: Georgia, 'Times New Roman', serif; }
+app-viewer-page[data-type-pairing='garamond'] { --display: 'EB Garamond', Georgia, serif; --body: 'EB Garamond', Georgia, serif; }
+app-viewer-page[data-type-pairing='franklin'] { --display: 'Libre Franklin', system-ui, sans-serif; --body: 'Libre Franklin', system-ui, sans-serif; }
+app-viewer-page[data-type-pairing='plex'] { --display: 'IBM Plex Mono', ui-monospace, monospace; --body: 'IBM Plex Sans', system-ui, sans-serif; }
+app-viewer-page[data-type-pairing='franklinGaramond'] { --display: 'Libre Franklin', system-ui, sans-serif; --body: 'EB Garamond', Georgia, serif; }
+
 html, body { height: 100%; margin: 0; }
 body {
   font-family: Georgia, 'Times New Roman', serif;

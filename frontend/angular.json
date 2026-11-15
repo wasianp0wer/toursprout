@@ -26,6 +26,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "OFL-*.txt",
+                "input": "src/assets/fonts",
+                "output": "fonts"
               }
             ],
             "styles": [
