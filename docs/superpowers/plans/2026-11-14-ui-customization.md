@@ -91,10 +91,17 @@ assigned to the task that owns the code.
 **Docs** — `docs/decisions/0009-the-look-is-in-the-document.md`, `HANDOFF.md`,
 `UNVERIFIED.md`, `CHANGING-THINGS.md`, `ARCHITECTURE.md`
 
-**Dependencies:** 1 → 2 → 3 → 4 → (5 ∥ 6) → 7.
-**Parallel-safe:** Tasks 5 and 6 only. Task 5 owns `styles.css`, `angular.json`
-and `src/assets/`; Task 6 owns `editor/` and `document-ops.ts`. No overlap.
-Everything else shares files or interfaces and runs in order.
+**Dependencies:** 1 → 2 → 3 → 4 → 5 → 6 → 7. **All sequential.**
+
+**Nothing here is parallel-safe.** An earlier draft marked 5 ∥ 6, on the
+grounds that Task 5 writes `styles.css`, `angular.json` and `src/assets/`
+while Task 6 writes `editor/` and `document-ops.ts` — no write overlap. That
+test was the wrong one. Task 5 **produces** `--display` and `--body`, and Task
+6's token-subset test **consumes** them from `styles.css`; in separate
+worktrees Task 6 cannot see them and its test fails against a correct preview.
+Compare which interfaces a task consumes, not only which files it writes.
+(Two worktrees would also mean two `node_modules` and two virtualenvs — see
+`docs/HANDOFF.md` on a pass in one checkout not being a pass in the other.)
 
 ---
 
