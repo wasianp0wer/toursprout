@@ -338,6 +338,41 @@ redistributing them with a published site is permitted provided the licence
 travels with them — see the paragraph on `dist/` below, which is where that
 nearly went wrong.
 
+**The heading weight travels with the pairing, and an earlier draft left it to
+the user agent.** No viewer stylesheet sets `font-weight`, so `<h2>`/`<h3>`
+take the UA default `bold` (700). For the three variable families that is
+accidentally correct — 700 is outside the declared `400 600`, so it clamps to
+600 and the wght axis genuinely moves. But `'IBM Plex Mono'` ships as a single
+static 500 face, and 700 against a 500 candidate is exactly the condition
+browsers answer with **synthetic emboldening** — so `plex`, the one pairing
+whose whole identity is its mono headings, would render them algorithmically
+smeared rather than as the Medium that was fetched for them. The heading rule
+therefore reads `font-weight: var(--display-weight, 600)`, and the `plex` rule
+sets `--display-weight: 500`.
+
+**The `font-weight: 400 600` range on the three variable faces is
+load-bearing.** It is what makes a UA `bold` heading land on a real 600 instead
+of synthesising one. A later tidy-up that sees one file and "corrects" the
+descriptor to `400` would clamp every heading to regular and silently remove
+the weight contrast from every pairing, with no test failing. The descriptor
+needs a comment saying so. The claim is verifiable without `fontTools`: a
+WOFF2's table directory is readable without brotli, `fvar` is present only in
+a variable font, and Node's `zlib.brotliDecompressSync` will yield the axis
+records — EB Garamond is `wght 400..800`, Libre Franklin `100..900`, IBM Plex
+Sans `100..700`.
+
+**The latin subset is not enough for this application, which is a decision
+rather than an oversight.** The fetched files cover ASCII, `é`, `ü`, dashes and
+curly quotes, but **not** Latin Extended-A: `ł`, `č`, `ő`, `ş`, `Š`, `ą` are
+all absent. A walking tour is a tool for naming real places, and this
+project's own tester search covered six European sites; a stop called *Łódź* or
+*Český Krumlov* would render glyph-by-glyph half in the chosen face and half in
+the fallback — visible, silent, and content-dependent, so no test in this
+repository could catch it. So the `latin-ext` files ship too, each declared
+with its `unicode-range`, which means a tour whose text is plain ASCII
+downloads none of them. The cost is roughly 4 kB per family on the disk and in
+the published zip, and nothing for most visitors.
+
 **The author has authorised fetching and committing them.** The files are
 downloaded once from Google Fonts or the families' upstream repositories and
 committed to the tree. This is deliberate rather than incidental: ADR 0004 and
