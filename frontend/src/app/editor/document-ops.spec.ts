@@ -6,6 +6,8 @@ import {
   creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
   setStopLocation, selectPanorama,
   PLACEHOLDER_SUMMARY, setStopSummary, setTourDescription, setTourTitle,
+  setThemePreset, setThemeOverride, clearThemeOverride, clearThemeOverrides,
+  setTypePairing, setTypeScale, setTourLayout,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
 import type { Tour } from '../core/tour.models';
@@ -645,5 +647,107 @@ describe('naming and describing', () => {
     const t = addStop(tour(), 'Courthouse');
     const added = t.stops[t.stops.length - 1];
     expect(added.summary).toBe(PLACEHOLDER_SUMMARY);
+  });
+});
+
+describe('theme ops', () => {
+  const base = () => tour();
+
+  it('stores only what the author set', () => {
+    // The brief's example expected archival to arrive with garamond. Nothing in
+    // the spec or the backend gives a preset a pairing: a preset is a palette,
+    // and the stored theme is {"preset": ...} plus the author's own choices.
+    expect(setThemePreset(base(), 'archival').theme).toEqual({
+      preset: 'archival', typePairing: 'georgia', typeScale: 'comfortable',
+      layout: 'widePanel', overrides: {},
+    });
+  });
+
+  it('keeps an override that equals the preset value', () => {
+    const t = setThemeOverride(setThemePreset(base(), 'archival'), 'accent', '#9c5a24');
+    expect(t.theme!.overrides.accent).toBe('#9c5a24');
+  });
+
+  it('lowercases a hex on the way in', () => {
+    expect(setThemeOverride(base(), 'accent', '#9C5A24').theme!.overrides.accent).toBe('#9c5a24');
+  });
+
+  it('refuses a malformed hex by returning the same reference', () => {
+    const t = base();
+    for (const bad of ['red', '#fff', '#12345g', 'url(x)', '#ffffff;', ''])
+      expect(setThemeOverride(t, 'accent', bad)).toBe(t);
+  });
+
+  it('returns the same reference when an override is set to what it already is', () => {
+    const t = setThemeOverride(base(), 'accent', '#9c5a24');
+    expect(setThemeOverride(t, 'accent', '#9C5A24')).toBe(t);
+  });
+
+  it('clears the overrides when the preset changes, and keeps type and layout', () => {
+    let t = setThemeOverride(base(), 'accent', '#9c5a24');
+    t = setTypePairing(setTourLayout(t, 'immersive'), 'plex');
+    const out = setThemePreset(t, 'civic');
+    expect(out.theme).toEqual({
+      preset: 'civic', typePairing: 'plex', typeScale: 'comfortable',
+      layout: 'immersive', overrides: {},
+    });
+  });
+
+  it('returns the same reference when the preset does not change', () => {
+    const t = setThemePreset(base(), 'nocturne');
+    expect(setThemePreset(t, 'nocturne')).toBe(t);
+  });
+
+  it('does not mutate the document it was given', () => {
+    const t = setThemeOverride(base(), 'accent', '#9c5a24');
+    const frozen = JSON.stringify(t);
+    setThemeOverride(t, 'ink', '#000000'); clearThemeOverride(t, 'accent');
+    clearThemeOverrides(t); setThemePreset(t, 'civic');
+    expect(JSON.stringify(t)).toBe(frozen);
+  });
+
+  it('clears one override, and is a no-op when it was not set', () => {
+    const t = setThemeOverride(setThemeOverride(base(), 'accent', '#9c5a24'), 'ink', '#000000');
+    expect(clearThemeOverride(t, 'accent').theme!.overrides).toEqual({ ink: '#000000' });
+    expect(clearThemeOverride(t, 'paper')).toBe(t);
+  });
+
+  it('treats a null override from the backend as not set', () => {
+    const t = { ...base(), theme: {
+      preset: 'nocturne', typePairing: 'georgia', typeScale: 'comfortable',
+      layout: 'widePanel', overrides: { accent: null },
+    } } as Tour;
+    expect(clearThemeOverride(t, 'accent')).toBe(t);
+    expect(clearThemeOverrides(t)).toBe(t);
+  });
+
+  it('clears every override at once, and is a no-op when there are none', () => {
+    const t = setThemeOverride(setThemeOverride(base(), 'accent', '#9c5a24'), 'ink', '#000000');
+    expect(clearThemeOverrides(t).theme!.overrides).toEqual({});
+    const clean = clearThemeOverrides(t);
+    expect(clearThemeOverrides(clean)).toBe(clean);
+    const none = base();
+    expect(clearThemeOverrides(none)).toBe(none);
+  });
+
+  it('sets pairing, scale and layout, and returns the same reference when unchanged', () => {
+    const t = setTourLayout(setTypeScale(setTypePairing(base(), 'franklinGaramond'), 'generous'), 'panelLeft');
+    expect(t.theme).toMatchObject({ typePairing: 'franklinGaramond', typeScale: 'generous', layout: 'panelLeft' });
+    expect(setTypePairing(t, 'franklinGaramond')).toBe(t);
+    expect(setTypeScale(t, 'generous')).toBe(t);
+    expect(setTourLayout(t, 'panelLeft')).toBe(t);
+  });
+
+  it('keeps the overrides when the type or layout changes', () => {
+    const t = setThemeOverride(base(), 'accent', '#9c5a24');
+    expect(setTypePairing(t, 'plex').theme!.overrides).toEqual({ accent: '#9c5a24' });
+  });
+
+  it('refuses a name it does not know', () => {
+    const t = base();
+    expect(setThemePreset(t, 'sepia' as never)).toBe(t);
+    expect(setTypePairing(t, 'comic' as never)).toBe(t);
+    expect(setTypeScale(t, 'huge' as never)).toBe(t);
+    expect(setTourLayout(t, 'sideways' as never)).toBe(t);
   });
 });

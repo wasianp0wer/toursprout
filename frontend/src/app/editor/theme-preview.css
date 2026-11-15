@@ -1,0 +1,71 @@
+/* A lookalike of viewer-page.css, stop-panel.css and the attribution bar, at
+   miniature size. It reads token names only, never a literal colour, and
+   theme-preview's spec checks every name against the viewer's stylesheets. */
+:host {
+  display: block;
+  background: var(--paper);
+  color: var(--ink);
+  /* The fonts are applied here because styles.css scopes its own rules to
+     app-viewer-page; the attribute on this host supplies only the tokens. The
+     fallbacks are Georgia, so a host with no matching attribute rule still
+     reads as the default pairing rather than as the editor's own font. */
+  font-family: var(--body, Georgia, 'Times New Roman', serif);
+  font-size: calc(0.7rem * var(--type-scale, 1));
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.mini {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  grid-template-rows: 4.5rem 3.5rem auto;
+  grid-template-areas: "pano panel" "map panel" "attr attr";
+}
+:host([data-layout='panelLeft']) .mini {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  grid-template-areas: "panel pano" "panel map" "attr attr";
+}
+:host([data-layout='immersive']) .mini {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-areas: "pano pano" "panel map" "attr attr";
+}
+.pano { grid-area: pano; position: relative; background: var(--pano-canvas); }
+.map { grid-area: map; position: relative; border-top: 1px solid var(--rule); background: var(--panel); }
+.panel { grid-area: panel; padding: 0.4rem 0.5rem; background: var(--panel); border-left: 1px solid var(--rule); }
+:host([data-layout='panelLeft']) .panel { border-left: 0; border-right: 1px solid var(--rule); }
+:host([data-layout='immersive']) .panel { border-left: 0; border-right: 1px solid var(--rule); }
+.attribution {
+  grid-area: attr; padding: 0.2rem 0.5rem;
+  font-size: calc(0.55rem * var(--type-scale, 1));
+  background: var(--attribution-bar); color: var(--accent);
+  letter-spacing: 0.05em; text-transform: uppercase;
+}
+h2 {
+  margin: 0 0 0.25rem;
+  font-size: calc(0.95em);
+  font-family: var(--display, Georgia, 'Times New Roman', serif);
+  font-weight: var(--display-weight, 600);
+}
+p { margin: 0 0 0.3rem; }
+.summary { color: var(--soft); }
+.muted { color: var(--muted); font-size: 0.85em; }
+.chips { display: flex; gap: 0.25rem; }
+.chip { padding: 0 0.3rem; border-radius: 3px; background: var(--chip); border: 1px solid var(--rule); }
+.chip.selected { background: var(--chip-selected); border-color: var(--accent); }
+/* The stop panel's Prev/Next buttons are wayfinding, not accent: this mirrors
+   stop-panel.css as it is, not as the design's prose describes it. */
+button {
+  font: inherit; border: 0; border-radius: 3px; padding: 0.1rem 0.4rem;
+  background: var(--wayfinding); color: var(--on-wayfinding);
+}
+.marker {
+  position: absolute; left: 40%; top: 35%; width: 0.7rem; height: 0.7rem;
+  border-radius: 50%; background: var(--accent); border: 2px solid var(--pin-ring);
+}
+.pin {
+  position: absolute; width: 0.6rem; height: 0.6rem; border-radius: 50%;
+  border: 2px solid var(--pin-ring);
+}
+.pin.here { left: 25%; top: 50%; background: var(--accent); }
+.pin.next { left: 55%; top: 30%; background: var(--wayfinding); }
+.pin.onward { left: 75%; top: 60%; background: var(--destination); }

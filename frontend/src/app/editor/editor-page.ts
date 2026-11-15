@@ -7,6 +7,7 @@ import { EditMapPane } from './edit-map-pane';
 import { EditPanoramaPane } from './edit-panorama-pane';
 import { EditorStore } from './editor-store';
 import { InspectorPane } from './inspector-pane';
+import { ThemePane } from './theme-pane';
 import { OutlinePane } from './outline-pane';
 import { setTourDescription, setTourTitle } from './document-ops';
 import { ConfigStore } from '../core/config-store';
@@ -24,7 +25,7 @@ import { TourApi } from '../core/tour-api';
  */
 @Component({
   selector: 'app-editor-page',
-  imports: [OutlinePane, InspectorPane, EditMapPane, EditPanoramaPane, CloseDialog],
+  imports: [OutlinePane, InspectorPane, ThemePane, EditMapPane, EditPanoramaPane, CloseDialog],
   templateUrl: './editor-page.html',
   styleUrl: './editor-page.css',
 })

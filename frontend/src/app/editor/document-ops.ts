@@ -12,6 +12,10 @@
  */
 import { bearingBetween, type LngLatLike } from '../core/geo';
 import { knownCompassAngle } from '../core/mapillary-search';
+import {
+  LAYOUT_NAMES, PRESET_NAMES, TYPE_PAIRINGS, TYPE_SCALES,
+  type LayoutName, type PresetName, type Theme, type ThemeOverrides, type TypePairing, type TypeScale,
+} from '../core/theme';
 import type {
   Credit, Display, InWorldDisplay, Overlay, OverlayKind, Stop, Tour,
 } from '../core/tour.models';
@@ -567,4 +571,74 @@ export function selectPanorama(
     ...s, panorama: { ...s.panorama, imageId, cachedMediaId: null, bearing },
   }));
   return { tour: next, fix: { imageId, lng, lat } };
+}
+
+// The theme ops. A tour with no theme is Nocturne with nothing set, so each op
+// starts from that and writes a whole theme object back: the stored shape is
+// the pydantic one, whose absent fields mean the defaults.
+const DEFAULT_THEME: Theme = {
+  preset: 'nocturne', typePairing: 'georgia', typeScale: 'comfortable',
+  layout: 'widePanel', overrides: {},
+};
+
+/** Matches the backend's HexColor, which is the whole defence against CSS injection. */
+const OVERRIDE_HEX = /^#[0-9a-fA-F]{6}$/;
+
+function themeOf(tour: Tour): Theme {
+  return tour.theme ?? DEFAULT_THEME;
+}
+
+function withTheme(tour: Tour, theme: Theme): Tour {
+  return { ...tour, theme };
+}
+
+/**
+ * Pick a preset. The author's colour overrides are cleared, because they were
+ * written against the old palette and an override left behind would hide the
+ * new one. Type pairing, scale and layout are not part of a palette and stay.
+ * Choosing the preset already in force does nothing, so it cannot cost the
+ * author their overrides.
+ */
+export function setThemePreset(tour: Tour, preset: PresetName): Tour {
+  if (!PRESET_NAMES.includes(preset)) return tour;
+  if (tour.theme && tour.theme.preset === preset) return tour;
+  return withTheme(tour, { ...themeOf(tour), preset, overrides: {} });
+}
+
+/** An invalid hex is refused (same reference), never thrown: it comes from a text field. */
+export function setThemeOverride(tour: Tour, token: keyof ThemeOverrides, hex: string): Tour {
+  if (!OVERRIDE_HEX.test(hex)) return tour;
+  const value = hex.toLowerCase();
+  const theme = themeOf(tour);
+  if (theme.overrides?.[token] === value) return tour;
+  return withTheme(tour, { ...theme, overrides: { ...theme.overrides, [token]: value } });
+}
+
+export function clearThemeOverride(tour: Tour, token: keyof ThemeOverrides): Tour {
+  const theme = themeOf(tour);
+  // The backend sends null for every override left alone: null is "not set".
+  if (theme.overrides?.[token] == null) return tour;
+  const { [token]: _gone, ...rest } = theme.overrides;
+  return withTheme(tour, { ...theme, overrides: rest });
+}
+
+export function clearThemeOverrides(tour: Tour): Tour {
+  const theme = themeOf(tour);
+  if (Object.values(theme.overrides ?? {}).every((v) => v == null)) return tour;
+  return withTheme(tour, { ...theme, overrides: {} });
+}
+
+export function setTypePairing(tour: Tour, pairing: TypePairing): Tour {
+  if (!TYPE_PAIRINGS.includes(pairing) || (tour.theme && tour.theme.typePairing === pairing)) return tour;
+  return withTheme(tour, { ...themeOf(tour), typePairing: pairing });
+}
+
+export function setTypeScale(tour: Tour, scale: TypeScale): Tour {
+  if (!TYPE_SCALES.includes(scale) || (tour.theme && tour.theme.typeScale === scale)) return tour;
+  return withTheme(tour, { ...themeOf(tour), typeScale: scale });
+}
+
+export function setTourLayout(tour: Tour, layout: LayoutName): Tour {
+  if (!LAYOUT_NAMES.includes(layout) || (tour.theme && tour.theme.layout === layout)) return tour;
+  return withTheme(tour, { ...themeOf(tour), layout });
 }
