@@ -14,7 +14,7 @@ h2 { margin: 0 0 0.4rem; font-size: calc(1.35rem * var(--type-scale)); }
 .credit a { color: var(--muted); text-decoration: none; }
 .credit a:hover { text-decoration: underline; }
 .controls { display: flex; gap: 0.5rem; margin-top: 1.2rem; }
-.controls button { flex: 1; padding: 0.55rem; background: var(--wayfinding); color: var(--on-wayfinding); border: 0; border-radius: 4px; font: inherit; cursor: pointer; }
+.controls button { flex: 1; padding: 0.55rem; background: var(--accent); color: var(--on-accent); border: 0; border-radius: 4px; font: inherit; cursor: pointer; }
 .controls button:disabled { background: var(--rule); color: var(--muted-weak); cursor: default; }
 
 .in-world-control { margin-top: 1rem; border-top: 1px solid var(--rule); padding-top: 0.9rem; }

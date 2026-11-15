@@ -214,6 +214,18 @@ describe('ViewerPage', () => {
       });
     }
 
+    it('paints the primary button with accent, not wayfinding', () => {
+      // wayfinding means "another stop" and nothing else (spec 5.2); the
+      // primary action is accent. Today's blue is the same value for both,
+      // so "preserving today's colour" would pass every hex-free check and
+      // quietly re-conflate the two tokens.
+      const css = readFileSync(join(process.cwd(), 'src/app/stop/stop-panel.css'), 'utf8');
+      const rule = css.match(/\.controls button\s*\{[^}]*\}/)![0];
+      expect(rule).toMatch(/background:\s*var\(--accent\)/);
+      expect(rule).toMatch(/color:\s*var\(--on-accent\)/);
+      expect(rule).not.toContain('wayfinding');
+    });
+
     it('names only tokens that cssVariablesFor emits', () => {
       // A var() nobody emits renders as nothing, silently: jsdom, lint and
       // the production build all let it through.
