@@ -370,8 +370,25 @@ project's own tester search covered six European sites; a stop called *Łódź* 
 the fallback — visible, silent, and content-dependent, so no test in this
 repository could catch it. So the `latin-ext` files ship too, each declared
 with its `unicode-range`, which means a tour whose text is plain ASCII
-downloads none of them. The cost is roughly 4 kB per family on the disk and in
-the published zip, and nothing for most visitors.
+downloads none of them.
+
+**The cost, measured, because this document's first estimate was wrong by a
+factor of about sixty.** It guessed "roughly 4 kB per family". The seven
+`latin-ext` files are **247,312 bytes**, against 185,872 for the seven latin
+ones — so the extended set is *larger* than the base. `ebgaramond-latin-ext`
+alone is 113,756 bytes, 2.6× its own latin file. That is not an error in the
+fetch: the latin subset is a small glyph set, `latin-ext` is a much larger one,
+and in a variable face every glyph carries per-axis deltas.
+
+What it actually costs is the thing worth stating, and it is not the disk
+figure. Fonts on disk total 433,184 bytes and all eighteen files ride in every
+published zip — negligible beside the 4.5 MB the Fairfax tour's media already
+weighs. The eager bundle grew 0.39 kB, because only the `@font-face` CSS is
+eager. And a **visitor** fetches only the faces their tour's own text needs: a
+plain-ASCII Archival tour pulls `ebgaramond.woff2` (44 kB) and nothing else,
+while a tour with Czech place names also pulls the 114 kB extended face —
+which is the tour that needs it. `unicode-range` is what makes the large number
+harmless, and without it this trade would not be worth making.
 
 **The author has authorised fetching and committing them.** The files are
 downloaded once from Google Fonts or the families' upstream repositories and
