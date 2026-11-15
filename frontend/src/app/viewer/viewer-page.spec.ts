@@ -226,6 +226,13 @@ describe('ViewerPage', () => {
       }
     });
 
+    it('has the rules that make --display and --body do anything', () => {
+      const css = readFileSync(join(process.cwd(), 'src/styles.css'), 'utf8');
+      expect(css).toMatch(/app-viewer-page\s*\{[^}]*font-family:\s*var\(--body/);
+      expect(css).toMatch(/app-viewer-page h2, app-viewer-page h3\s*\{[^}]*font-family:\s*var\(--display/);
+      expect(css).toMatch(/app-viewer-page h2, app-viewer-page h3\s*\{[^}]*font-weight:\s*var\(--display-weight/);
+    });
+
     it('themes only the pin ring in styles.css, leaving the editor literals', () => {
       const css = readFileSync(join(process.cwd(), 'src/styles.css'), 'utf8');
       expect(css).toMatch(/\.stop-pin span\s*\{[^}]*border:\s*2px solid var\(--pin-ring\)/);

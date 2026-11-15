@@ -7,48 +7,106 @@
    public/, on purpose: the builder resolves and fingerprints a relative url()
    and fails the build on one it cannot find, whereas a file in public/ is
    copied verbatim and a wrong path is a runtime 404 that nothing here can see.
-   Faces are fetched only when a rule using the family matches, so a visitor
-   downloads just the pairing their tour uses. The upright faces are variable
-   files, so one file covers 400 and 600. The licences are not url()s and
-   never reach dist/ this way; angular.json copies them (OFL-*.txt). */
+   Faces are fetched only when a rule using the family matches, and each
+   latin-ext file only when the text contains a character in its unicode-range,
+   so a visitor downloads just what their tour uses. The licences are not url()s
+   and never reach dist/ this way; angular.json copies them (OFL-*.txt).
+
+   font-weight: 400 600 on the upright faces is load-bearing. They are variable
+   files (one file per family covers the range), and the range is what lets a
+   UA-bold <h2>/<h3> (700) clamp to a genuine 600 instead of being synthesised.
+   Narrowing it to 400 would flatten every heading to regular with no test
+   failing. To re-check an axis: the woff2 table directory lists fvar, and
+   brotli-decompressing it (Node's zlib) gives the wght min/max. */
 @font-face {
   font-family: 'EB Garamond'; font-style: normal; font-weight: 400 600; font-display: swap;
   src: url('assets/fonts/ebgaramond.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'EB Garamond'; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: url('assets/fonts/ebgaramond-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
   font-family: 'EB Garamond'; font-style: italic; font-weight: 400; font-display: swap;
   src: url('assets/fonts/ebgaramond-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'EB Garamond'; font-style: italic; font-weight: 400; font-display: swap;
+  src: url('assets/fonts/ebgaramond-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
   font-family: 'Libre Franklin'; font-style: normal; font-weight: 400 600; font-display: swap;
   src: url('assets/fonts/librefranklin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Libre Franklin'; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: url('assets/fonts/librefranklin-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
   font-family: 'Libre Franklin'; font-style: italic; font-weight: 400; font-display: swap;
   src: url('assets/fonts/librefranklin-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Libre Franklin'; font-style: italic; font-weight: 400; font-display: swap;
+  src: url('assets/fonts/librefranklin-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
   font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 400 600; font-display: swap;
   src: url('assets/fonts/ibmplexsans.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: url('assets/fonts/ibmplexsans-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
   font-family: 'IBM Plex Sans'; font-style: italic; font-weight: 400; font-display: swap;
   src: url('assets/fonts/ibmplexsans-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Sans'; font-style: italic; font-weight: 400; font-display: swap;
+  src: url('assets/fonts/ibmplexsans-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
   font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500; font-display: swap;
   src: url('assets/fonts/ibmplexmono-500.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500; font-display: swap;
+  src: url('assets/fonts/ibmplexmono-500-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
-/* Scoped to the viewer so the editor, welcome and entry pages keep Georgia.
-   The host takes the body face; component styles use font: inherit. */
-app-viewer-page { --display: Georgia, 'Times New Roman', serif; --body: var(--display); font-family: var(--body); }
-app-viewer-page h1, app-viewer-page h2, app-viewer-page h3 { font-family: var(--display); }
-app-viewer-page[data-type-pairing='georgia'] { --display: Georgia, 'Times New Roman', serif; --body: Georgia, 'Times New Roman', serif; }
-app-viewer-page[data-type-pairing='garamond'] { --display: 'EB Garamond', Georgia, serif; --body: 'EB Garamond', Georgia, serif; }
-app-viewer-page[data-type-pairing='franklin'] { --display: 'Libre Franklin', system-ui, sans-serif; --body: 'Libre Franklin', system-ui, sans-serif; }
-app-viewer-page[data-type-pairing='plex'] { --display: 'IBM Plex Mono', ui-monospace, monospace; --body: 'IBM Plex Sans', system-ui, sans-serif; }
-app-viewer-page[data-type-pairing='franklinGaramond'] { --display: 'Libre Franklin', system-ui, sans-serif; --body: 'EB Garamond', Georgia, serif; }
+/* The tokens are defined wherever the attribute appears (the editor's live
+   preview carries it too); defining an inherited custom property is inert until
+   something reads it, and the only readers are the viewer-scoped rules below,
+   so the editor, welcome and entry pages keep Georgia. */
+[data-type-pairing='georgia'] { --display: Georgia, 'Times New Roman', serif; --body: Georgia, 'Times New Roman', serif; --display-weight: 600; }
+[data-type-pairing='garamond'] { --display: 'EB Garamond', Georgia, serif; --body: 'EB Garamond', Georgia, serif; --display-weight: 600; }
+[data-type-pairing='franklin'] { --display: 'Libre Franklin', system-ui, sans-serif; --body: 'Libre Franklin', system-ui, sans-serif; --display-weight: 600; }
+/* Plex Mono ships one static 500 face; a UA-bold 700 against it is synthesised. */
+[data-type-pairing='plex'] { --display: 'IBM Plex Mono', ui-monospace, monospace; --body: 'IBM Plex Sans', system-ui, sans-serif; --display-weight: 500; }
+[data-type-pairing='franklinGaramond'] { --display: 'Libre Franklin', system-ui, sans-serif; --body: 'EB Garamond', Georgia, serif; --display-weight: 600; }
+
+/* The host takes the body face (component styles use font: inherit); the
+   stop panel's headings are h2/h3. Fallbacks apply when no attribute is set. */
+app-viewer-page { font-family: var(--body, Georgia, 'Times New Roman', serif); }
+app-viewer-page h2, app-viewer-page h3 {
+  font-family: var(--display, Georgia, 'Times New Roman', serif);
+  font-weight: var(--display-weight, 600);
+}
 
 html, body { height: 100%; margin: 0; }
 body {
