@@ -51,6 +51,12 @@ if `Image.cameraType` is undefined for a flat image the viewer renders, the
 exists for. Start there if a tester outside the United States reports that a
 stop will not face the right way.
 
+**Per-tour theming added entry 43, and nothing in it has been seen at all.**
+Its first check is the one that fails only after an author has published: the
+font files, under `<base href="./">`, served from a subdirectory. Everything in
+the editor and the viewer looks right until a published site is opened on
+someone else's machine. Start there; the other eleven are the pixels.
+
 Only unproven things are listed. What was verified (the live Mapillary and
 loc.gov response shapes, the Overpass `[timeout:12]` query, the direct
 `tile.loc.gov` image path, the bootstrap procedure and the example's session
@@ -1277,6 +1283,103 @@ served by Apache. The lock has still never met a second deploy.*
   the real Graph API and **skips with a reason** unless `MAPILLARY_TOKEN` is
   in the environment, because a stub returns an empty list and would prove
   the opposite of the point.
+
+---
+
+## 43. Per-tour theming, none of which has been seen in a browser
+
+*Check 1 is the only one that fails after an author has already published. Do
+it first, and do it on a real published site.*
+
+- **Unproven:** how any of it looks. A theme — preset, colour overrides, type
+  pairing, type scale, layout — is stored in the document, resolved by the pure
+  `resolveTheme` (`core/theme.ts`), written onto the viewer's host element as
+  custom properties and two data attributes, and edited in the theme pane
+  (ADR [0009](decisions/0009-the-look-is-in-the-document.md)). The resolution,
+  the schema, the ops and the colours handed to the pins and markers are all
+  specified by tests. What is not is every pixel, and everything below depends
+  on one.
+- **Why not here:** no browser engine launches in the sandbox and the frontend
+  suite runs under jsdom, which computes no layout, loads no font and paints
+  nothing. `make check` runs `ng build`, which fails on a `url()` it cannot
+  resolve, so a wrong font path is caught; a font file that resolves at build
+  time and 404s under a published site's base URL is not.
+- **Close it**, in this order:
+  1. **The fonts load on a published site, under `<base href="./">`, served
+     from a subdirectory.** `make serve`, publish a tour with each of
+     `garamond`, `franklin`, `plex` and `franklinGaramond`, unzip it into a
+     subdirectory of any static host (not the root), open it, and read the
+     network panel: the `media/*.woff2` requests must be 200, not 404, and the
+     headings must be visibly in the chosen face rather than Georgia. The
+     `@font-face` rules live in `styles.css` and resolve their URLs relative to
+     the stylesheet, which the build fingerprints into `media/`; whether that
+     resolves under a base that is not the site root is exactly what no test
+     here can answer. **This is the one that fails after publishing**: the tour
+     looks fine in the editor, the author publishes, and the visitor gets
+     Georgia, or the fallback, with nothing to say so. Also confirm the four
+     `OFL-*.txt` files are in the zip under `fonts/` — they are the licence
+     condition on redistributing the faces, and `test_fonts.py` proves they
+     reach `dist/`, not that a site served from it carries them.
+  2. **Any of the four presets is legible on a real screen.** Nocturne is
+     today's appearance; Archival, Civic and Field notes came from approved
+     mockups, and their `error` colours and `wayfinding`/`destination` pairs
+     were the design's own choice and were never rendered. Field notes' `error`
+     is distinguished from its accent only by being darker; if it cannot be
+     told apart in place, change it (`error` is internal, so no document
+     depends on it).
+  3. **The three layouts hold together at real sizes, and the narrow stacking
+     works on a phone.** `widePanel`, `panelLeft` and `immersive`, each at a
+     wide window and below the 900 px breakpoint, where all three stack as
+     panorama, map, panel, attribution. The stacked rows (`45vh`, `25vh`, then
+     the panel) are a guess at a phone screen.
+  4. **`color-mix` renders as intended in the testers' browsers.** It is used
+     in `map-pane.css` for Leaflet's attribution control, as
+     `color-mix(in srgb, var(--attribution-bar) 75%, transparent)`. A browser
+     that does not support it drops the declaration, and the control would lose
+     its background rather than gain a solid one.
+  5. **The pins and the panorama markers read well over real map tiles and real
+     street imagery.** A `wayfinding` colour that separates cleanly from grey
+     squares in a mockup may disappear into a dense basemap, and a
+     `destination` marker has to be findable in a photograph. Try each preset
+     over a dense part of the basemap and over both a bright and a dim street.
+  6. **The live miniature resembles the viewer closely enough to be useful.**
+     It is a deliberate lookalike (`editor/theme-preview.ts`), tied to the
+     viewer by one test that its stylesheet names only tokens the viewer also
+     defines. That catches a renamed token and nothing else; its resemblance
+     can drift, and the comparison is the *Preview* link to `/view`.
+  7. **The immersive layout's proportions.** The `3fr`/`2fr` split between
+     panel and map, the `minmax(320px, 1fr)` floor on the panel under
+     `panelLeft`, and the `45vh`/`25vh` stacked rows are all numbers chosen
+     without a screen.
+  8. **In `immersive` alone there is no rule between the full-width panorama
+     and the panel beneath it.** `.panel-slot` loses its `border-left` and
+     `.map-slot` keeps only its `border-top`, so the join between panorama and
+     panel may read as one surface. Judge by eye whether it needs a divider.
+  9. **The theme pane's fit in the editor sidebar, at both widths.** Whether
+     the inspector above it gets squeezed, and how the pane's own scroller
+     behaves nested inside the sidebar's below 60rem.
+  10. **No browser has rendered the type pairings in the miniature.** The
+      attribute-scoped `[data-type-pairing='…']` rules are what give the
+      preview its fonts, because it sits inside the editor and not inside the
+      viewer; a miniature in Georgia under every pairing would mean they do
+      not reach it.
+  11. **Hit sizes at real DPI.** The colour swatches (1.1 rem) and the
+      reset-arrow controls (0.1 rem padding) are small, and are the pane's
+      only way to undo a colour.
+  12. **The latin-ext faces actually resolve for an accented place name.**
+      Give a stop a title such as *Łódź* or *Český Krumlov* under each
+      pairing and check the network panel fetches the `-latin-ext` file and
+      that no glyph falls back. The `unicode-range` split is correct by
+      inspection and has never been exercised by a browser, and a tour whose
+      text is plain ASCII is meant to download none of those files, which is
+      the other half of the same check.
+- **Also unseen:** whether the readout's wording and the amber warning below
+  AA are noticeable (it must warn and never block publishing); and the
+  primary button's new colour on the shipped Fairfax tour, which is gold where
+  it was blue (ADR 0009, and `HANDOFF.md`), and is the one change a visitor to
+  an existing tour will see.
+- **`make e2e` cannot run here either** (entry 30); there is no Playwright spec
+  for any of this.
 
 ---
 

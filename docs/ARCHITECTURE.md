@@ -62,7 +62,7 @@ the page, which is why a published tour needs no server.
 
 | Folder | Owns |
 | --- | --- |
-| `core/` | Shared by viewer and editor. `tour.models.ts` (TypeScript mirror of the schema), `tour-api.ts` (`TourApi`: reads `tour-data/`), `tour-store.ts` (`TourStore`: the viewer's walking state), `arrival.ts`, `geo.ts`, `credit.ts`, `config-store.ts`. Also the **editor-only** clients, which live here but are never used by the viewer: `session-api.ts` and `tools-api.ts` (place search, the one tool still on the server) talk to our backend, and `mapillary-search.ts` (`MapillarySearch`) talks to `graph.mapillary.com` directly. |
+| `core/` | Shared by viewer and editor. `tour.models.ts` (TypeScript mirror of the schema), `tour-api.ts` (`TourApi`: reads `tour-data/`), `tour-store.ts` (`TourStore`: the viewer's walking state), `arrival.ts`, `geo.ts`, `credit.ts`, `config-store.ts`, `theme.ts` (the pure layer between a tour's stored theme and the colours the app paints with: the preset table, `resolveTheme`, `cssVariablesFor`, `markerColoursFor`, and the one definition of the token set; no DOM, no Angular). Also the **editor-only** clients, which live here but are never used by the viewer: `session-api.ts` and `tools-api.ts` (place search, the one tool still on the server) talk to our backend, and `mapillary-search.ts` (`MapillarySearch`) talks to `graph.mapillary.com` directly. |
 | `entry/` | Route `''`. `entry-page.ts` (`EntryPage`): the three-way decision below, and `SESSION_PROBE_TIMEOUT_MS`. Eager, and deliberately small. Its CSS is load-bearing — read the comment in `entry-page.css` before changing it. |
 | `welcome/` | The front door, a lazy chunk reached only from `EntryPage`. `welcome-page.ts` (`WelcomePage`) and `dropped-files.ts`, which is the pure part: `readDroppedFiles` walks a dropped directory with `webkitGetAsEntry`, and `sortDrop` files each part under `media/`, keeps its nesting, and filters what a tour cannot contain. |
 | `viewer/` | `viewer-page.ts` (`ViewerPage`): loads config and tour, composes `map/`, `panorama/`, `stop/`. Routes `view` and `**`, and mounted in place by `EntryPage` at `''`. |
@@ -201,6 +201,36 @@ and the built app on :8000). `ng serve`'s proxy (`frontend/proxy.conf.json`)
 forwards both `/api` and `/tour-data`, so the dev server reaches the open
 tour as well. It forwarded only `/api` until the viewer was first run by
 hand, which made every `tour-data/` fetch 404 under `ng serve` alone.
+
+#### The theme: how tokens reach the pixels
+
+A tour's `theme` (optional; absent means Nocturne with nothing set, the look the
+application had before theming) is part of the document, so it arrives through
+`tour-data/tour.json` like everything else and the published site needs no new
+machinery. It is never in `config.json`, which is derived and not exported
+(ADR [0009](decisions/0009-the-look-is-in-the-document.md)).
+
+```
+tour.json  theme: {preset, typePairing, typeScale, layout, overrides}
+  -> resolveTheme()            core/theme.ts, pure: 18 colour tokens as #rrggbb
+  -> ViewerPage effect         inline custom properties + data-layout and
+                               data-type-pairing on its own host element
+  -> the viewer's stylesheets  var(--accent), var(--panel) ... in place of literals
+  -> by value, not by CSS      markerColoursFor -> PanoramaPane -> setMarkerColours
+                               (mapillary-js markers, painted in WebGL);
+                               the resolved theme as MapPane's input (pin fill
+                               and the route line, an inline style and a Leaflet
+                               option)
+```
+
+The last two arrows exist because a custom property cannot reach an inline style
+or a WebGL colour. Nothing in a template does arithmetic: `resolveTheme` is a
+pure function with its own spec. The editor's theme pane edits the same
+document through pure ops in `document-ops.ts`, and its live miniature
+(`editor/theme-preview.ts`) renders the same resolved tokens, with
+`[data-type-pairing]` rules scoped by attribute rather than by tag so the
+preview, which sits in the editor, gets the fonts too. The miniature is a
+lookalike and not the viewer; one test ties its token names to the viewer's.
 
 ### 2. An edit reaches disk
 
@@ -400,6 +430,25 @@ all pass through it, and a refused heading means no change at all. **Caveat:**
 the gate is enforced by those ops, not by the type system. `setInWorldField`
 and `updateOverlay` will still write a `headingDeg` if a caller passes one.
 No component does today; keep it that way.
+
+**The viewer's theme goes on the viewer's host element, never on `:root`.**
+`EntryPage` mounts `ViewerPage` at `''` and then routes to `/edit` within the
+same page load when a tour is open, so a token written to the document element
+would outlive the viewer and sit there while the editor is on screen — harmless
+until the first time someone reuses a token name in an editor rule. Scoped to
+the host, "the editor is never themed" is structural. `ViewerPage` therefore
+paints its own `background` and `font-size` from tokens and leaves `body`'s
+literals alone. A related rule covers the one object the two sides share: the
+`PANORAMA_VIEWER` token is `providedIn: 'root'`, so the editor's panorama pane
+and the viewer's use **one instance**. Marker colours reach it by
+`setMarkerColours`, called only from the viewer's `panorama-pane.ts`, and
+`destroy()` restores `DEFAULT_MARKER_COLOURS`; without that reset `/edit` →
+`/view` → `/edit` leaves the editor's markers in the tour's colours. Pinned by
+specs using `panorama/fake-viewer.ts`; the host-element rule by *"writes the
+resolved tokens onto its own host, not the document root"* in
+`viewer/viewer-page.spec.ts`, which checks `--paper` on the host and its
+absence from `documentElement`. That test covers one token written by the
+current effect; a second writer elsewhere would not be seen.
 
 **Nothing outside `panorama/` imports mapillary-js or three.** mapillary-js was
 last published in 2023 and is expected to be replaced. Everything goes through

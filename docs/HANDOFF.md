@@ -22,16 +22,62 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 696 backend (pytest), 740 frontend (Vitest); lint and production
-build clean via `make check`. Eager bundle 2.15 MB raw / 372.22 kB transferred;
-the editor is a lazy chunk, 105.34 kB raw / 24.68 kB transferred, and the
-welcome screen is another, 12.56 kB raw / 4.08 kB transferred.
+**Tests:** 711 backend (pytest), 836 frontend (Vitest, 38 files); lint and
+production build clean via `make check`, which exits 0 and prints `All checks
+passed!`. Eager bundle 2.17 MB raw / 375.00 kB transferred (2.15 MB / 372.22 kB
+before per-tour theming). There are **three** lazy chunks: the editor,
+120.03 kB raw / 27.75 kB transferred (was 105.34 / 24.68); the welcome screen,
+12.57 kB / 4.05 kB; and a third, unnamed one, 10.15 kB / 3.59 kB. The third was
+not recorded here before and is not a regression: it is the Mapillary search
+client (`graph.mapillary.com/images`, its field list and bounding-box helper)
+with a little shared document code, editor-only and lazily split, which a
+published visitor never fetches. It arrived with the flat-imagery work or
+earlier and simply went unlisted. The fonts are 14 `woff2` files totalling
+433,184 bytes, fingerprinted into `media/`, plus four `OFL-*.txt` licences in
+`fonts/`; all of them ship in every published zip.
 
 *(This line read 413 backend / 606 frontend until 2026-11-11 and had gone
 stale by a long way: `main` at `e24845a` already ran 692 backend, the
 workstation-deploy branch having added `test_deploy_script.py`. The frontend
 figure was never re-measured after that branch either. Take the numbers above
 as the ones a run actually printed.)*
+
+**Per-tour theming landed on 2026-11-15, on `feature/ui-customization`, and none
+of it has been seen in a browser.** A tour may now carry a `theme`: one of four
+presets (`nocturne`, `archival`, `civic`, `fieldNotes`), up to thirteen colour
+overrides, one of five type pairings, a type scale and one of three layouts
+(`widePanel`, `panelLeft`, `immersive`). It is **schema v4**, with a migration
+step that only stamps the version, because `extra="forbid"` makes even an
+additive field a hard rejection for an older reader; `fairfax-old-town-v3.json`
+is frozen beside the v1 and v2 fixtures. `core/theme.ts` is the one place the
+token set is defined; the viewer writes the resolved tokens onto its own host
+element; the editor has a theme pane with a live miniature. Four faces ship with
+the app (EB Garamond, Libre Franklin, IBM Plex Sans and Mono), each with a
+latin and a latin-ext file so a stop called *Łódź* does not fall back
+mid-word. Why it was built this way is ADR
+[0009](decisions/0009-the-look-is-in-the-document.md); how it fits is the token
+flow in [`ARCHITECTURE.md`](ARCHITECTURE.md); where a change goes is entry 11 of
+[`CHANGING-THINGS.md`](CHANGING-THINGS.md); and the twelve checks that need a
+browser, **the font check on a published site first**, are `UNVERIFIED.md`
+entry 43.
+
+**One visible change to the existing tour, and it is deliberate: the stop
+panel's Prev/Next button was blue (`#2f7fd4` on `#fff`) and is now the accent,
+gold under the default Nocturne preset.** `wayfinding` now means "another stop"
+and nothing else; before, the same value meant that on the map and "primary
+button" in the panel. Everything else resolves to the values the application
+shipped before the branch (`core/theme.spec.ts` pins them), so this is the only
+appearance change to a tour that already exists. It took three attempts: the
+conversion first mapped the button to `wayfinding`, which preserved the colour;
+a review praised that as correct; and it was caught only four tasks later, when
+the theme pane's subset test noticed `--on-accent` was read by nothing. Anyone
+comparing the Fairfax tour before and after should expect to see it.
+
+**`Tour.attribution` is still the open question ADR 0005 left, and this work did
+not close it.** The viewer still renders `ConfigStore.attribution()`, not the
+document's copy. It did not block theming, which styles the attribution bar
+whichever copy feeds it; but the document now carries presentation, which
+strengthens the case that it should carry its own credits one day.
 
 **Flat (non-360) Mapillary imagery landed on 2026-11-11, and none of it has
 been seen in a browser.** Until this branch a stop's base imagery had to be a
@@ -187,6 +233,11 @@ The checklist for the first browser session, in the order to do it, is
   directory.
 - **Publish.** `GET /api/session/publish` returns a static site (built app plus
   the working directory under `tour-data/`).
+- **Themes.** The viewer reads the tour's `theme` and dresses itself in it; the
+  editor's sidebar has a *Theme* pane (preset, colours, type pairing, type
+  scale, layout, a contrast readout that warns and never blocks) over a live
+  miniature. The editor, the welcome screen and the entry page are never
+  themed. See the paragraph under "Current state".
 - **Content pipeline.** `make content` still generates the seed tour
   `content/tours/fairfax-old-town.json` from `content/source/stops.json`. It is
   independent of the editor. It has **not** been retired; see Outstanding
@@ -604,7 +655,7 @@ candidate for the next session than anything numbered below.
     `docs/superpowers/specs/2026-11-11-uploaded-base-imagery-design.md`, on
     the evidence in `-findings.md` beside it (1305 lines, gathered by
     reading the code, not estimated). Unlike item A it is **large**: it needs
-    schema v4 and a migration, a self-hosted viewer so `PanoramaViewer` is
+    schema v5 and a migration (v4 went to theming, which landed first), a self-hosted viewer so `PanoramaViewer` is
     no longer only mapillary-js, a direct three.js dependency pinned to the
     0.134.0 that arrives transitively today, and `publish.py` taught to read
     the document — it currently imports only `zipfile` and `Path` and zips

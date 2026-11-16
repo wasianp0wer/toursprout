@@ -17,6 +17,11 @@ backend test reads the other side as **text** and fails when it drifts:
   `test_the_content_make_target_never_names_the_examples_directory` in
   `backend/tests/test_content.py` (the shipped examples are a frozen snapshot,
   so `make content` must not be able to write to them);
+- `test_the_frontend_theme_vocabulary_matches_this_one` and
+  `test_the_frontend_theme_overrides_have_the_same_thirteen_fields` in
+  `backend/tests/test_models.py`, and the font tests in
+  `backend/tests/test_fonts.py` (what a tour's theme may name, TypeScript vs
+  Python, and the faces and licences those names resolve to; entry 11);
 - *"still has nothing that recovers a map measured at the wrong size"* in
   `frontend/src/app/entry/entry-page.spec.ts` (the premise under the
   hidden-wrapper CSS rule). This one is **inverted**: it fails when someone
@@ -32,11 +37,14 @@ Where one does not, the step is only a convention; do not trust the green
 build to catch it. For the shape of the system see
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-A note on additive versus breaking. Widening what a v2 document may contain
-(a new `kind`, a new `display` mode, a new optional field) leaves every
-existing document valid and needs no migration. Anything that makes a
-previously valid document invalid, or changes its shape, is a schema change:
-see entry 3.
+A note on additive versus breaking. Widening what a document may contain *within
+an existing field* (a new `kind`, a new `display` mode) leaves every existing
+document valid and needs no migration. A new optional **field** does not get
+that: `extra="forbid"` rejects it for an older reader, so it is a schema
+change with a version bump even though no existing document changes (ADR 0005;
+`theme` in v4 is the worked example, and its migration step is a version
+stamp and nothing else). Anything that makes a previously valid document
+invalid, or changes its shape, is a schema change too: see entry 3.
 
 ---
 
@@ -146,7 +154,9 @@ the editor unmigrated cannot even be saved. Migration is the only door.
 holds `fairfax-old-town-v1.json`, `-v2.json` and `-v3.json`, each a
 snapshot of the repository's real tour at that version, never refreshed. They
 are what makes the chain testable against real content instead of comparing
-an already-current document to itself. Add `…-v4.json` before you bump.
+an already-current document to itself. The next bump, to v5, needs
+`…-v4.json` frozen first: snapshot the real tour at v4 before you change the
+models.
 
 **Fails if incomplete:** `backend/tests/test_migration.py` (add cases for each
 migrated shape; `test_the_real_tour_migrates_and_validates`,
@@ -457,6 +467,73 @@ fails** if you break the published site's *appearance* — no test in this
 repository renders a page, so entries 19 to 22 of
 [`UNVERIFIED.md`](UNVERIFIED.md) are the only check that exists.
 
+## 11. Change what an author can theme
+
+A theme is a preset, thirteen colour overrides, a type pairing, a type scale
+and a layout, stored in `tour.json` (ADR
+[0009](decisions/0009-the-look-is-in-the-document.md)). **`core/theme.ts` is
+the one place the token set is defined**; every other copy is derived from it
+or checked against it. Adding a *value* to an existing choice (a fifth preset,
+a fourth layout) is a vocabulary change; adding a *token* is a schema change as
+well, so start at entry 3.
+
+1. `frontend/src/app/core/theme.ts`: the four vocabulary arrays
+   (`PRESET_NAMES`, `TYPE_PAIRINGS`, `TYPE_SCALES`, `LAYOUT_NAMES`) **each on
+   one line with single-quoted strings**, because a backend test finds them by
+   regex over the source; the `PRESETS` table; and, for a token, the
+   `ThemeOverrides` interface, `OVERRIDABLE_TOKENS` and, for a token the viewer
+   paints, the `ColourToken` union and `CSS_TOKEN_SET` (each is a `Record` over
+   its key type, so forgetting one is a compile error), then `resolveTheme`'s
+   derivation.
+2. `backend/app/models.py`: the matching `Literal` on `Theme`, or the field on
+   `ThemeOverrides`. A token is `HexColor | None` and nothing else: do not add
+   a free-form string to a theme, ever. Everything the viewer interpolates must
+   be an enumerated name or a six-digit hex, which is what makes an imported
+   bundle safe to serve from the author's origin.
+3. `frontend/src/app/core/tour.models.ts`: the mirror, by hand.
+4. If it is a type pairing: the five `@font-face` groups and the
+   `[data-type-pairing='…']` rules in `frontend/src/styles.css`, the files in
+   `frontend/src/assets/fonts/`, and an `OFL-<family>.txt` per family (the
+   licence is the condition on redistributing them, and `angular.json` copies
+   it to `fonts/` by an explicit `assets` entry, because nothing resolves a
+   `url()` to a text file). Keep `font-weight: 400 600` on a variable face:
+   it is what lets a UA `bold` heading land on a real 600.
+5. If it is a layout: a `:host([data-layout='…'])` block in
+   `viewer/viewer-page.css`, and check the narrow-width stacking still wins
+   (the 900 px media query repeats the layouts' specificity on purpose).
+6. If it is a token the viewer paints: consume it as `var(--token)` in the
+   viewer's stylesheets, and **write it on the viewer's host element, never
+   `:root`** (`ARCHITECTURE.md`, "What each layer may not do"). A colour that
+   is not CSS — a Leaflet option, an inline style, mapillary-js's WebGL
+   markers — must be handed over as a value: `setMarkerColours` for the
+   markers, `MapPane`'s `theme` input for the pins and route. Never through a
+   root-provided store, because the editor shares the `PanoramaViewer`.
+7. `frontend/src/app/editor/theme-pane.ts` and `.html`: the control; and
+   `editor/theme-preview.ts` / `.css`, which draws the miniature from the same
+   tokens.
+8. `frontend/src/app/editor/document-ops.ts` and `.spec.ts` if it needs an op
+   (entry 5). Every op compares against the *defaulted* theme, so a tour with
+   no stored theme still returns the same reference for a change that did not
+   happen.
+
+**Fails if incomplete:** the drift tests read the other side as text.
+`test_the_frontend_theme_vocabulary_matches_this_one` and
+`test_the_frontend_theme_overrides_have_the_same_thirteen_fields` in
+`backend/tests/test_models.py` fail when `theme.ts` and the Python `Literal`s
+or `ThemeOverrides` disagree; the font tests in `backend/tests/test_fonts.py`
+fail when a pairing has no `[data-type-pairing]` rule, when a rule names a
+family nothing declares, when a declared family has no licence file, and when
+`angular.json` stops copying the licences; and the preview's token-subset test
+in `editor/theme-pane.spec.ts` (*"uses only token names the viewer also
+defines"*) fails when the miniature reads a token the viewer does not define —
+which is also the test that noticed `--on-accent` was read by nothing. The
+Nocturne table in `core/theme.spec.ts` fails if a preset value drifts from what
+the application shipped. **Nothing fails** for a `font-weight` descriptor
+"tidied" to a single value, for a layout block that renders badly, for a font
+that resolves at build time and 404s on a published site, or for the preview
+drifting from the viewer in any way a token name does not show: all of those
+are `UNVERIFIED.md` entry 43.
+
 ---
 
 ## Quick index
@@ -464,6 +541,7 @@ repository renders a page, so entries 19 to 22 of
 | I want to change… | Start at |
 | --- | --- |
 | a field, a validation rule | `backend/app/models.py`, then entry 3 |
+| what an author can theme: a preset, a colour, a typeface, a layout | `frontend/src/app/core/theme.ts` (the one definition), then entry 11 |
 | what a visitor sees for a stop | `frontend/src/app/stop/stop-panel.ts`, `panorama/panorama-pane.ts` |
 | how an in-world photograph is placed | `panorama/in-world-placement.ts` (pure), `panorama/in-world-renderer.ts` |
 | the walking and arrival logic | `core/arrival.ts`, `core/tour-store.ts` |
