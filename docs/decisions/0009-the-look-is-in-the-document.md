@@ -71,10 +71,23 @@ server-side reader sees one spelling; the file on disk may keep its own. That
 is harmless, because the pattern has already refused anything that is not six
 hex digits and CSS hex is case-insensitive.
 
-An untouched token is not stored. A tour that picks Archival stores
-`{"preset": "archival"}` and nothing more, so a later improvement to the
-preset reaches it; a document holding thirteen resolved colours would be frozen
-against its own preset.
+An untouched **colour** is not stored, and an earlier wording of this record
+overstated that. It said a tour that picks Archival stores
+`{"preset": "archival"}` and nothing more. It does not: `setThemePreset`
+writes all five keys, so what that tour holds is `{"preset": "archival",
+"typePairing": "garamond", "typeScale": "comfortable", "layout": "widePanel",
+"overrides": {}}`.
+
+The substance is right and is the part that matters: **no colour is frozen.**
+`overrides` is empty, so all thirteen resolve from the preset and a later
+improvement to Archival's palette reaches that tour, where a document holding
+thirteen resolved colours would be frozen against its own preset for good.
+What *is* frozen is the **type pairing**, because choosing a preset writes the
+preset's own face into the document — the mockup moved the pairing with the
+theme and the design keeps that (§5.2) — so a later change to which face
+Archival starts with does not reach a tour that already chose it. That is the
+price of the mockup's behaviour, and it is a type pairing rather than a
+palette, which is why it was worth paying.
 
 ### 3. The marker colours travel as a parameter, not a store, and teardown is half of that
 
@@ -120,6 +133,57 @@ The same reasoning puts the CSS tokens on the viewer's host element and never
 on `:root`: `EntryPage` routes to `/edit` within the same page load, so tokens
 on the document would sit there while the editor is on screen.
 
+### 4. A pin reproduces today's appearance, and yields when that stops being the point
+
+A preset may pin any token, and a pin beats a derivation: that is what lets
+Nocturne be today's look exactly rather than approximately, because three of
+the shipped colours are not reachable by any sensible mix of the core six.
+
+But a pin exists to reproduce today's appearance, so once the author has moved
+the palette out from under it, reproducing the old value is no longer a feature
+but a bug. The whole-branch review's worked case was an author on the default
+turning it into a light theme by setting `paper`, `panel` and `ink`: Nocturne's
+pins outlived the palette they belonged to, and the result was a stop summary
+at **1.69:1** and an overlay list at **1.09:1** — invisible, and neither of
+them among the three pairs the pane's contrast readout showed. The author
+would have fixed the accent they were warned about and published a tour whose
+words could not be read.
+
+So an override on any of the core six — `paper`, `panel`, `ink`, `accent`,
+`wayfinding`, `destination` — releases the pins that exist only for legacy
+exactness: `soft`, `muted`, `rule`, `chip`, `chipSelected`, `attributionBar`,
+`mutedWeak`, `panoCanvas` and `onWayfinding`. Each then derives from the
+palette the author actually chose, which is what §5.2's promise — "an author
+who wants one strange panel colour gets coherent chips and rules for free" —
+says the derivation layer is for. An override on a released token still wins,
+so nothing the author set is lost. `error` and `pinRing` cannot join the list:
+neither is derived from the core, so there is nothing for either to fall back
+to, and `error` is deliberately outside the author's reach.
+
+**Every tour already in the wild is untouched by this, and the reason is worth
+stating precisely: none of them carries any override at all.** No core token
+is overridden, so no pin is released and every value resolves as before. The
+rule is reachable only by a document an author has themed.
+
+The readout was widened in the same breath, to five pairs rather than three:
+body text, **stop summary**, **overlay list**, accent and button label. It
+still only warns — it disables nothing and blocks no save, which was the
+author's decision.
+
+And the derivation ratios were measured, which they had not been. `muted` and
+`mutedWeak` came from a design mockup and are only ever *exercised* on the
+three light presets, because Nocturne pins both; nobody had looked at them
+there. `muted` was 3.48–3.62:1 against `panel` and 2.75–2.87:1 against
+`attributionBar` — credits, "STOP 1 OF 6" and the footer's links, at 10 to
+11.5 px — and `mutedWeak` was 1.30:1 against `rule`, a disabled label that is
+not dimmed but gone. They are now `mix(ink, panel, 0.28)` and
+`mix(muted, panel, 0.25)`, which give 5.83–6.24 and 4.62–4.89 and leave the
+disabled control at 2.38–2.47, beside Nocturne's own pinned 2.46. `theme.ts`
+carries the measurements in comments, and `theme.spec.ts` carries a contrast
+floor for every foreground/background pair the viewer paints, on all four
+presets, so the next change to a ratio is answered by a test rather than by a
+mockup. Nocturne pins all three of those tokens, so none of its values moved.
+
 ## Costs
 
 **The primary button changed colour, and it is the only appearance change to a
@@ -155,7 +219,13 @@ v4, and that work takes the next number.
 miniature (`editor/theme-preview.ts`) is a static imitation of the viewer, not
 the viewer. It consumes only token names, and `theme-pane.spec.ts` asserts that
 the `var(--…)` names its stylesheet uses are a subset of the names the viewer's
-stylesheets define. That catches a renamed token. It does not catch a layout
+stylesheets define — a union of the `var(--…)` names those five stylesheets
+read and the names `cssVariablesFor` emits, which is what lets `--wayfinding`
+and `--destination` be checked rather than excused. Those two reach the
+viewer's pins and markers as parameters from `markerColoursFor` and never
+through CSS, so an earlier form of the test allow-listed them by hand and
+could not have caught a rename of either. It catches a renamed token. It does
+not catch a layout
 that stops resembling the real one, or a type pairing that renders differently
 at real sizes — nothing here can, and `UNVERIFIED.md` entry 43 says so. The
 full-size check is the existing *Preview* link to `/view`.
@@ -190,6 +260,10 @@ their `error` colours and their `wayfinding`/`destination` pairs came from
 mockups or from the design's author and have never been rendered; the three
 layouts, the fonts under a published site's `<base href="./">`, `color-mix` and
 the pins over real tiles are all pixels. They are `UNVERIFIED.md` entry 43,
-and its first check — that the fonts load on a published site served from a
-subdirectory — is the only one that fails after an author has already
-published.
+and its first check is now whether the presets are legible at all: the derived
+tokens that failed there are fixed and under test, and what is left —
+Archival's accent at 3.95:1 on its own attribution bar and 3.66:1 on its
+panorama canvas — is a mockup value no derivation can move, so it needs an eye
+and a decision. The published-site font check led that list and has been
+downgraded, because a CSS `url()` resolves against the stylesheet's own URL
+rather than against `<base href>`, so the subdirectory half of it cannot fail.

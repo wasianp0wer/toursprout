@@ -52,10 +52,12 @@ exists for. Start there if a tester outside the United States reports that a
 stop will not face the right way.
 
 **Per-tour theming added entry 43, and nothing in it has been seen at all.**
-Its first check is the one that fails only after an author has published: the
-font files, under `<base href="./">`, served from a subdirectory. Everything in
-the editor and the viewer looks right until a published site is opened on
-someone else's machine. Start there; the other eleven are the pixels.
+Its first check is whether the four presets are legible on a real screen.
+Three pairs that were not are now measured and fixed by a test that walks
+every preset (`theme.spec.ts`, "contrast, for every pair the viewer paints"),
+and what the test still records as below AA is Archival's accent on its
+attribution bar and on its panorama canvas — a preset value from a mockup,
+which no derivation can move. Start there; the rest are the pixels.
 
 Only unproven things are listed. What was verified (the live Mapillary and
 loc.gov response shapes, the Overpass `[timeout:12]` query, the direct
@@ -1288,8 +1290,11 @@ served by Apache. The lock has still never met a second deploy.*
 
 ## 43. Per-tour theming, none of which has been seen in a browser
 
-*Check 1 is the only one that fails after an author has already published. Do
-it first, and do it on a real published site.*
+*Check 1 is the pixel risk a visitor is most likely to see: the three light
+presets' derived tokens were remeasured and raised on 2026-11-15, and what is
+left in them cannot be fixed by arithmetic. The published-site font check,
+which used to lead this list, is check 5 and has been downgraded — the
+reasoning is there.*
 
 - **Unproven:** how any of it looks. A theme — preset, colour overrides, type
   pairing, type scale, layout — is stored in the document, resolved by the pure
@@ -1305,43 +1310,70 @@ it first, and do it on a real published site.*
   resolve, so a wrong font path is caught; a font file that resolves at build
   time and 404s under a published site's base URL is not.
 - **Close it**, in this order:
-  1. **The fonts load on a published site, under `<base href="./">`, served
-     from a subdirectory.** `make serve`, publish a tour with each of
-     `garamond`, `franklin`, `plex` and `franklinGaramond`, unzip it into a
-     subdirectory of any static host (not the root), open it, and read the
-     network panel: the `media/*.woff2` requests must be 200, not 404, and the
-     headings must be visibly in the chosen face rather than Georgia. The
-     `@font-face` rules live in `styles.css` and resolve their URLs relative to
-     the stylesheet, which the build fingerprints into `media/`; whether that
-     resolves under a base that is not the site root is exactly what no test
-     here can answer. **This is the one that fails after publishing**: the tour
-     looks fine in the editor, the author publishes, and the visitor gets
-     Georgia, or the fallback, with nothing to say so. Also confirm the four
-     `OFL-*.txt` files are in the zip under `fonts/` — they are the licence
-     condition on redistributing the faces, and `test_fonts.py` proves they
-     reach `dist/`, not that a site served from it carries them.
-  2. **Any of the four presets is legible on a real screen.** Nocturne is
+  1. **Any of the four presets is legible on a real screen.** Nocturne is
      today's appearance; Archival, Civic and Field notes came from approved
      mockups, and their `error` colours and `wayfinding`/`destination` pairs
      were the design's own choice and were never rendered. Field notes' `error`
      is distinguished from its accent only by being darker; if it cannot be
      told apart in place, change it (`error` is internal, so no document
-     depends on it).
-  3. **The three layouts hold together at real sizes, and the narrow stacking
+     depends on it). **Three pairs were measured and fixed on 2026-11-15**: the
+     `muted` derivation was 3.48–3.62:1 against `panel` and 2.75–2.87 against
+     `attributionBar` on these three presets, and `mutedWeak` was 1.30 against
+     `rule`, because the ratios came from a mockup and only Nocturne — which
+     pins all three tokens — had ever been looked at. `theme.spec.ts` now holds
+     a contrast floor for every foreground/background pair the viewer paints,
+     on all four presets, so arithmetic of this kind cannot go unmeasured
+     again. **What a floor cannot fix is still here to look at:** Archival's
+     accent reads **3.95:1** on its own attribution bar (`.tour-title`) and
+     **3.66:1** on its panorama canvas (`.pano-error`), both below AA for the
+     ~11 px and ~13 px text they paint. `accent` is a preset value from the
+     mockup, not a derivation, so no ratio in `theme.ts` can move it: the
+     answers are a darker Archival accent, a lighter bar, or accepting it.
+     Judge it by eye first. Nocturne's own `onWayfinding` is 4.11:1 against
+     `wayfinding` and is deliberate — see spec §5.2, it is today's appearance.
+  2. **The three layouts hold together at real sizes, and the narrow stacking
      works on a phone.** `widePanel`, `panelLeft` and `immersive`, each at a
      wide window and below the 900 px breakpoint, where all three stack as
      panorama, map, panel, attribution. The stacked rows (`45vh`, `25vh`, then
      the panel) are a guess at a phone screen.
-  4. **`color-mix` renders as intended in the testers' browsers.** It is used
+  3. **`color-mix` renders as intended in the testers' browsers.** It is used
      in `map-pane.css` for Leaflet's attribution control, as
      `color-mix(in srgb, var(--attribution-bar) 75%, transparent)`. A browser
-     that does not support it drops the declaration, and the control would lose
-     its background rather than gain a solid one.
-  5. **The pins and the panorama markers read well over real map tiles and real
+     that does not support it drops the declaration, which is why the rule now
+     carries a plain `background: var(--attribution-bar)` before it: the
+     fallback costs the translucency and nothing else. What is unproven is
+     only which of the two a tester's browser takes, and whether the solid
+     band looks acceptable if it is the fallback.
+  4. **The pins and the panorama markers read well over real map tiles and real
      street imagery.** A `wayfinding` colour that separates cleanly from grey
      squares in a mockup may disappear into a dense basemap, and a
      `destination` marker has to be findable in a photograph. Try each preset
      over a dense part of the basemap and over both a bright and a dim street.
+  5. **The fonts load on a published site, under `<base href="./">`, served
+     from a subdirectory.** `make serve`, publish a tour with each of
+     `garamond`, `franklin`, `plex` and `franklinGaramond`, unzip it into a
+     subdirectory of any static host (not the root), open it, and read the
+     network panel: the `media/*.woff2` requests must be 200, not 404, and the
+     headings must be visibly in the chosen face rather than Georgia. Also
+     confirm the four `OFL-*.txt` files are in the zip under `fonts/` — they
+     are the licence condition on redistributing the faces.
+     **This was check 1 and led the list, as the one that fails only after an
+     author has published. It is downgraded, because the subdirectory half of
+     it cannot fail:** the built stylesheet emits
+     `url("./media/ebgaramond-YZ47ODPX.woff2")`, and a CSS `url()` resolves
+     against **the stylesheet's own URL**, not against `<base href>`, which
+     governs only HTML-relative URLs. The stylesheet and `media/` are siblings
+     in the published zip, so they stay siblings wherever the zip is unpacked.
+     That is readable here, from `frontend/dist/frontend/browser/*.css`, which
+     is why it is no longer first. What is left is worth doing anyway: that
+     the licence files are actually in the zip, and that the faces render as
+     the chosen family rather than silently falling back for some other
+     reason. On the licences: `test_fonts.py` proves the `angular.json` assets
+     entry names the fonts directory and that the `OFL-*.txt` files are in the
+     source tree, and — when a build is present — that they reach
+     `dist/frontend/browser/fonts/`. It does not prove a *served* site carries
+     them. An earlier wording of this check, and the test's own earlier name,
+     said it proved they reach `dist/`, which it did not.
   6. **The live miniature resembles the viewer closely enough to be useful.**
      It is a deliberate lookalike (`editor/theme-preview.ts`), tied to the
      viewer by one test that its stylesheet names only tokens the viewer also
@@ -1350,7 +1382,14 @@ it first, and do it on a real published site.*
   7. **The immersive layout's proportions.** The `3fr`/`2fr` split between
      panel and map, the `minmax(320px, 1fr)` floor on the panel under
      `panelLeft`, and the `45vh`/`25vh` stacked rows are all numbers chosen
-     without a screen.
+     without a screen. The one most worth measuring is not in any
+     `:host([data-layout='immersive'])` block at all: that rule sets only
+     `grid-template-columns` and `grid-template-areas`, so `immersive`
+     inherits `grid-template-rows: minmax(0, 3fr) minmax(0, 2fr) auto` from
+     the base `.layout`. The full-width panorama therefore takes **3/5 of the
+     viewport height**, with the panel and the map sharing the remaining 2/5 —
+     a stop's words in two fifths of the screen, which is arguably the more
+     consequential unverified number in that layout.
   8. **In `immersive` alone there is no rule between the full-width panorama
      and the panel beneath it.** `.panel-slot` loses its `border-left` and
      `.map-slot` keeps only its `border-top`, so the join between panorama and
@@ -1374,7 +1413,10 @@ it first, and do it on a real published site.*
       text is plain ASCII is meant to download none of those files, which is
       the other half of the same check.
 - **Also unseen:** whether the readout's wording and the amber warning below
-  AA are noticeable (it must warn and never block publishing); and the
+  AA are noticeable (it must warn and never block publishing) — it now shows
+  five readings rather than three, having gained the stop summary and the
+  overlay list, so whether five rows is still a readout rather than a wall is
+  part of the same look; and the
   primary button's new colour on the shipped Fairfax tour, which is gold where
   it was blue (ADR 0009, and `HANDOFF.md`), and is the one change a visitor to
   an existing tour will see.

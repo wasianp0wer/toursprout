@@ -162,10 +162,19 @@ class Tour(Strict):
 Four decisions are packed into that, and each is deliberate:
 
 - **An untouched token is not stored.** Every override is nullable and absent
-  by default, so a tour that simply picks Archival stores `{"preset":
-  "archival"}` and nothing more. A later improvement to Archival's palette then
-  reaches that tour. A document that stored thirteen resolved colours would be
-  frozen against its own preset forever.
+  by default, so a tour that simply picks Archival stores no colour at all. A
+  later improvement to Archival's palette then reaches that tour. A document
+  that stored thirteen resolved colours would be frozen against its own preset
+  forever.
+
+  **An earlier draft of this document gave the stored document as `{"preset":
+  "archival"}` and nothing more**, which is not what `setThemePreset` writes:
+  it writes all five keys, so the document holds `{"preset": "archival",
+  "typePairing": "garamond", "typeScale": "comfortable", "layout":
+  "widePanel", "overrides": {}}`. The claim that matters survives — `overrides`
+  is empty, so no colour is frozen — but the **type pairing is** frozen by it,
+  which follows from §5.2's decision that the pairing moves with the preset,
+  and is the price of that decision rather than an accident.
 - **`theme` is nullable and absent means the default**, which is Nocturne with
   no overrides — today's appearance. This is what makes the migration a version
   bump and nothing else (§5.7).
@@ -535,8 +544,11 @@ mobile breakpoint, where `.layout` is `height: auto`.
 
 About **31** colour literals in the viewer's five stylesheets become `var()`
 references: `stop-panel.css` 18, `viewer-page.css` 6, `map-pane.css` 4,
-`panorama-pane.css` 2, and — of `styles.css`'s 13 — **exactly one**, the
-`.stop-pin span` border, which becomes `var(--pin-ring)`.
+`panorama-pane.css` 2, and — of `styles.css`'s **12** — **exactly one**, the
+`.stop-pin span` border, which becomes `var(--pin-ring)`. (An earlier draft of
+this document said 13. The file held 12 hex literals at the merge base, plus
+one `rgba()`, which is the shadow mentioned below; the code and the test
+comment have the right figure and only this sentence was stale.)
 
 An earlier draft of this document said "4 of `styles.css`'s 13", counting that
 file's viewer-*side* literals rather than the ones that convert. Three of those

@@ -1366,6 +1366,19 @@ Lowering `MAX_SESSION_MEDIA_BYTES` is the first remedy.
     reads** — in the 2026-11-09 deploy and the 2026-11-10 rehearsal — but it
     has **never met a real Directory Privacy password**, so step 8's one-off
     check is still the first evidence that the password survives a deploy.
+- **Every published zip carries the whole font set, whatever theme the tour
+  uses: 14 `woff2` files totalling 433,184 bytes, plus four `OFL-*.txt`
+  licences.** The `@font-face` rules are in the one eager stylesheet, so the
+  build fingerprints all fourteen into `media/` and the licences ride along
+  under `fonts/` because redistributing these faces is conditional on them.
+  That is negligible beside the 4.5 MB of media the Fairfax tour already
+  weighs, and it is **not** what a visitor downloads: each face is declared
+  with a `unicode-range`, so a plain-ASCII Archival tour fetches
+  `ebgaramond.woff2` (44,172 bytes) and nothing else, while a tour with Czech
+  place names also fetches the 113,756-byte latin-ext face — the tour that
+  needs it. Without `unicode-range` the trade would not be worth making. (The
+  design, `docs/superpowers/specs/2026-11-14-ui-customization-design.md` §5.3,
+  asked for this figure to be stated here once it was measured.)
 - **The recorder has never run in a real browser,** and ships that way by the
   author's decision; historians are told where to report a failure.
 - **Whether a browser may call `graph.mapillary.com` directly** is unproven

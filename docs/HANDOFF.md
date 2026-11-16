@@ -22,20 +22,21 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 711 backend (pytest), 836 frontend (Vitest, 38 files); lint and
+**Tests:** 712 backend (pytest), 853 frontend (Vitest, 38 files); lint and
 production build clean via `make check`, which exits 0 and prints `All checks
-passed!`. Eager bundle 2.17 MB raw / 375.00 kB transferred (2.15 MB / 372.22 kB
+passed!`. Eager bundle 2.17 MB raw / 375.35 kB transferred (2.15 MB / 372.22 kB
 before per-tour theming). There are **three** lazy chunks: the editor,
-120.03 kB raw / 27.75 kB transferred (was 105.34 / 24.68); the welcome screen,
-12.57 kB / 4.05 kB; and a third, unnamed one, 10.15 kB / 3.59 kB. The third was
+120.26 kB raw / 27.80 kB transferred (was 105.34 / 24.68); the welcome screen,
+12.56 kB / 4.07 kB; and a third, unnamed one, 10.15 kB / 3.60 kB. The third was
 not recorded here before and is not a regression: it is the Mapillary search
 client (`graph.mapillary.com/images`, its field list and bounding-box helper)
 with a little shared document code, shared by the editor and welcome chunks
 (anyone reaching the welcome screen downloads it), which a published visitor
-never fetches because a published site always has a tour open. It arrived with the flat-imagery work or
-earlier and simply went unlisted. The fonts are 14 `woff2` files totalling
-433,184 bytes, fingerprinted into `media/`, plus four `OFL-*.txt` licences in
-`fonts/`; all of them ship in every published zip.
+never fetches because a published site always has a tour open. It arrived
+with the flat-imagery work or earlier and simply went unlisted. The fonts
+are 14 `woff2` files totalling 433,184 bytes, fingerprinted into `media/`,
+plus four `OFL-*.txt` licences in `fonts/`; all of them ship in every
+published zip.
 
 *(This line read 413 backend / 606 frontend until 2026-11-11 and had gone
 stale by a long way: `main` at `e24845a` already ran 692 backend, the
@@ -43,25 +44,42 @@ workstation-deploy branch having added `test_deploy_script.py`. The frontend
 figure was never re-measured after that branch either. Take the numbers above
 as the ones a run actually printed.)*
 
-**Per-tour theming was built on 2026-11-14 and 15, on `feature/ui-customization`, and none
-of it has been seen in a browser.** A tour may now carry a `theme`: one of four
-presets (`nocturne`, `archival`, `civic`, `fieldNotes`), up to thirteen colour
-overrides, one of five type pairings, a type scale and one of three layouts
+**Per-tour theming was built on 2026-11-14 and 15, on
+`feature/ui-customization`, and none of it has been seen in a browser.** A
+tour may now carry a `theme`: one of four presets (`nocturne`, `archival`,
+`civic`, `fieldNotes`), up to thirteen colour overrides, one of five type
+pairings, a type scale and one of three layouts
 (`widePanel`, `panelLeft`, `immersive`). It is **schema v4**, with a migration
 step that only stamps the version, because `extra="forbid"` makes even an
 additive field a hard rejection for an older reader; `fairfax-old-town-v3.json`
 is frozen beside the v1 and v2 fixtures. `core/theme.ts` is the one place the
 token set is defined; the viewer writes the resolved tokens onto its own host
-element; the editor has a theme pane with a live miniature. Four families ship with
-the app (EB Garamond, Libre Franklin, IBM Plex Sans and Mono; 14 files, as
-above, because three also ship italics and Mono only a medium), each with a
-latin and a latin-ext file so a stop called *Łódź* does not fall back
-mid-word. Why it was built this way is ADR
+element; the editor has a theme pane with a live miniature. Four families
+ship with the app (EB Garamond, Libre Franklin, IBM Plex Sans and Mono; 14
+files, as above, because three also ship italics and Mono only a medium),
+each with a latin and a latin-ext file so a stop called *Łódź* does not fall
+back mid-word. Why it was built this way is ADR
 [0009](decisions/0009-the-look-is-in-the-document.md); how it fits is the token
 flow in [`ARCHITECTURE.md`](ARCHITECTURE.md); where a change goes is entry 11 of
 [`CHANGING-THINGS.md`](CHANGING-THINGS.md); and the twelve checks that need a
-browser, **the font check on a published site first**, are `UNVERIFIED.md`
-entry 43.
+browser, **preset legibility first**, are `UNVERIFIED.md` entry 43.
+
+**A whole-branch review on 2026-11-15 found three things worth knowing about,
+and all three are fixed.** The `muted` and `mutedWeak` derivations came from a
+mockup and were only ever exercised on the three light presets, because
+Nocturne pins both — nobody had measured them there, and they were 3.48:1 and
+1.30:1 where AA asks 4.5; they are now `mix(ink, panel, 0.28)` and
+`mix(muted, panel, 0.25)`, and `core/theme.spec.ts` holds a contrast floor for
+every pair the viewer paints, on every preset. A preset's pin used to outlive
+the palette: on Nocturne, setting `paper`, `panel` and `ink` left `soft` and
+`chip` pinned to their dark values, which is a stop summary at 1.69:1 and an
+overlay list at 1.09:1, and the readout showed neither — so the pins that
+exist only for legacy exactness now yield to their derivations once any of the
+core six is overridden, and the readout shows five pairs rather than three.
+And `map-pane.css`'s `color-mix` had no fallback, so a browser without it got
+Leaflet's own white box. **No existing tour's appearance changes**, because
+every one of them carries no overrides at all and Nocturne pins the three
+tokens whose ratios moved. The detail is in ADR 0009 §4.
 
 **One visible change to the existing tour, and it is deliberate: the stop
 panel's Prev/Next button was blue (`#2f7fd4` on `#fff`) and is now the accent,

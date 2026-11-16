@@ -484,16 +484,22 @@ well, so start at entry 3.
    `ThemeOverrides` interface, `OVERRIDABLE_TOKENS` and, for a token the viewer
    paints, the `ColourToken` union and `CSS_TOKEN_SET`; `OVERRIDABLE_TOKENS` and
    `CSS_TOKEN_SET` are `Record`s over their key types, so forgetting one is a
-   compile error, then `resolveTheme`'s
-   derivation.
+   compile error, then `resolveTheme`'s derivation. If the token is one a
+   preset pins only to reproduce the pre-theming appearance, add it to
+   `LEGACY_PINS` too, so the pin yields once the author overrides a core
+   colour; a token that is not derived from the core must stay off that list.
+   If you change a derivation **ratio**, measure it: `theme.spec.ts` holds a
+   contrast floor per painted pair per preset, and it is the only thing that
+   will notice.
 2. `backend/app/models.py`: the matching `Literal` on `Theme`, or the field on
    `ThemeOverrides`. A token is `HexColor | None` and nothing else: do not add
    a free-form string to a theme, ever. Everything the viewer interpolates must
    be an enumerated name or a six-digit hex, which is what makes an imported
    bundle safe to serve from the author's origin.
 3. `frontend/src/app/core/tour.models.ts`: the mirror, by hand.
-4. If it is a type pairing: the `@font-face` rules (a latin and a latin-ext pair per face, 14 today)
-   and the `[data-type-pairing='…']` rules in `frontend/src/styles.css`, the files in
+4. If it is a type pairing: the `@font-face` rules (a latin and a latin-ext
+   pair per face, 14 today) and the `[data-type-pairing='…']` rules in
+   `frontend/src/styles.css`, the files in
    `frontend/src/assets/fonts/`, and an `OFL-<family>.txt` per family (the
    licence is the condition on redistributing them, and `angular.json` copies
    it to `fonts/` by an explicit `assets` entry, because nothing resolves a
@@ -527,9 +533,16 @@ family nothing declares, when a declared family has no licence file, and when
 `angular.json` stops copying the licences; and the preview's token-subset test
 in `editor/theme-pane.spec.ts` (*"uses only token names the viewer also
 defines"*) fails when the miniature reads a token the viewer does not define —
-which is also the test that noticed `--on-accent` was read by nothing. The
-Nocturne table in `core/theme.spec.ts` fails if a preset value drifts from what
-the application shipped. **Nothing fails** for a `font-weight` descriptor
+which is also the test that noticed `--on-accent` was read by nothing, and
+which compares against the viewer's stylesheets *and* the names
+`cssVariablesFor` emits, so a rename on either side fails it. The Nocturne
+table in `core/theme.spec.ts` fails if a preset value drifts from what the
+application shipped, and the contrast suite beside it (*"contrast, for every
+pair the viewer paints"*) fails if a derivation, a preset colour or a new
+painted pair puts text below its floor on any of the four presets. The
+`BELOW_AA` table there is the list of pairs knowingly under the standard, and
+it prunes itself: a pair that rises above AA fails until its entry is
+deleted. **Nothing fails** for a `font-weight` descriptor
 "tidied" to a single value, for a layout block that renders badly, for a font
 that resolves at build time and 404s on a published site, or for the preview
 drifting from the viewer in any way a token name does not show: all of those
