@@ -22,10 +22,28 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 712 backend (pytest), 853 frontend (Vitest, 38 files); lint and
+**Tests:** 713 backend (pytest), 854 frontend (Vitest, 38 files); lint and
 production build clean via `make check`, which exits 0 and prints `All checks
 passed!`. Eager bundle 2.17 MB raw / 375.35 kB transferred (2.15 MB / 372.22 kB
-before per-tour theming). There are **three** lazy chunks: the editor,
+before per-tour theming). **A cache bug found while the branch was being handed over, and fixed on
+it.** The author's editor kept loading a tour from an earlier session while
+the session on disk held another, so every autosave was refused for the wrong
+schema version. `GET /tour-data/*` advertised `ETag` and `Last-Modified` but
+set no `Cache-Control`, so a browser applied heuristic freshness and answered
+`TourApi.getTour()` from its own cache **without contacting the server** —
+and a hard reload does not dislodge that, because it bypasses the cache for
+the page and its subresources but not for requests the application makes
+afterwards. Schema v4 only made it loud: before the bump the same staleness
+loaded quietly and then autosaved the old document over whatever was really
+open, which is the mechanism behind Outstanding item **A** below. Fixed in
+two places — the route sends `Cache-Control: no-cache` (`2f5681b`) and
+`TourApi` asks to revalidate from the client (`4301203`), the latter being
+the only guard that reaches a published site, where the host's headers are
+not ours. Media is untouched and still caches: a media id is a content hash.
+The browser-side checks nobody here can run, including how a reload behaves
+offline, are `UNVERIFIED.md` entry 44.
+
+There are **three** lazy chunks: the editor,
 120.26 kB raw / 27.80 kB transferred (was 105.34 / 24.68); the welcome screen,
 12.56 kB / 4.07 kB; and a third, unnamed one, 10.15 kB / 3.60 kB. The third was
 not recorded here before and is not a regression: it is the Mapillary search

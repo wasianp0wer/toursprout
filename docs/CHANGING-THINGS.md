@@ -289,9 +289,15 @@ A bundle is `bundle.json`, `tour.json` and `media/`, as a zip.
    `visibility: hidden`) are what keep the viewer's layout box while it is
    hidden, and without the box Leaflet initialises at 0×0 and never recovers.
    The third, `pointer-events: none`, is inertness rather than layout.
-4. What `config.json` holds is `_viewer_config` in `main.py`; the viewer reads
+4. **A published site is served by headers you do not control.** The
+   `Cache-Control: no-cache` the `tour_data` route sends applies only in the
+   editor; on a static host the document is served by that host. That is why
+   `TourApi` asks to revalidate from the client as well — it is the only
+   guard that travels with the application. Do not "tidy" it away as
+   redundant with the server header (`UNVERIFIED.md` entry 44).
+5. What `config.json` holds is `_viewer_config` in `main.py`; the viewer reads
    it through `core/config-store.ts`.
-5. Anything the viewer newly needs must come from `tour-data/`. It must never
+6. Anything the viewer newly needs must come from `tour-data/`. It must never
    reach for `/api` (a published site has none). `EntryPage`'s probe is the
    one `/api` call on the published path, and it belongs to the router, not to
    the viewer.
