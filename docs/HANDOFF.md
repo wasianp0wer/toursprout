@@ -42,7 +42,7 @@ workstation-deploy branch having added `test_deploy_script.py`. The frontend
 figure was never re-measured after that branch either. Take the numbers above
 as the ones a run actually printed.)*
 
-**Per-tour theming landed on 2026-11-15, on `feature/ui-customization`, and none
+**Per-tour theming was built on 2026-11-14 and 15, on `feature/ui-customization`, and none
 of it has been seen in a browser.** A tour may now carry a `theme`: one of four
 presets (`nocturne`, `archival`, `civic`, `fieldNotes`), up to thirteen colour
 overrides, one of five type pairings, a type scale and one of three layouts
