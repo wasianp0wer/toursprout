@@ -443,8 +443,11 @@ literals alone. A related rule covers the one object the two sides share: the
 and the viewer's use **one instance**. Marker colours reach it by
 `setMarkerColours`, called only from the viewer's `panorama-pane.ts`, and
 `destroy()` restores `DEFAULT_MARKER_COLOURS`; without that reset `/edit` →
-`/view` → `/edit` leaves the editor's markers in the tour's colours. Pinned by
-specs using `panorama/fake-viewer.ts`; the host-element rule by *"writes the
+`/view` → `/edit` leaves the editor's markers in the tour's colours. Pinned in three
+places: the reset by `panorama/mapillary-viewer.spec.ts` ("goes back to the
+defaults when destroyed"; the fake's `destroy()` cannot show it), the editor never
+calling the setter by `editor/edit-panorama-pane.spec.ts`, and the effect order by
+`panorama/panorama-pane.spec.ts`. The host-element rule is pinned by *"writes the
 resolved tokens onto its own host, not the document root"* in
 `viewer/viewer-page.spec.ts`, which checks `--paper` on the host and its
 absence from `documentElement`. That test covers one token written by the

@@ -107,7 +107,12 @@ instance back in its default state.** The second is a line of teardown, not an
 architectural property, and it must be `destroy()` and not `attach()`: the
 colours effect in `panorama-pane.ts` is declared before the effect that
 attaches, so resetting on attach would wipe the viewer's own colours on the way
-in. A spec using `fake-viewer.ts` pins both halves and the effect order. If a
+in. The halves are pinned in different files: `panorama/mapillary-viewer.spec.ts`
+("goes back to the defaults when destroyed", against a mapillary-js stub) pins
+the reset, because the test double's `destroy()` never touches colours;
+`editor/edit-panorama-pane.spec.ts` pins that the editor never calls the setter;
+and `panorama/panorama-pane.spec.ts` pins the effect order, both using
+`fake-viewer.ts`. If a
 second consumer of the shared viewer ever sets colours, it inherits the same
 duty.
 

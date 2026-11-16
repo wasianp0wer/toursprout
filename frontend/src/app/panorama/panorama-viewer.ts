@@ -50,9 +50,10 @@ export interface PanoramaViewer {
    * root-provided theme store, on purpose: EditPanoramaPane calls setMarkers on
    * this same PanoramaViewer, so a store read inside the implementation would
    * theme the editor's markers with the open tour's colours. As a parameter the
-   * editor simply never calls this, the implementation keeps its defaults, and
-   * "the editor is never themed" holds by construction. Do not simplify it into
-   * a store.
+   * editor simply never calls this. That is only half the guarantee: the
+   * PANORAMA_VIEWER instance is root-provided and shared, so the viewer must also
+   * hand it back in its default state, and destroy() restores the defaults.
+   * Both halves are needed. Do not simplify it into a store.
    */
   setMarkerColours(colours: MarkerColours): void;
   onMarkerClick(handler: (id: string) => void): void;

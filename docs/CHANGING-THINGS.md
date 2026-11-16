@@ -482,8 +482,9 @@ well, so start at entry 3.
    one line with single-quoted strings**, because a backend test finds them by
    regex over the source; the `PRESETS` table; and, for a token, the
    `ThemeOverrides` interface, `OVERRIDABLE_TOKENS` and, for a token the viewer
-   paints, the `ColourToken` union and `CSS_TOKEN_SET` (each is a `Record` over
-   its key type, so forgetting one is a compile error), then `resolveTheme`'s
+   paints, the `ColourToken` union and `CSS_TOKEN_SET`; `OVERRIDABLE_TOKENS` and
+   `CSS_TOKEN_SET` are `Record`s over their key types, so forgetting one is a
+   compile error, then `resolveTheme`'s
    derivation.
 2. `backend/app/models.py`: the matching `Literal` on `Theme`, or the field on
    `ThemeOverrides`. A token is `HexColor | None` and nothing else: do not add
@@ -491,8 +492,8 @@ well, so start at entry 3.
    be an enumerated name or a six-digit hex, which is what makes an imported
    bundle safe to serve from the author's origin.
 3. `frontend/src/app/core/tour.models.ts`: the mirror, by hand.
-4. If it is a type pairing: the five `@font-face` groups and the
-   `[data-type-pairing='…']` rules in `frontend/src/styles.css`, the files in
+4. If it is a type pairing: the `@font-face` rules (a latin and a latin-ext pair per face, 14 today)
+   and the `[data-type-pairing='…']` rules in `frontend/src/styles.css`, the files in
    `frontend/src/assets/fonts/`, and an `OFL-<family>.txt` per family (the
    licence is the condition on redistributing them, and `angular.json` copies
    it to `fonts/` by an explicit `assets` entry, because nothing resolves a

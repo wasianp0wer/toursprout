@@ -30,8 +30,9 @@ before per-tour theming). There are **three** lazy chunks: the editor,
 12.57 kB / 4.05 kB; and a third, unnamed one, 10.15 kB / 3.59 kB. The third was
 not recorded here before and is not a regression: it is the Mapillary search
 client (`graph.mapillary.com/images`, its field list and bounding-box helper)
-with a little shared document code, editor-only and lazily split, which a
-published visitor never fetches. It arrived with the flat-imagery work or
+with a little shared document code, shared by the editor and welcome chunks
+(anyone reaching the welcome screen downloads it), which a published visitor
+never fetches because a published site always has a tour open. It arrived with the flat-imagery work or
 earlier and simply went unlisted. The fonts are 14 `woff2` files totalling
 433,184 bytes, fingerprinted into `media/`, plus four `OFL-*.txt` licences in
 `fonts/`; all of them ship in every published zip.
@@ -51,8 +52,9 @@ step that only stamps the version, because `extra="forbid"` makes even an
 additive field a hard rejection for an older reader; `fairfax-old-town-v3.json`
 is frozen beside the v1 and v2 fixtures. `core/theme.ts` is the one place the
 token set is defined; the viewer writes the resolved tokens onto its own host
-element; the editor has a theme pane with a live miniature. Four faces ship with
-the app (EB Garamond, Libre Franklin, IBM Plex Sans and Mono), each with a
+element; the editor has a theme pane with a live miniature. Four families ship with
+the app (EB Garamond, Libre Franklin, IBM Plex Sans and Mono; 14 files, as
+above, because three also ship italics and Mono only a medium), each with a
 latin and a latin-ext file so a stop called *Łódź* does not fall back
 mid-word. Why it was built this way is ADR
 [0009](decisions/0009-the-look-is-in-the-document.md); how it fits is the token
@@ -655,7 +657,8 @@ candidate for the next session than anything numbered below.
     `docs/superpowers/specs/2026-11-11-uploaded-base-imagery-design.md`, on
     the evidence in `-findings.md` beside it (1305 lines, gathered by
     reading the code, not estimated). Unlike item A it is **large**: it needs
-    schema v5 and a migration (v4 went to theming, which landed first), a self-hosted viewer so `PanoramaViewer` is
+    schema v5 and a migration (v4 went to theming, which took it first), a
+    self-hosted viewer so `PanoramaViewer` is
     no longer only mapillary-js, a direct three.js dependency pinned to the
     0.134.0 that arrives transitively today, and `publish.py` taught to read
     the document — it currently imports only `zipfile` and `Path` and zips
