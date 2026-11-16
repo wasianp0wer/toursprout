@@ -25,6 +25,37 @@ describe('TourApi', () => {
     expect((await promise).id).toBe('fairfax-old-town');
   });
 
+  it('refuses to read the document or the config out of the browser cache', () => {
+    // The document lives at a FIXED url and changes under it, so a cached
+    // copy is a different tour. Observed live: a browser held `tour.json`
+    // from an earlier session under heuristic freshness — the response
+    // carried validators but no `Cache-Control` — answered every
+    // `getTour()` locally, and never contacted the server again. A hard
+    // reload does not help, because it bypasses the cache for the page and
+    // its subresources but NOT for requests the application makes
+    // afterwards, so the editor loaded one tour while the session held
+    // another and every autosave was refused.
+    //
+    // The server now sends `Cache-Control: no-cache`, but that only governs
+    // responses stored from then on, and on a PUBLISHED site it is some
+    // other host's static server answering and we set none of its headers.
+    // Asking to revalidate from this side is the only guard that travels
+    // with the application. `no-cache` still permits the 304 the route was
+    // built for; it forbids using the copy without asking.
+    //
+    // Media is deliberately NOT included: a media id is a content hash, so
+    // its url never means a different file and caching it is the point.
+    for (const [call, url] of [
+      [() => api.getTour(), 'tour-data/tour.json'],
+      [() => api.getConfig(), 'tour-data/config.json'],
+    ] as const) {
+      call();
+      const req = http.expectOne(url);
+      expect(req.request.headers.get('Cache-Control'), url).toBe('no-cache');
+      req.flush({});
+    }
+  });
+
   it('requests config', async () => {
     const promise = api.getConfig();
     http.expectOne('tour-data/config.json').flush({ mapillaryToken: 't', tileUrl: 'u', attribution: [] });
