@@ -52,11 +52,11 @@ p { margin: 0 0 0.3rem; }
 .chips { display: flex; gap: 0.25rem; }
 .chip { padding: 0 0.3rem; border-radius: 3px; background: var(--chip); border: 1px solid var(--rule); }
 .chip.selected { background: var(--chip-selected); border-color: var(--accent); }
-/* The stop panel's Prev/Next buttons are wayfinding, not accent: this mirrors
-   stop-panel.css as it is, not as the design's prose describes it. */
+/* The primary action, painted with accent and its label colour, as the stop
+   panel's Next button is. */
 button {
   font: inherit; border: 0; border-radius: 3px; padding: 0.1rem 0.4rem;
-  background: var(--wayfinding); color: var(--on-wayfinding);
+  background: var(--accent); color: var(--on-accent);
 }
 .marker {
   position: absolute; left: 40%; top: 35%; width: 0.7rem; height: 0.7rem;

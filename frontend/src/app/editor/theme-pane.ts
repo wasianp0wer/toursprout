@@ -6,7 +6,7 @@ import {
   setTourLayout, setTypePairing, setTypeScale,
 } from './document-ops';
 import {
-  LAYOUT_NAMES, PRESET_NAMES, TYPE_PAIRINGS, TYPE_SCALES, contrastRatio, resolveTheme,
+  LAYOUT_NAMES, PRESET_NAMES, TYPE_PAIRINGS, TYPE_SCALES, contrastRatio, pinnedTokens, resolveTheme,
   type LayoutName, type PresetName, type ResolvedTheme, type Theme, type ThemeOverrides,
   type TypePairing, type TypeScale,
 } from '../core/theme';
@@ -36,7 +36,6 @@ const MORE_ROWS: Row[] = [
   { token: 'attributionBar', label: 'Attribution bar' },
   { token: 'onAccent', label: 'Button label' },
 ];
-const CORE: ReadonlySet<Token> = new Set(TOP_ROWS.map((r) => r.token));
 
 const PRESET_LABELS: Record<PresetName, string> = {
   nocturne: 'Nocturne', archival: 'Archival', civic: 'Civic', fieldNotes: 'Field notes',
@@ -52,27 +51,17 @@ const LAYOUT_LABELS: Record<LayoutName, string> = {
   widePanel: 'Wide panel', panelLeft: 'Panel left', immersive: 'Immersive',
 };
 
-/** WCAG AA for body text. Applied to all three pairs, which is stricter than AA asks of a UI colour. */
-const AA = 4.5;
-
 /**
- * Two palettes on which every core colour is the same, one dark and one light.
- * A derived token is one whose value moves when the core moves; a pinned one
- * does not. Two probes rather than one because a derivation such as
- * `readableOn` can land on the same answer for the preset's own accent and a
- * single probe colour.
+ * WCAG AA for body text, applied to all three pairs. That is deliberately
+ * stricter than AA asks of large text or a UI colour: Archival's accent on its
+ * panel is 4.9, so a small darkening turns it amber. The warning is only a
+ * warning; nothing is refused.
  */
-const PROBES: ThemeOverrides[] = ['#000000', '#ffffff'].map((c) => ({
-  paper: c, panel: c, ink: c, accent: c, wayfinding: c, destination: c,
-}));
+const AA = 4.5;
 
 function stateOf(token: Token, theme: Theme | null | undefined): RowState {
   if (typeof theme?.overrides?.[token] === 'string') return 'set';
-  if (CORE.has(token)) return 'preset';
-  const own = resolveTheme({ ...baseOf(theme), overrides: {} });
-  const moves = PROBES.some((p) =>
-    resolveTheme({ ...baseOf(theme), overrides: p })[token] !== own[token]);
-  return moves ? 'derived' : 'preset';
+  return pinnedTokens(theme?.preset ?? 'nocturne').includes(token) ? 'preset' : 'derived';
 }
 
 function baseOf(theme: Theme | null | undefined): Theme {

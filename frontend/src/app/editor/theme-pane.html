@@ -10,6 +10,8 @@
   </label>
 
   <h4>Colours</h4>
+  <!-- The colour inputs commit on (change), not (input): a drag through the
+       picker would otherwise be one undo step and one autosave per pixel. -->
   <!-- The row markup appears twice rather than once in an ng-template: an
        NgTemplateOutlet import pulled its code into the eager bundle, which
        the published viewer must not pay for. -->

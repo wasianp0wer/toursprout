@@ -31,6 +31,8 @@
 /* The outline scrolls on its own so a long tour cannot push the inspector or the map away. */
 .sidebar app-outline-pane { flex: 0 1 45%; min-height: 6rem; overflow-y: auto; }
 .sidebar app-inspector-pane { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+/* Capped so the pane where stops are edited is never squeezed to nothing. */
+.sidebar app-theme-pane { flex: 0 1 auto; max-height: 40vh; overflow-y: auto; }
 .workspace > app-edit-map-pane, .workspace > app-edit-panorama-pane { min-height: 0; }
 
 /* A narrow window cannot hold three columns: stack them and let the page scroll. */
@@ -40,6 +42,7 @@
   .workspace > app-edit-map-pane, .workspace > app-edit-panorama-pane { height: 22rem; }
   .sidebar app-outline-pane { flex: none; max-height: 14rem; }
   .sidebar app-inspector-pane { flex: none; overflow: visible; }
+  .sidebar app-theme-pane { flex: none; max-height: none; overflow: visible; }
 }
 
 .tour-title, .tour-description {

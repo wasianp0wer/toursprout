@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  contrastRatio, cssVariablesFor, markerColoursFor, mix, readableOn, resolveTheme,
+  contrastRatio, cssVariablesFor, markerColoursFor, mix, pinnedTokens, presetPairing, readableOn, resolveTheme,
 } from './theme';
 import type { Theme } from './theme';
 
@@ -183,5 +183,36 @@ describe('outputs', () => {
   it('hands the map its three marker colours', () => {
     expect(markerColoursFor(resolveTheme(null))).toEqual(
       { accent: '#e8b04b', wayfinding: '#2f7fd4', destination: '#5fd08a' });
+  });
+});
+
+describe('what a preset pins and pairs', () => {
+  it('pairs each preset with the face the approved mockup gave it', () => {
+    expect(presetPairing('nocturne')).toBe('georgia');
+    expect(presetPairing('archival')).toBe('garamond');
+    expect(presetPairing('civic')).toBe('franklin');
+    expect(presetPairing('fieldNotes')).toBe('plex');
+  });
+
+  it('lists the authorable tokens a preset pins, and none it derives', () => {
+    // Nocturne pins what it held as literals before theming; the other three
+    // pin only their core six.
+    expect(pinnedTokens('nocturne').sort()).toEqual(
+      ['accent', 'attributionBar', 'chip', 'chipSelected', 'destination', 'ink', 'muted',
+        'panel', 'paper', 'rule', 'soft', 'wayfinding'].sort());
+    for (const p of ['archival', 'civic', 'fieldNotes'] as const) {
+      expect(pinnedTokens(p).sort()).toEqual(
+        ['accent', 'destination', 'ink', 'panel', 'paper', 'wayfinding']);
+    }
+  });
+
+  it('never lists the internal tokens', () => {
+    for (const p of ['nocturne', 'archival', 'civic', 'fieldNotes'] as const) {
+      expect(pinnedTokens(p)).not.toContain('error');
+      expect(pinnedTokens(p)).not.toContain('pinRing');
+      expect(pinnedTokens(p)).not.toContain('mutedWeak');
+      expect(pinnedTokens(p)).not.toContain('panoCanvas');
+      expect(pinnedTokens(p)).not.toContain('onWayfinding');
+    }
   });
 });

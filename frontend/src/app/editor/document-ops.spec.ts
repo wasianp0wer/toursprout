@@ -654,11 +654,8 @@ describe('theme ops', () => {
   const base = () => tour();
 
   it('stores only what the author set', () => {
-    // The brief's example expected archival to arrive with garamond. Nothing in
-    // the spec or the backend gives a preset a pairing: a preset is a palette,
-    // and the stored theme is {"preset": ...} plus the author's own choices.
     expect(setThemePreset(base(), 'archival').theme).toEqual({
-      preset: 'archival', typePairing: 'georgia', typeScale: 'comfortable',
+      preset: 'archival', typePairing: 'garamond', typeScale: 'comfortable',
       layout: 'widePanel', overrides: {},
     });
   });
@@ -683,14 +680,52 @@ describe('theme ops', () => {
     expect(setThemeOverride(t, 'accent', '#9C5A24')).toBe(t);
   });
 
-  it('clears the overrides when the preset changes, and keeps type and layout', () => {
+  it('clears the overrides and takes the preset\'s pairing, keeping scale and layout', () => {
     let t = setThemeOverride(base(), 'accent', '#9c5a24');
-    t = setTypePairing(setTourLayout(t, 'immersive'), 'plex');
+    t = setTypeScale(setTourLayout(setTypePairing(t, 'plex'), 'immersive'), 'generous');
     const out = setThemePreset(t, 'civic');
     expect(out.theme).toEqual({
-      preset: 'civic', typePairing: 'plex', typeScale: 'comfortable',
+      preset: 'civic', typePairing: 'franklin', typeScale: 'generous',
       layout: 'immersive', overrides: {},
     });
+  });
+
+  it('gives each preset the pairing the approved mockup gave it', () => {
+    const pairing = (p: 'nocturne' | 'archival' | 'civic' | 'fieldNotes') =>
+      setThemePreset(setThemePreset(base(), 'civic'), p).theme!.typePairing;
+    expect([pairing('nocturne'), pairing('archival'), pairing('civic'), pairing('fieldNotes')])
+      .toEqual(['georgia', 'garamond', 'franklin', 'plex']);
+  });
+
+  it('keeps the author\'s own pairing when the same preset is chosen again', () => {
+    const t = setTypePairing(setThemePreset(base(), 'archival'), 'plex');
+    expect(setThemePreset(t, 'archival')).toBe(t);
+  });
+
+  it('returns the same reference for a change that did not happen, on a tour with no theme', () => {
+    // Every existing tour has no stored theme, and a click on the layout that
+    // is already in force reaches the op. A fresh object here would push an
+    // undo step and fire an autosave for nothing.
+    const t = base();
+    expect(t.theme).toBeUndefined();
+    expect(setTourLayout(t, 'widePanel')).toBe(t);
+    expect(setTypePairing(t, 'georgia')).toBe(t);
+    expect(setTypeScale(t, 'comfortable')).toBe(t);
+    expect(setThemePreset(t, 'nocturne')).toBe(t);
+    expect(setThemeOverride(t, 'accent', '#9c5a24')).not.toBe(t);
+  });
+
+  it('does not share the default theme between tours', () => {
+    const a = setThemeOverride(base(), 'accent', '#9c5a24');
+    const b = setTypeScale(base(), 'generous');
+    expect(b.theme!.overrides).toEqual({});
+    expect(a.theme!.overrides).toEqual({ accent: '#9c5a24' });
+  });
+
+  it('refuses a token an author may not override', () => {
+    const t = base();
+    expect(setThemeOverride(t, 'error' as never, '#ff0000')).toBe(t);
+    expect(setThemeOverride(t, 'pinRing' as never, '#ff0000')).toBe(t);
   });
 
   it('returns the same reference when the preset does not change', () => {

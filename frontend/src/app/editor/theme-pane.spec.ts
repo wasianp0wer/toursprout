@@ -8,6 +8,7 @@ import { EditorStore } from './editor-store';
 import { setThemeOverride, setThemePreset, setTypePairing } from './document-ops';
 import { controlsWithoutLabelAbove, tour } from './test-builders';
 import type { Tour } from '../core/tour.models';
+import { pinnedTokens } from '../core/theme';
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), 'utf8');
 /** Every `var(--name` a stylesheet reads. */
@@ -100,15 +101,19 @@ describe('ThemePane', () => {
       }
     });
 
-    it('labels each row preset, derived or set', async () => {
+    it('labels each row preset, derived or set, for every preset', async () => {
       await start();
       const state = (t: string) => q(`[data-row="${t}"] [data-state]`)!.getAttribute('data-state');
-      expect(state('accent')).toBe('preset');
-      expect(state('chip')).toBe('preset');       // nocturne pins its own chip
-      expect(state('onAccent')).toBe('derived');  // nocturne leaves this to the contrast rule
-      store.apply((t) => setThemePreset(t, 'archival'));
-      await settle();
-      expect(state('chip')).toBe('derived');      // archival derives it
+      const rows = ['paper', 'panel', 'ink', 'accent', 'wayfinding', 'destination', 'soft', 'muted',
+        'rule', 'chip', 'chipSelected', 'attributionBar', 'onAccent'] as const;
+      for (const preset of ['nocturne', 'archival', 'civic', 'fieldNotes'] as const) {
+        store.apply((t) => setThemePreset(setThemePreset(t, preset === 'civic' ? 'nocturne' : 'civic'), preset));
+        await settle();
+        const pinned = new Set(pinnedTokens(preset));
+        for (const r of rows) {
+          expect(state(r), `${preset} ${r}`).toBe(pinned.has(r) ? 'preset' : 'derived');
+        }
+      }
       store.apply((t) => setThemeOverride(t, 'chip', '#223344'));
       await settle();
       expect(state('chip')).toBe('set');
@@ -187,9 +192,13 @@ describe('ThemePane', () => {
   describe('words', () => {
     it('uses the plain labels', async () => {
       await start();
-      const text = el.textContent!;
-      for (const label of ['Theme', 'Colours', 'More colours', 'Type pairing', 'Type scale', 'Layout'])
-        expect(text).toContain(label);
+      const own = (e: Element) => Array.from(e.childNodes)
+        .filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent!.trim()).join('');
+      const labels = qa('label').map(own);
+      expect(labels).toEqual(['Theme', 'Type pairing', 'Type scale']);
+      expect(qa('h4').map((h) => h.textContent!.trim())).toEqual(['Colours']);
+      expect(q('summary')!.textContent!.trim()).toBe('More colours');
+      expect(q('.layouts .name')!.textContent!.trim()).toBe('Layout');
     });
 
     it('ships no explanatory mockup copy', () => {
@@ -232,10 +241,10 @@ describe('ThemePreview', () => {
       ...varNames(read('src/app/map/map-pane.css')),
       ...varNames(read('src/app/panorama/panorama-pane.css')),
       ...varNames(read('src/styles.css')),
-      // The viewer's pins take this colour as a parameter from
-      // markerColoursFor, not from CSS, so no viewer stylesheet reads it.
+      // The viewer's pins take these colours as parameters from
+      // markerColoursFor, not from CSS, so no viewer stylesheet reads them.
       // The miniature has no JavaScript to pass them through.
-      '--destination',
+      '--destination', '--wayfinding',
     ]);
     for (const name of mine) expect(theirs, name).toContain(name);
   });
@@ -244,6 +253,10 @@ describe('ThemePreview', () => {
     expect(css).toMatch(/font-family:\s*var\(--body,\s*Georgia/);
     expect(css).toMatch(/font-family:\s*var\(--display,\s*Georgia/);
     expect(css).toMatch(/font-weight:\s*var\(--display-weight,\s*600\)/);
+  });
+
+  it('paints the primary button with accent, as the viewer does', () => {
+    expect(css).toMatch(/button\s*\{[^}]*background:\s*var\(--accent\)[^}]*color:\s*var\(--on-accent\)/);
   });
 
   it('carries the pairing and layout as attributes, with the type scale as a token', () => {

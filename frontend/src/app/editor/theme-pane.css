@@ -1,24 +1,9 @@
-/* The editor's shared control rules in styles.css cover the outline and
-   inspector panes by name, so this pane carries its own. Dark, like the rest
-   of the sidebar, whatever the tour's own theme is. */
-:host { display: block; flex: 0 0 auto; max-height: 60vh; overflow-y: auto; color-scheme: dark; }
+/* Sidebar geometry is in editor-page.css, beside the other panes; the shared
+   control rules (labels, selects, buttons, focus ring) are in styles.css. */
+:host { display: block; }
 .theme { display: flex; flex-direction: column; gap: 0.5rem; }
 .theme h4 { margin: 0.25rem 0 0; font-size: 0.8rem; font-weight: 600; color: #9aa0ab; }
-label, .name { font-size: 0.8rem; color: #9aa0ab; }
-label { display: flex; flex-direction: column; gap: 0.25rem; }
-select {
-  box-sizing: border-box; width: 100%; min-width: 0;
-  background: #1c2026; color: #c9ccd3; border: 1px solid #343a44; border-radius: 4px;
-  padding: 0.3rem 0.4rem; font: inherit; font-size: 0.85rem;
-}
-button {
-  font: inherit; font-size: 0.8rem; background: #1c2026; color: #c9ccd3;
-  border: 1px solid #343a44; border-radius: 4px; padding: 0.3rem 0.6rem; cursor: pointer;
-}
-button:hover { border-color: #9aa0ab; }
-select:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible {
-  outline: 2px solid #e8b04b; outline-offset: 1px;
-}
+.name { font-size: 0.8rem; color: #9aa0ab; }
 .colours { display: flex; flex-direction: column; gap: 0.35rem; }
 .row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 0.25rem 0.4rem; align-items: center; }
 .row .name { grid-column: 1; }

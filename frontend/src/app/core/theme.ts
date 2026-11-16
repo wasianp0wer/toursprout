@@ -71,7 +71,7 @@ type CoreTokens = Pick<ResolvedTheme,
   'paper' | 'panel' | 'ink' | 'accent' | 'wayfinding' | 'destination' | 'error'>;
 
 /** A preset may pin any token, internal ones included; a pin beats a derivation. */
-type Preset = CoreTokens & Partial<Record<ColourToken, string>>;
+type Preset = CoreTokens & Partial<Record<ColourToken, string>> & { pairing: TypePairing };
 
 const PRESETS: Record<PresetName, Preset> = {
   // Every value is lifted from the stylesheets and map/panorama code as they
@@ -80,6 +80,7 @@ const PRESETS: Record<PresetName, Preset> = {
   // existing tour must not change its look. onWayfinding is pinned for the
   // same reason, see resolveTheme.
   nocturne: {
+    pairing: 'georgia',
     paper: '#14161a', panel: '#1b1e24', ink: '#ecebe6', accent: '#e8b04b',
     wayfinding: '#2f7fd4', destination: '#5fd08a',
     soft: '#c3c7cf', muted: '#9aa0ab', rule: '#333944',
@@ -91,18 +92,40 @@ const PRESETS: Record<PresetName, Preset> = {
   // derivations do the rest. The error colours and the wayfinding/destination
   // pairs are the implementer's choice, not the author's (spec section 5.2).
   archival: {
+    pairing: 'garamond',
     paper: '#f4ecdd', panel: '#fbf6ea', ink: '#2e2418', accent: '#9c5a24',
     wayfinding: '#4a6274', destination: '#4f6b2a', error: '#9e2f1b',
   },
   civic: {
+    pairing: 'franklin',
     paper: '#eef1f4', panel: '#ffffff', ink: '#1b2430', accent: '#1f5c8f',
     wayfinding: '#6b7684', destination: '#1d6b66', error: '#b3261e',
   },
   fieldNotes: {
+    pairing: 'plex',
     paper: '#f7f5ef', panel: '#fffefb', ink: '#23241f', accent: '#a3341f',
     wayfinding: '#4b5a63', destination: '#4f6b2a', error: '#8a2a12',
   },
 };
+
+/**
+ * The type pairing a preset starts with. The approved mockup paired each theme
+ * with a face and moved the pairing with the theme; without this, Field notes
+ * would be oxide-red colours in Georgia. Spec section 5.2.
+ */
+export function presetPairing(preset: PresetName): TypePairing {
+  return PRESETS[preset].pairing;
+}
+
+/**
+ * The authorable tokens this preset pins to a value, as opposed to deriving
+ * them. The pane uses it to say which rows are "preset" and which "derived".
+ * Internal tokens (error, pinRing, mutedWeak, panoCanvas, onWayfinding) are
+ * never listed, whether pinned or not.
+ */
+export function pinnedTokens(preset: PresetName): (keyof ThemeOverrides)[] {
+  return OVERRIDABLE.filter((token) => PRESETS[preset][token] !== undefined);
+}
 
 const TYPE_SCALE_FACTORS: Record<TypeScale, number> = {
   compact: 0.88, comfortable: 1, generous: 1.14,
