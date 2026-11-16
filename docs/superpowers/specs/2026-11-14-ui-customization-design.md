@@ -687,10 +687,20 @@ frozen v3 snapshot and is migrated on import like any other bundle, which keeps
 `test_opening_the_fairfax_example_matches_the_recorded_figures` passing
 unchanged — the theme touches no media and no count.
 
-### 5.8 The editor's theme pane
+### 5.8 The editor's theme dialog
 
-A new `app-theme-pane` in `editor/`, in the sidebar beneath `app-inspector-pane`,
-with the layout agreed from a working mockup: preset dropdown; six colour rows
+A new `app-theme-dialog` in `editor/`, opened from a *Theme* button in the
+editor's header and rendered as a modal over the workspace — **not** a
+sidebar pane, which is what an earlier draft specified. The author's
+reasoning settles it: a theme is set once and then stops are edited for an
+hour, so it does not earn permanent space beside the inspector, which is
+used on every stop. It also dissolves the sidebar-geometry problem the
+branch review raised, where a `flex: 0 0 auto` pane with a 60vh cap could
+squeeze the inspector to nothing: a dialog has no sibling to starve.
+It follows `CloseDialog` exactly — scrim, `role="dialog"`,
+`aria-modal`, Escape and a *Done* button that only ASK the parent to
+close, and focus moved onto the panel when it opens. Inside it, the
+layout agreed from a working mockup: preset dropdown; six colour rows
 (page, panel, text, accent, *another stop*, *the way onward*), each with
 suggested swatches, a free `<input type="color">` and a reset arrow;
 a disclosure holding the other seven rows; *Reset every colour to the preset*;

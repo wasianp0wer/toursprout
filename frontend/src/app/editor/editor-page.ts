@@ -7,7 +7,7 @@ import { EditMapPane } from './edit-map-pane';
 import { EditPanoramaPane } from './edit-panorama-pane';
 import { EditorStore } from './editor-store';
 import { InspectorPane } from './inspector-pane';
-import { ThemePane } from './theme-pane';
+import { ThemeDialog } from './theme-dialog';
 import { OutlinePane } from './outline-pane';
 import { setTourDescription, setTourTitle } from './document-ops';
 import { ConfigStore } from '../core/config-store';
@@ -25,7 +25,7 @@ import { TourApi } from '../core/tour-api';
  */
 @Component({
   selector: 'app-editor-page',
-  imports: [OutlinePane, InspectorPane, ThemePane, EditMapPane, EditPanoramaPane, CloseDialog],
+  imports: [OutlinePane, InspectorPane, ThemeDialog, EditMapPane, EditPanoramaPane, CloseDialog],
   templateUrl: './editor-page.html',
   styleUrl: './editor-page.css',
 })
@@ -51,6 +51,9 @@ export class EditorPage {
   protected readonly open = signal(false);
   protected readonly error = signal<string | null>(null);
   /** The close dialog is up. */
+  /** Whether the theme dialog is on screen. The dialog only ASKS to close;
+   * this is the one place that decides, the same as `closing` below. */
+  protected readonly theming = signal(false);
   protected readonly closing = signal(false);
   /** Why the close itself failed, if it did. Separate from `error`, which
    * replaces the whole editor: a refused close leaves the tour open and

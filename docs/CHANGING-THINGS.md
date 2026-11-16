@@ -515,7 +515,7 @@ well, so start at entry 3.
    markers — must be handed over as a value: `setMarkerColours` for the
    markers, `MapPane`'s `theme` input for the pins and route. Never through a
    root-provided store, because the editor shares the `PanoramaViewer`.
-7. `frontend/src/app/editor/theme-pane.ts` and `.html`: the control; and
+7. `frontend/src/app/editor/theme-dialog.ts` and `.html`: the control; and
    `editor/theme-preview.ts` / `.css`, which draws the miniature from the same
    tokens.
 8. `frontend/src/app/editor/document-ops.ts` and `.spec.ts` if it needs an op
@@ -531,7 +531,7 @@ or `ThemeOverrides` disagree; the font tests in `backend/tests/test_fonts.py`
 fail when a pairing has no `[data-type-pairing]` rule, when a rule names a
 family nothing declares, when a declared family has no licence file, and when
 `angular.json` stops copying the licences; and the preview's token-subset test
-in `editor/theme-pane.spec.ts` (*"uses only token names the viewer also
+in `editor/theme-dialog.spec.ts` (*"uses only token names the viewer also
 defines"*) fails when the miniature reads a token the viewer does not define —
 which is also the test that noticed `--on-accent` was read by nothing, and
 which compares against the viewer's stylesheets *and* the names

@@ -1,4 +1,7 @@
-import { Component, computed, inject } from '@angular/core';
+import {
+  Component, ElementRef, computed, inject, output, viewChild,
+  type AfterViewInit,
+} from '@angular/core';
 import { EditorStore } from './editor-store';
 import { ThemePreview } from './theme-preview';
 import {
@@ -117,13 +120,37 @@ function reading(key: Reading['key'], label: string, a: string, b: string): Read
  * its account. That was the author's decision.
  */
 @Component({
-  selector: 'app-theme-pane',
+  selector: 'app-theme-dialog',
   imports: [ThemePreview],
-  templateUrl: './theme-pane.html',
-  styleUrl: './theme-pane.css',
+  templateUrl: './theme-dialog.html',
+  styleUrl: './theme-dialog.css',
+  // Escape is what everyone reaches for to back out of a dialog, and this one
+  // is reachable only from a header button, so there is no other obvious way
+  // out for the keyboard. Bound on the document because focus can be on the
+  // panel itself or on any control inside it, and both must answer the key.
+  // Same contract as CloseDialog: this only ASKS to be closed. The parent
+  // owns whether the dialog is on screen, so nothing here can take an
+  // author's surface away mid-edit. (No focus trap, for the same reason
+  // CloseDialog has none: backing out and being heard are what this covers.)
+  host: {
+    '(document:keydown.escape)': 'cancelled.emit()',
+  },
 })
-export class ThemePane {
+export class ThemeDialog implements AfterViewInit {
   private readonly store = inject(EditorStore);
+
+  /** Asks the parent to take the dialog down. Nothing closes itself. */
+  readonly cancelled = output<void>();
+
+  private readonly surface = viewChild.required<ElementRef<HTMLElement>>('surface');
+
+  ngAfterViewInit(): void {
+    // The author opened this from a header button, so the keyboard is out in
+    // the header; without this, Tab walks the editor behind the dialog
+    // instead of the controls in it, and Escape would not reach the host
+    // binding either until something inside took focus.
+    this.surface().nativeElement.focus();
+  }
 
   protected readonly theme = computed(() => this.store.draft()?.theme ?? null);
   protected readonly resolved = computed(() => resolveTheme(this.theme()));

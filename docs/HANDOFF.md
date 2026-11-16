@@ -54,7 +54,7 @@ step that only stamps the version, because `extra="forbid"` makes even an
 additive field a hard rejection for an older reader; `fairfax-old-town-v3.json`
 is frozen beside the v1 and v2 fixtures. `core/theme.ts` is the one place the
 token set is defined; the viewer writes the resolved tokens onto its own host
-element; the editor has a theme pane with a live miniature. Four families
+element; the editor has a theme dialog with a live miniature. Four families
 ship with the app (EB Garamond, Libre Franklin, IBM Plex Sans and Mono; 14
 files, as above, because three also ship italics and Mono only a medium),
 each with a latin and a latin-ext file so a stop called *Łódź* does not fall
@@ -90,7 +90,7 @@ shipped before the branch (`core/theme.spec.ts` pins them), so this is the only
 appearance change to a tour that already exists. It took three attempts: the
 conversion first mapped the button to `wayfinding`, which preserved the colour;
 a review praised that as correct; and it was caught only four tasks later, when
-the theme pane's subset test noticed `--on-accent` was read by nothing. Anyone
+the theme dialog's subset test noticed `--on-accent` was read by nothing. Anyone
 comparing the Fairfax tour before and after should expect to see it.
 
 **`Tour.attribution` is still the open question ADR 0005 left, and this work did
@@ -254,9 +254,10 @@ The checklist for the first browser session, in the order to do it, is
 - **Publish.** `GET /api/session/publish` returns a static site (built app plus
   the working directory under `tour-data/`).
 - **Themes.** The viewer reads the tour's `theme` and dresses itself in it; the
-  editor's sidebar has a *Theme* pane (preset, colours, type pairing, type
-  scale, layout, a contrast readout that warns and never blocks) over a live
-  miniature. The editor, the welcome screen and the entry page are never
+  editor opens a *Theme* dialog from a button in its header (preset, colours,
+  type pairing, type scale, layout, a contrast readout that warns and never
+  blocks) over a live miniature. It is a modal rather than a sidebar pane
+  because a theme is set once and stops are edited for an hour after. The editor, the welcome screen and the entry page are never
   themed. See the paragraph under "Current state".
 - **Content pipeline.** `make content` still generates the seed tour
   `content/tours/fairfax-old-town.json` from `content/source/stops.json`. It is

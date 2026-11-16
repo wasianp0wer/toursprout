@@ -412,7 +412,7 @@ describe('a preset pin yields once the author has moved the core', () => {
 
 describe('the preset table is as total as resolveTheme is', () => {
   it('falls back to Nocturne rather than throwing on an unknown preset', () => {
-    // ThemePane calls pinnedTokens(theme?.preset ?? 'nocturne') straight from
+    // ThemeDialog calls pinnedTokens(theme?.preset ?? 'nocturne') straight from
     // the document, so a hand-edited tour.json must not throw here when the
     // viewer degrades gracefully on the same value.
     expect(presetPairing('brutalist' as never)).toBe('georgia');

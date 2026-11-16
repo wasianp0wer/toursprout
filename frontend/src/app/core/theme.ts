@@ -196,7 +196,7 @@ export function presetPairing(preset: PresetName): TypePairing {
  * yields once the author has moved the core out from under it (see
  * LEGACY_PINS). Called with one argument it answers for a tour with no
  * overrides. Both this and `presetPairing` guard the preset name the way
- * `resolveTheme` does: ThemePane passes `theme?.preset` straight from the
+ * `resolveTheme` does: ThemeDialog passes `theme?.preset` straight from the
  * document, so a hand-edited tour.json must not throw here either.
  */
 export function pinnedTokens(

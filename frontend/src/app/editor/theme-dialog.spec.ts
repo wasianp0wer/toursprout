@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ThemePane } from './theme-pane';
+import { ThemeDialog } from './theme-dialog';
 import { ThemePreview } from './theme-preview';
 import { EditorStore } from './editor-store';
 import { setThemeOverride, setThemePreset, setTypePairing } from './document-ops';
@@ -15,9 +15,9 @@ const read = (f: string) => readFileSync(join(process.cwd(), f), 'utf8');
 const varNames = (css: string) =>
   new Set([...css.matchAll(/var\(\s*(--[a-z-]+)/g)].map((m) => m[1]));
 
-describe('ThemePane', () => {
+describe('ThemeDialog', () => {
   let store: EditorStore;
-  let fixture: ReturnType<typeof TestBed.createComponent<ThemePane>>;
+  let fixture: ReturnType<typeof TestBed.createComponent<ThemeDialog>>;
   let el: HTMLElement;
 
   const q = (sel: string) => el.querySelector(sel) as HTMLElement | null;
@@ -25,7 +25,7 @@ describe('ThemePane', () => {
   const settle = async () => { fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges(); };
   const start = async (t: Tour = tour()) => {
     store.load(t);
-    fixture = TestBed.createComponent(ThemePane);
+    fixture = TestBed.createComponent(ThemeDialog);
     el = fixture.nativeElement;
     await settle();
   };
@@ -36,7 +36,7 @@ describe('ThemePane', () => {
   };
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ imports: [ThemePane] });
+    TestBed.configureTestingModule({ imports: [ThemeDialog] });
     store = TestBed.inject(EditorStore);
   });
 
@@ -106,7 +106,7 @@ describe('ThemePane', () => {
       await start();
       expect(q('[data-row="error"]')).toBeNull();
       expect(q('[data-row="pinRing"]')).toBeNull();
-      const html = read('src/app/editor/theme-pane.html');
+      const html = read('src/app/editor/theme-dialog.html');
       expect(html).not.toMatch(/pinRing|pin-ring/);
       expect(html).not.toMatch(/['"]error['"]/);
     });
@@ -221,14 +221,14 @@ describe('ThemePane', () => {
     });
 
     it('ships no explanatory mockup copy', () => {
-      const html = read('src/app/editor/theme-pane.html');
+      const html = read('src/app/editor/theme-dialog.html');
       for (const phrase of ['font files we serve', 'starting point', 'derived until set'])
         expect(html).not.toContain(phrase);
     });
 
     it('does not mark option chips with data-type-pairing', () => {
       // The attribute is the signal "this is a preview surface"; only the preview carries it.
-      expect(read('src/app/editor/theme-pane.html')).not.toContain('data-type-pairing');
+      expect(read('src/app/editor/theme-dialog.html')).not.toContain('data-type-pairing');
     });
   });
 
@@ -322,5 +322,58 @@ describe('ThemePreview', () => {
     f.componentRef.setInput('theme', { preset: 'civic', typePairing: 'comic', typeScale: 'comfortable', layout: 'widePanel', overrides: {} });
     f.detectChanges();
     expect((f.nativeElement as HTMLElement).getAttribute('data-type-pairing')).toBe('georgia');
+  });
+});
+
+describe('ThemeDialog as a dialog', () => {
+  let store: EditorStore;
+  let fixture: ReturnType<typeof TestBed.createComponent<ThemeDialog>>;
+  let el: HTMLElement;
+  const q = (sel: string) => el.querySelector(sel) as HTMLElement | null;
+  const settle = async () => { fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges(); };
+
+  beforeEach(async () => {
+    TestBed.configureTestingModule({ imports: [ThemeDialog] });
+    store = TestBed.inject(EditorStore);
+    store.load(tour());
+    fixture = TestBed.createComponent(ThemeDialog);
+    el = fixture.nativeElement;
+    await settle();
+  });
+
+  it('is a modal dialog, announced as one', () => {
+    // Same shape as CloseDialog: the panel is the dialog, the scrim is only
+    // the backdrop. Without `aria-modal` and a label a screen reader gets no
+    // signal that the rest of the editor is unreachable.
+    const panel = q('[data-theme-dialog]')!;
+    expect(panel.getAttribute('role')).toBe('dialog');
+    expect(panel.getAttribute('aria-modal')).toBe('true');
+    const labelledBy = panel.getAttribute('aria-labelledby');
+    expect(labelledBy).toBeTruthy();
+    expect(el.querySelector(`#${labelledBy}`)?.textContent).toContain('Theme');
+    expect(q('.scrim')).toBeTruthy();
+  });
+
+  it('keeps the live miniature, which is the reason the surface works at all', () => {
+    expect(q('app-theme-preview')).toBeTruthy();
+  });
+
+  it('asks to be closed on Escape and on Done, and never on its own', () => {
+    // Escape is what everyone reaches for; Done is the visible way out.
+    // Neither closes anything itself — the parent owns that, exactly as it
+    // does for CloseDialog — so an author cannot lose the dialog mid-edit
+    // because a child decided to.
+    const seen: number[] = [];
+    fixture.componentInstance.cancelled.subscribe(() => seen.push(1));
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(seen.length).toBe(1);
+
+    q('[data-theme-done]')!.click();
+    expect(seen.length).toBe(2);
+  });
+
+  it('takes focus when it opens, so the keyboard is already inside it', () => {
+    expect(document.activeElement).toBe(q('[data-theme-dialog]'));
   });
 });

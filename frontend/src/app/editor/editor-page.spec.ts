@@ -211,6 +211,28 @@ describe('EditorPage', () => {
     expect(q('[data-close-dialog]')).toBeNull();
   });
 
+  it('keeps the theme out of the sidebar and behind a header button', async () => {
+    // Theming is an occasional act, so it belongs with the other occasional
+    // acts in the header — Preview, Export, Publish, Close — and not holding
+    // sidebar space away from the inspector, which is used constantly.
+    await mountOpen();
+    expect(q('.sidebar app-theme-dialog')).toBeNull();
+    expect(q('[data-open-theme]')).toBeTruthy();
+    // Nothing is open until the author asks.
+    expect(q('[data-theme-dialog]')).toBeNull();
+  });
+
+  it('opens and closes the theme dialog from the header', async () => {
+    await mountOpen();
+    q('[data-open-theme]')!.click();
+    await settle();
+    expect(q('[data-theme-dialog]')).toBeTruthy();
+
+    q('[data-theme-done]')!.click();
+    await settle();
+    expect(q('[data-theme-dialog]')).toBeNull();
+  });
+
   it('tells the close dialog what is about to be deleted', async () => {
     await mountOpen();
     // Renamed since the session reported it, and with a stop added: the

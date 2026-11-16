@@ -144,34 +144,34 @@ body {
    (repeat the state in it). The map and panorama
    panes and the close dialog are left out on purpose; their controls have a
    deliberate look of their own. */
-app-editor-page :where(header, app-outline-pane, app-inspector-pane, app-theme-pane) { color-scheme: dark; }
+app-editor-page :where(header, app-outline-pane, app-inspector-pane, app-theme-dialog) { color-scheme: dark; }
 
 /* Label text above a full-width control: the control is inside the label,
    so a column flex is all it takes. */
-app-editor-page :where(app-outline-pane, app-inspector-pane, app-theme-pane) :where(label) {
+app-editor-page :where(app-outline-pane, app-inspector-pane, app-theme-dialog) :where(label) {
   display: flex; flex-direction: column; gap: 0.25rem;
   font-size: 0.8rem; color: #9aa0ab;
 }
-app-editor-page :where(app-outline-pane, app-inspector-pane, app-theme-pane)
+app-editor-page :where(app-outline-pane, app-inspector-pane, app-theme-dialog)
   :where(input:not([type=checkbox], [type=radio], [type=file], [type=range]), select, textarea) {
   box-sizing: border-box; width: 100%; min-width: 0;
   background: #1c2026; color: #c9ccd3;
   border: 1px solid #343a44; border-radius: 4px;
   padding: 0.3rem 0.4rem; font: inherit; font-size: 0.85rem;
 }
-app-editor-page :where(app-outline-pane, app-inspector-pane, app-theme-pane) :where(textarea) { min-height: 5rem; resize: vertical; }
-app-editor-page :where(app-outline-pane, app-inspector-pane, app-theme-pane) :where(input, select, textarea):disabled { opacity: 0.5; }
+app-editor-page :where(app-outline-pane, app-inspector-pane, app-theme-dialog) :where(textarea) { min-height: 5rem; resize: vertical; }
+app-editor-page :where(app-outline-pane, app-inspector-pane, app-theme-dialog) :where(input, select, textarea):disabled { opacity: 0.5; }
 
-app-editor-page :where(header, app-outline-pane, app-inspector-pane, app-theme-pane) :where(button) {
+app-editor-page :where(header, app-outline-pane, app-inspector-pane, app-theme-dialog) :where(button) {
   font: inherit; font-size: 0.8rem;
   background: #1c2026; color: #c9ccd3;
   border: 1px solid #343a44; border-radius: 4px;
   padding: 0.3rem 0.6rem; cursor: pointer;
 }
-app-editor-page :where(header, app-outline-pane, app-inspector-pane, app-theme-pane) :where(button):hover:not(:disabled) { border-color: #9aa0ab; }
-app-editor-page :where(header, app-outline-pane, app-inspector-pane, app-theme-pane) :where(button):disabled { opacity: 0.5; cursor: default; }
+app-editor-page :where(header, app-outline-pane, app-inspector-pane, app-theme-dialog) :where(button):hover:not(:disabled) { border-color: #9aa0ab; }
+app-editor-page :where(header, app-outline-pane, app-inspector-pane, app-theme-dialog) :where(button):disabled { opacity: 0.5; cursor: default; }
 
 /* One focus ring for every control, in the editor's accent. */
-app-editor-page :where(header, app-outline-pane, app-inspector-pane, app-theme-pane) :where(input, select, textarea, button, a):focus-visible {
+app-editor-page :where(header, app-outline-pane, app-inspector-pane, app-theme-dialog) :where(input, select, textarea, button, a):focus-visible {
   outline: 2px solid #e8b04b; outline-offset: 1px;
 }

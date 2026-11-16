@@ -202,7 +202,7 @@ button itself is pinned by a spec in `viewer/viewer-page.spec.ts` that reads
 
 It took three attempts to get right, which is worth recording. The conversion
 first mapped the button to `wayfinding`, preserving its colour; a review praised
-that as correct; and it was caught only four tasks later, when the theme pane's
+that as correct; and it was caught only four tasks later, when the theme dialog's
 subset test noticed `--on-accent` was read by nothing. A token that is defined
 and read by nothing is the symptom to look for.
 
@@ -215,9 +215,9 @@ The committed example stays a frozen v3 and is migrated on import like any
 bundle. Ordering against the uploaded-base-imagery work is by landing: this took
 v4, and that work takes the next number.
 
-**The preview is a lookalike, and it can drift.** The theme pane's live
+**The preview is a lookalike, and it can drift.** The theme dialog's live
 miniature (`editor/theme-preview.ts`) is a static imitation of the viewer, not
-the viewer. It consumes only token names, and `theme-pane.spec.ts` asserts that
+the viewer. It consumes only token names, and `theme-dialog.spec.ts` asserts that
 the `var(--…)` names its stylesheet uses are a subset of the names the viewer's
 stylesheets define — a union of the `var(--…)` names those five stylesheets
 read and the names `cssVariablesFor` emits, which is what lets `--wayfinding`

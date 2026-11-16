@@ -1299,7 +1299,7 @@ reasoning is there.*
 - **Unproven:** how any of it looks. A theme — preset, colour overrides, type
   pairing, type scale, layout — is stored in the document, resolved by the pure
   `resolveTheme` (`core/theme.ts`), written onto the viewer's host element as
-  custom properties and two data attributes, and edited in the theme pane
+  custom properties and two data attributes, and edited in the theme dialog
   (ADR [0009](decisions/0009-the-look-is-in-the-document.md)). The resolution,
   the schema, the ops and the colours handed to the pins and markers are all
   specified by tests. What is not is every pixel, and everything below depends
@@ -1394,9 +1394,12 @@ reasoning is there.*
      and the panel beneath it.** `.panel-slot` loses its `border-left` and
      `.map-slot` keeps only its `border-top`, so the join between panorama and
      panel may read as one surface. Judge by eye whether it needs a divider.
-  9. **The theme pane's fit in the editor sidebar, at both widths.** Whether
-     the inspector above it gets squeezed, and how the pane's own scroller
-     behaves nested inside the sidebar's below 60rem.
+  9. **The theme dialog's fit, at both widths.** It is `min(42rem, 100%)`
+     wide with its own scroller inside a scrim, so the questions the
+     sidebar version raised (squeezing the inspector, a scroller nested in
+     a scroller) are gone — but nobody has seen whether thirteen colour
+     rows plus the miniature fit a short screen without the *Done* button
+     needing a scroll to reach, or how it reads at phone width.
   10. **No browser has rendered the type pairings in the miniature.** The
       attribute-scoped `[data-type-pairing='…']` rules are what give the
       preview its fonts, because it sits inside the editor and not inside the

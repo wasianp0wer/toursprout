@@ -68,7 +68,7 @@ the page, which is why a published tour needs no server.
 | `viewer/` | `viewer-page.ts` (`ViewerPage`): loads config and tour, composes `map/`, `panorama/`, `stop/`. Routes `view` and `**`, and mounted in place by `EntryPage` at `''`. |
 | `map/`, `stop/` | The viewer's minimap (`map-pane.ts`, `route.ts`) and stop panel (`stop-panel.ts`). |
 | `panorama/` | Everything that touches mapillary-js or three.js, behind the `PanoramaViewer` interface (`panorama-viewer.ts`) and the `PANORAMA_VIEWER` token. `in-world-placement.ts`, `camera-sync.ts`, `edge-picker.ts` and `view-turn.ts` (whether the view may be turned at all: only a spherical image's x axis spans the circle) are the pure parts; `fake-viewer.ts` is the test double. Used by both the viewer and the editor. |
-| `editor/` | Route `edit`. `document-ops.ts` (pure document transforms), `editor-store.ts` (`EditorStore`: draft, selection, undo, dirty), `autosave.ts` (`Autosave`), `close-dialog.ts` (the guard in front of deleting the working copy), and the surfaces: `outline-pane.ts`, `inspector-pane.ts`, `edit-map-pane.ts`, `edit-panorama-pane.ts`, assembled by `editor-page.ts`. Pure helpers: `footprint.ts`, `nudge.ts`; `recorder.ts` wraps `MediaRecorder`. ADR 0003. |
+| `editor/` | Route `edit`. `document-ops.ts` (pure document transforms), `editor-store.ts` (`EditorStore`: draft, selection, undo, dirty), `autosave.ts` (`Autosave`), `close-dialog.ts` (the guard in front of deleting the working copy), `theme-dialog.ts` with `theme-preview.ts` (the theme, as a modal over the workspace rather than a sidebar pane: it is set once and then stops are edited for an hour, so it earns no permanent space beside the inspector), and the surfaces: `outline-pane.ts`, `inspector-pane.ts`, `edit-map-pane.ts`, `edit-panorama-pane.ts`, assembled by `editor-page.ts`. Pure helpers: `footprint.ts`, `nudge.ts`; `recorder.ts` wraps `MediaRecorder`. ADR 0003. |
 
 `app.routes.ts` is the whole router: `''` is `EntryPage` and `view` and `**`
 are `ViewerPage`, all three eager; `edit` is `EditorPage` and the welcome
@@ -225,7 +225,7 @@ tour.json  theme: {preset, typePairing, typeScale, layout, overrides}
 
 The last two arrows exist because a custom property cannot reach an inline style
 or a WebGL colour. Nothing in a template does arithmetic: `resolveTheme` is a
-pure function with its own spec. The editor's theme pane edits the same
+pure function with its own spec. The editor's theme dialog edits the same
 document through pure ops in `document-ops.ts`, and its live miniature
 (`editor/theme-preview.ts`) renders the same resolved tokens, with
 `[data-type-pairing]` rules scoped by attribute rather than by tag so the
