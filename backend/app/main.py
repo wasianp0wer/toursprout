@@ -871,8 +871,24 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404)
         target, st = found
 
+        # `no-cache` means "you may keep a copy, but ask before using it",
+        # which is the only directive that makes the 304 below worth having.
+        # Without it there is no explicit freshness at all, so a browser
+        # applies its own heuristic and may answer `getTour()` out of its
+        # cache WITHOUT asking — and then the editor is holding a tour from
+        # an earlier session while the cookie points at the current one.
+        # Observed: a browser served a v3 two-stop tour from cache over a
+        # fresh v4 skeleton, and every autosave was refused for the wrong
+        # schema version. Before v4 made that loud, the same staleness
+        # autosaved the old document over whatever was really open, which is
+        # the first item in `HANDOFF.md`'s Outstanding list. `_SpaFiles`
+        # learned this for `index.html`; the document the app loads needs it
+        # just as much. NOT `no-store`: that would forbid the copy entirely
+        # and re-transfer every panorama on every reload, which is the waste
+        # the 304 path exists to avoid.
         response = FileResponse(target, stat_result=st,
-                                headers={"X-Content-Type-Options": "nosniff"})
+                                headers={"X-Content-Type-Options": "nosniff",
+                                         "Cache-Control": "no-cache"})
         # `FileResponse` advertises `ETag` and `Last-Modified` but ignores
         # the validators a client sends back, so every editor reload
         # re-transferred every panorama and audio clip in the tour. The

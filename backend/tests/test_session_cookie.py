@@ -418,6 +418,41 @@ def test_tour_data_reports_a_browser_recognised_content_type(client, cfg):
         assert r.headers["content-type"] == expected, name
 
 
+def test_tour_data_tells_the_browser_it_must_revalidate(client, cfg):
+    """Advertising a validator is not enough: without `Cache-Control` a
+    browser applies HEURISTIC freshness and may serve a cached `tour.json`
+    WITHOUT ASKING, so the 304 path above never runs.
+
+    That is not a bandwidth question, it is the editor loading a tour from an
+    earlier session while the cookie points at the current one — observed:
+    a browser served a v3 'asdf' tour with two stops from cache while the
+    session on disk held a fresh v4 skeleton, and every autosave was then
+    refused for the wrong schema version. Before schema v4 made it loud, the
+    same staleness silently autosaved the old document over whatever was
+    actually open, which is `HANDOFF.md`'s first outstanding item.
+
+    `no-cache` is the right directive and `no-store` is not: it means
+    "revalidate before use", so the 304s the route exists for still happen
+    and a media-heavy tour still avoids re-transferring every panorama.
+
+    `_SpaFiles._with_cache_headers` already learned this for `index.html` —
+    "a cached copy pins the whole app to an old build" — and the same
+    reasoning was never carried to the document the app loads.
+    """
+    client.post("/api/session/new", json={"title": "T"})
+    for path in ("tour.json", "config.json"):
+        r = client.get(f"/tour-data/{path}")
+        assert r.status_code == 200, path
+        assert "no-cache" in r.headers.get("cache-control", ""), path
+
+    # And on the 304 itself, or a browser could cache the bodyless response
+    # and stop revalidating from then on.
+    etag = client.get("/tour-data/tour.json").headers["etag"]
+    again = client.get("/tour-data/tour.json", headers={"If-None-Match": etag})
+    assert again.status_code == 304
+    assert "no-cache" in again.headers.get("cache-control", "")
+
+
 def test_tour_data_answers_304_to_a_validator_it_advertised(client, cfg):
     """`FileResponse` sends `ETag` and `Last-Modified` but ignores them on
     the way back, where the `StaticFiles` mount answered 304. On shared
