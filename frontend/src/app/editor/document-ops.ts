@@ -13,7 +13,7 @@
 import { bearingBetween, type LngLatLike } from '../core/geo';
 import { knownCompassAngle } from '../core/mapillary-search';
 import {
-  LAYOUT_NAMES, PRESET_NAMES, TYPE_PAIRINGS, TYPE_SCALES, presetPairing,
+  LAYOUT_NAMES, OVERRIDABLE, PRESET_NAMES, TYPE_PAIRINGS, TYPE_SCALES, presetPairing,
   type LayoutName, type PresetName, type Theme, type ThemeOverrides, type TypePairing, type TypeScale,
 } from '../core/theme';
 import type {
@@ -584,12 +584,6 @@ const defaultTheme = (): Theme => ({
 });
 
 /** Matches the backend's HexColor, which is the whole defence against CSS injection. */
-/** The thirteen tokens an author may set; mirrors ThemeOverrides, which is a type and so cannot be iterated. */
-const OVERRIDABLE: readonly string[] = [
-  'paper', 'panel', 'ink', 'accent', 'wayfinding', 'destination', 'soft', 'muted',
-  'rule', 'chip', 'chipSelected', 'attributionBar', 'onAccent',
-];
-
 const OVERRIDE_HEX = /^#[0-9a-fA-F]{6}$/;
 
 function themeOf(tour: Tour): Theme {

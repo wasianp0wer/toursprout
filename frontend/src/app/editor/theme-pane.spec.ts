@@ -8,7 +8,7 @@ import { EditorStore } from './editor-store';
 import { setThemeOverride, setThemePreset, setTypePairing } from './document-ops';
 import { controlsWithoutLabelAbove, tour } from './test-builders';
 import type { Tour } from '../core/tour.models';
-import { pinnedTokens } from '../core/theme';
+import { OVERRIDABLE, pinnedTokens } from '../core/theme';
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), 'utf8');
 /** Every `var(--name` a stylesheet reads. */
@@ -104,8 +104,8 @@ describe('ThemePane', () => {
     it('labels each row preset, derived or set, for every preset', async () => {
       await start();
       const state = (t: string) => q(`[data-row="${t}"] [data-state]`)!.getAttribute('data-state');
-      const rows = ['paper', 'panel', 'ink', 'accent', 'wayfinding', 'destination', 'soft', 'muted',
-        'rule', 'chip', 'chipSelected', 'attributionBar', 'onAccent'] as const;
+      // Derived, not listed: a fourteenth token must be checked here too.
+      const rows = OVERRIDABLE;
       for (const preset of ['nocturne', 'archival', 'civic', 'fieldNotes'] as const) {
         store.apply((t) => setThemePreset(setThemePreset(t, preset === 'civic' ? 'nocturne' : 'civic'), preset));
         await settle();

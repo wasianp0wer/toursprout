@@ -147,7 +147,7 @@ const OVERRIDABLE_TOKENS: Record<keyof ThemeOverrides, true> = {
   destination: true, soft: true, muted: true, rule: true, chip: true,
   chipSelected: true, attributionBar: true, onAccent: true,
 };
-const OVERRIDABLE = Object.keys(OVERRIDABLE_TOKENS) as (keyof ThemeOverrides)[];
+export const OVERRIDABLE = Object.keys(OVERRIDABLE_TOKENS) as (keyof ThemeOverrides)[];
 
 const HEX = /^#[0-9a-f]{6}$/;
 
