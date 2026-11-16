@@ -174,6 +174,17 @@ tour-data/media/<mediaId>  photographs and audio
 (`core/tour-api.ts`) and hands the tour to `TourStore.load`; `TourApi.mediaUrl`
 builds the third. Nothing else in the viewer fetches anything of its own.
 
+**The first two must revalidate; the third must not.** `tour.json` and
+`config.json` live at fixed urls whose contents change underneath them, so a
+cached copy is not an old version of this tour — it is a different tour. The
+route sends `Cache-Control: no-cache` and `TourApi` asks for revalidation from
+the client as well, because on a published site the responses come from
+someone else's static host whose headers we do not set. `media/<mediaId>` is
+deliberately left cacheable: the id is a content hash, so that url can never
+mean a different file. Serving the document without a `Cache-Control` once let
+a browser answer `getTour()` out of its own cache indefinitely — see
+`UNVERIFIED.md` entry 44.
+
 The same code serves two very different hosts:
 
 - **In the editor**, FastAPI answers `/tour-data/…` from a route

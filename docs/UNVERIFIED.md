@@ -1428,6 +1428,63 @@ reasoning is there.*
 
 ---
 
+## 44. `tour-data` revalidation, and what it costs a visitor who is offline
+
+*Found by debugging a live failure, not by review: the author's editor kept
+loading a tour from an earlier session while the session on disk held another,
+and every autosave was refused for the wrong schema version. Four hypotheses
+were wrong before the browser console named the real one.*
+
+- **What was wrong:** `GET /tour-data/*` advertised `ETag` and
+  `Last-Modified` and set **no `Cache-Control` at all**, so a browser applied
+  *heuristic* freshness and answered `TourApi.getTour()` out of its own cache
+  **without contacting the server**. Nothing dislodged it — a hard reload
+  bypasses the cache for the page and its subresources but **not** for
+  requests the application makes afterwards, which is why reloading, closing
+  the tour and restarting the backend all appeared to do nothing. Instrumenting
+  the route proved the browser made zero requests across all of them.
+- **Why it mattered more than it looked.** Schema v4 only made it *loud*.
+  Before the bump a stale cached document loaded fine and then autosaved
+  itself over whatever was really open — silent data loss, and the mechanism
+  behind this file's sibling note in `HANDOFF.md`'s Outstanding item on a
+  stale editor tab overwriting the open tour.
+- **Fixed in two places**, because one is not enough: the route now sends
+  `Cache-Control: no-cache` (commit `2f5681b`), and `TourApi` asks to
+  revalidate from the client (commit `4301203`). The second is the one that
+  protects a **published** site, where the responses come from someone else's
+  static host and we set none of its headers. `mediaUrl` is deliberately
+  untouched: a media id is a content hash, so that url can never mean a
+  different file.
+- **Measured cost:** two conditional requests per page load, each a 304 with
+  **0 bytes of body and ~183 bytes of headers**, against a 16 kB document and
+  4.5 MB of media that still cache normally.
+
+**What a browser has to confirm, and nothing here can:**
+
+1. That the revalidation actually happens — that a visitor who loads a
+   published tour after the author has updated it sees the new one. This is
+   the whole point of the client-side guard and it has never been observed.
+2. **That reloading while offline degrades acceptably.** `no-cache` means
+   revalidate *before use*, so a failed revalidation is a failed request
+   rather than a fall back to the stored copy. For a walking tour this is not
+   hypothetical: someone standing in Old Town Fairfax with no signal who
+   reloads the page now gets a failure where they might previously have got a
+   cached tour. **This is reasoned, not observed** — the author accepted the
+   trade deliberately, on the grounds that a visitor silently reading a tour
+   that has since been corrected is worse than a visible failure, which is
+   this project's standing rule that refusing beats guessing. Two things
+   narrow it: the tour is already in memory once loaded, so it bites only on a
+   *reload* in a dead zone, and there is no service worker, so the application
+   has never been meaningfully offline-capable — `index.html` would likely
+   fail first.
+3. Whether a static host or a CDN in front of a published site honours the
+   conditional request, or collapses it into a full re-download.
+
+See also **entry 40**, which records that `index.html` on the host loses its
+`no-cache` header under the front controller. That is the same hazard in the
+other direction — a cached shell pinning an old build, rather than a cached
+document pinning an old tour — and the two are worth reading together.
+
 ## Not on this list, deliberately
 
 These are open decisions, not unverified facts: the `stops.json` drift and

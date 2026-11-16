@@ -42,12 +42,43 @@ export function audioType(mediaId: string): string {
 export class TourApi {
   private readonly http = inject(HttpClient);
 
+  /** Ask to revalidate rather than trust a stored copy.
+   *
+   * `tour.json` and `config.json` live at FIXED urls whose contents change
+   * underneath them, so a cached copy is not an old version of this tour —
+   * it is a different tour. Observed live: a browser held `tour.json` from
+   * an earlier session under heuristic freshness (the response carried
+   * `ETag` and `Last-Modified` but no `Cache-Control`), answered every
+   * `getTour()` out of its own cache, and never contacted the server again.
+   * Nothing shook it loose: a hard reload bypasses the cache for the page
+   * and its subresources but not for the requests the application makes
+   * afterwards, so the editor went on loading one tour while the session
+   * held another, and every autosave was refused.
+   *
+   * The server now sends `Cache-Control: no-cache` on `/tour-data/*`, which
+   * is the proper fix — but it governs only what is stored from then on,
+   * and on a PUBLISHED site the responses come from someone else's static
+   * host whose headers we do not set at all. Asking from this side is the
+   * only guard that travels with the application, and it is the one that
+   * protects a member of the public reading a tour that has been updated.
+   *
+   * `no-cache` is not `no-store`: the copy may be kept, it just may not be
+   * used without asking, so the 304 the `/tour-data` route was built for
+   * still happens and nothing is re-transferred needlessly.
+   *
+   * `mediaUrl` is deliberately left alone: a media id is a content hash, so
+   * that url can never mean a different file, and caching it is the point.
+   */
+  private static readonly REVALIDATE = { 'Cache-Control': 'no-cache' };
+
   getConfig(): Promise<AppConfig> {
-    return firstValueFrom(this.http.get<AppConfig>(`${TOUR_DATA}/config.json`));
+    return firstValueFrom(this.http.get<AppConfig>(
+      `${TOUR_DATA}/config.json`, { headers: TourApi.REVALIDATE }));
   }
 
   getTour(): Promise<Tour> {
-    return firstValueFrom(this.http.get<Tour>(`${TOUR_DATA}/tour.json`));
+    return firstValueFrom(this.http.get<Tour>(
+      `${TOUR_DATA}/tour.json`, { headers: TourApi.REVALIDATE }));
   }
 
   /** Media is served with Range support by StaticFiles and by any static
