@@ -286,6 +286,22 @@ tour's appearance, which goal 4 forbids. Nocturne pins
 preset may pin any token is what makes this expressible. The other three
 presets derive it, because they have no legacy appearance to preserve.
 
+**A preset also carries a default type pairing, which an earlier draft of this
+document dropped.** The interactive mockup the author used and approved paired
+each theme with a face — `nocturne: georgia`, `archival: garamond`,
+`civic: franklin`, `fieldNotes: plex` — and changing the theme moved the
+pairing with it. The §5.2 table recorded only colours and §5.1 gave a single
+global default of `georgia`, so as specified, picking *Field notes* produced
+oxide-red colours set in Georgia serif rather than the typewriter headings on
+screen when the author said yes. That reduces the four presets to colour
+variants, which is precisely the outcome the author rejected when they chose
+self-hosted faces over system stacks.
+
+So `THEME_PRESETS` carries a `pairing` per preset, and `setThemePreset` writes
+it alongside clearing the overrides — the same "starting point" semantics the
+mockup had, where choosing a theme resets what it governs. An author who then
+picks a different pairing keeps it until they change preset again.
+
 The other three presets supply their core six and an `error`, and let the
 derivations do the rest. These values came from the approved mockups except the
 three `error` colours and the `wayfinding`/`destination` pairs, **which are my
