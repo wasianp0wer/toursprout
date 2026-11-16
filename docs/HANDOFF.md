@@ -53,8 +53,25 @@ design is
 plan is `docs/superpowers/plans/2026-11-11-flat-mapillary-imagery.md`.
 Its six browser checks are open as **`UNVERIFIED.md` entry 42**, whose first
 check — whether `Image.cameraType` is populated at all for a flat image — can
-send the design back, and should be done first. The branch stops before
-deploying; shipping to testers is a separate act (`docs/DEPLOY.md`).
+send the design back, and should be done first.
+
+It landed as one commit, `f8988cd`, written on `feature/flat-panoramas` and
+now an ancestor of `main`. `make check` was run on it twice — once in the
+worktree it was built in, once in the main checkout after the branch was
+switched there — and printed `All checks passed!` both times. The second run
+is the one worth having: the two checkouts carry their own `node_modules`
+and virtualenv, so a pass in one is not a pass in the other.
+
+**Thinning has no exception for 360 imagery**, because the design specified
+none, and that is the piece of this nobody has looked at. Fairfax stops have
+32-84 panoramas within 40 m, so an author re-searching at one now gets a
+thinned list where they used to get every frame. It cannot alter a stop that
+already exists — thinning touches only the candidate list — but the design
+promised a 360 author would see no change at the top of the list, and this is
+a change. Outstanding item 10.
+
+Landing is not shipping. The branch stops before deploying, and sending it to
+testers is a separate, manual act (`docs/DEPLOY.md`).
 
 Two warnings in that run predate this branch and are not yours to chase: the
 backend suite reports two deprecations from inside starlette and fastapi
@@ -456,7 +473,8 @@ go back without a new idea.
 
 ## Outstanding
 
-Every item below is still true as of 2026-10-26. None has been closed.
+Items 1 to 9 are still true as of 2026-10-26, and none has been closed.
+Items 10 and 11 arrived with the flat-imagery work on 2026-11-11.
 
 The welcome-screen sub-project's reviews also left a list of findings they
 judged and deliberately did not fix, in
@@ -560,6 +578,43 @@ candidate for the next session than anything numbered below.
    `headingDeg`, and give the gated ops a private writer. Found while writing
    `ARCHITECTURE.md`, which is also where the other six enforcement gaps that
    pass found are listed.
+
+10. **Candidate thinning applies to 360 imagery too, and nobody has judged
+    whether it should.** `thinBySpacing` keeps roughly one frame per 10 m
+    within a sequence (`MIN_CANDIDATE_SPACING_M`) regardless of projection,
+    because the flat-imagery design specified no exception. It exists because
+    the pano-only filter it replaced was silently doing two jobs — excluding
+    flat imagery *and* keeping a dense drive from burying everything else —
+    and dropping the filter exposed the second one. The cheaper fix of one
+    frame per sequence was rejected on evidence: Rye's 28 images are a single
+    sequence, so that would have thinned a whole town to one vantage point.
+
+    The open question is Fairfax, where stops have 32-84 panoramas within
+    40 m. Those authors now see a thinned list. **No existing stop can
+    change** — thinning touches the editor's candidate list and nothing
+    else, and no stored field is involved — so this is a question about the
+    authoring experience, not about the shipped tour. Judging it needs a
+    browser and the Fairfax tour open, which makes it part of the same first
+    browser session as `UNVERIFIED.md` entry 42. The three outcomes are:
+    leave it, exempt panoramas from thinning, or widen the spacing for them.
+
+11. **Author-uploaded base imagery is designed and not built.** The sibling
+    question to the flat-imagery work — letting an author supply their own
+    images, 360 or flat, where Mapillary has none — is specified in
+    `docs/superpowers/specs/2026-11-11-uploaded-base-imagery-design.md`, on
+    the evidence in `-findings.md` beside it (1305 lines, gathered by
+    reading the code, not estimated). Unlike item A it is **large**: it needs
+    schema v4 and a migration, a self-hosted viewer so `PanoramaViewer` is
+    no longer only mapillary-js, a direct three.js dependency pinned to the
+    0.134.0 that arrives transitively today, and `publish.py` taught to read
+    the document — it currently imports only `zipfile` and `Path` and zips
+    the working directory wholesale, which an earlier draft of that design
+    got wrong and had to correct.
+
+    It is **not ready to implement.** Eight decisions taken after its
+    builder check are not yet written into it, four of them the author's.
+    The design's §6.5 still states the corrected-away premise that bundle
+    and publish are one filter. Read the findings before the design.
 
 ## Conventions used
 
@@ -763,3 +818,54 @@ stop; and `editor-page.ts` records why the close dialog shuts before the
 DELETE rather than after it.
 
 Figures after: 413 backend, 606 frontend.
+
+### 2026-11-11: flat (non-360) Mapillary imagery
+
+Commit `f8988cd`, written on `feature/flat-panoramas`. What the branch does
+is under Current state and what it left open is Outstanding item 10; what
+belongs here is how it was decided and the two things that were got wrong
+first.
+
+The opening question was how hard it would be to support **(A)** Mapillary's
+non-360 imagery and **(B)** authors uploading their own images where
+Mapillary has none. Reading the code instead of estimating settled that A was
+small and B was not, so A was specified, built and landed in a day while B
+stayed a document (Outstanding item 11). The motivation was not hypothetical:
+much of Europe has no usable 360 coverage, and testers in those places could
+not make a stop at all.
+
+Two findings came from probing the live Graph API from the workstation with
+the author's token, and neither could have been reasoned out:
+
+- **`camera_type` is a valid field on an image.** It had been called
+  unverifiable and cut from the request on that basis — a wrong call,
+  reversed when the probe answered `"perspective"`. It was then cut again
+  deliberately, because nothing reads it: the badge reads `is_pano`, and the
+  view and the wedge read what the viewer reports about the image it actually
+  loaded, which is a better source than what the search said beforehand.
+- **Mapillary answers `-1` for "no compass angle", not null.** `document-ops`
+  normalised that into the valid bearing `359`, so a stop built on an image
+  of unknown direction aimed the view almost due north and looked
+  deliberate. An existing test asserted the wrong value (`-10` → `350`); it
+  was rewritten with a comment recording that it had encoded the defect.
+  This is the second time a guessed bearing has cost this project real work —
+  see the landmine above — and the fix is the same principle: absent now
+  reads as absent.
+
+Three of six candidate European sites probed that day were flat-only, which
+is the whole argument for the branch.
+
+The unplanned discovery was that **the pano-only filter was doing a second,
+undocumented job** — thinning a dense capture drive down to something
+browsable — so removing it degraded the list in a way the design had not
+anticipated. That is where `thinBySpacing` came from, and why it is spatial
+rather than per-sequence: Rye's 28 images are one sequence, so one frame per
+sequence would have reduced a whole town to a single vantage point.
+
+Figures after: 696 backend, 740 frontend; lint and production build clean.
+The branch changed no schema, ran no migration and added no dependency, and
+none of it has been seen in a browser (`UNVERIFIED.md` entry 42). The new
+Playwright case `frontend/tests/e2e/flat-imagery.spec.ts` has **never been
+executed** — it needs `MAPILLARY_TOKEN` and skips without one — and `make
+check` does not typecheck `tests/e2e/` at all, since neither tsconfig
+includes it, so it was typechecked by hand.
