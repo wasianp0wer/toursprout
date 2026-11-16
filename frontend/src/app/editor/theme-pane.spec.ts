@@ -8,7 +8,7 @@ import { EditorStore } from './editor-store';
 import { setThemeOverride, setThemePreset, setTypePairing } from './document-ops';
 import { controlsWithoutLabelAbove, tour } from './test-builders';
 import type { Tour } from '../core/tour.models';
-import { OVERRIDABLE, pinnedTokens } from '../core/theme';
+import { OVERRIDABLE, cssVariablesFor, pinnedTokens, resolveTheme } from '../core/theme';
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), 'utf8');
 /** Every `var(--name` a stylesheet reads. */
@@ -51,11 +51,30 @@ describe('ThemePane', () => {
       expect(el.querySelectorAll('button[disabled],input[disabled],select[disabled]').length).toBe(0);
     });
 
-    it('is quiet when every pair passes, and still shows the three ratios', async () => {
+    it('is quiet when every pair passes, and still shows every ratio', async () => {
       await start();
       expect(q('[data-contrast-warning]')).toBeNull();
+      // `summary` and `overlay` are the two pairs the review's worked case
+      // broke while the readout said the theme passed: the stop summary at
+      // 1.69:1 and the overlay list at 1.09:1.
       expect(qa('[data-contrast]').map((r) => r.getAttribute('data-contrast')))
-        .toEqual(['body', 'accent', 'button']);
+        .toEqual(['body', 'summary', 'overlay', 'accent', 'button']);
+    });
+
+    it('names the two pairs the worked case broke, and warns about them', async () => {
+      // soft is pinned on Nocturne and yields once a core colour moves, so
+      // these are set directly here to produce the readings on their own.
+      // soft just off panel, and chip just off ink, which `.overlay-list
+      // button` inherits. Neither token is core, so the preset's pins hold and
+      // only these two readings move.
+      await start(setThemeOverride(setThemeOverride(tour(), 'soft', '#1c1f25'), 'chip', '#e8e7e2'));
+      const texts = qa('[data-contrast-warning]').map((w) => w.textContent!);
+      expect(texts.some((t) => t.startsWith('Stop summary'))).toBe(true);
+      expect(texts.some((t) => t.startsWith('Overlay list'))).toBe(true);
+      for (const t of texts) {
+        expect(t).toContain('below the AA standard. You can publish it anyway.');
+      }
+      expect(el.querySelectorAll('button[disabled],input[disabled],select[disabled]').length).toBe(0);
     });
 
     it('warns about the button label separately from the body text', async () => {
@@ -241,10 +260,18 @@ describe('ThemePreview', () => {
       ...varNames(read('src/app/map/map-pane.css')),
       ...varNames(read('src/app/panorama/panorama-pane.css')),
       ...varNames(read('src/styles.css')),
-      // The viewer's pins take these colours as parameters from
-      // markerColoursFor, not from CSS, so no viewer stylesheet reads them.
-      // The miniature has no JavaScript to pass them through.
-      '--destination', '--wayfinding',
+      // The viewer's pins and panorama markers take --wayfinding and
+      // --destination as parameters from markerColoursFor, not from CSS, so no
+      // viewer stylesheet reads them; the miniature has no JavaScript to pass
+      // them through and paints them from the tokens instead. They are covered
+      // by the token set itself rather than by naming them here, so a rename on
+      // either side fails this test — which a hand-maintained exception for the
+      // two of them could not do.
+      ...Object.keys(cssVariablesFor(resolveTheme(null))),
+      // Not colours, so cssVariablesFor does not emit them: the type scale is
+      // written by the component, and the three font tokens come from the
+      // [data-type-pairing] rules in styles.css.
+      '--type-scale', '--display', '--display-weight',
     ]);
     for (const name of mine) expect(theirs, name).toContain(name);
   });
@@ -270,6 +297,23 @@ describe('ThemePreview', () => {
     expect(host.getAttribute('data-type-pairing')).toBe('franklin');
     expect(host.getAttribute('data-layout')).toBe('panelLeft');
     expect(host.style.getPropertyValue('--type-scale')).toBe('1.14');
+  });
+
+  it('puts the wayfinding and destination markers where the viewer paints them', () => {
+    // destination is a panorama marker colour (spec 5.2) and the viewer's map
+    // has no destination-coloured pin, so an author tuning "The way onward"
+    // against the map placeholder was judging it on a surface it never
+    // reaches. wayfinding reaches both, and appears in both here.
+    TestBed.configureTestingModule({ imports: [ThemePreview] });
+    const f = TestBed.createComponent(ThemePreview);
+    f.componentRef.setInput('theme', null);
+    f.detectChanges();
+    const host = f.nativeElement as HTMLElement;
+    expect(host.querySelector('.pano .onward')).toBeTruthy();
+    expect(host.querySelector('.map .onward')).toBeNull();
+    expect(host.querySelector('.pano .next')).toBeTruthy();
+    expect(host.querySelector('.map .next')).toBeTruthy();
+    expect(host.querySelectorAll('.onward').length).toBe(1);
   });
 
   it('falls back to a valid pairing when the stored one is not recognised', () => {

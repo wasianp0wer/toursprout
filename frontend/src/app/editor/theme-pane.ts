@@ -61,7 +61,12 @@ const AA = 4.5;
 
 function stateOf(token: Token, theme: Theme | null | undefined): RowState {
   if (typeof theme?.overrides?.[token] === 'string') return 'set';
-  return pinnedTokens(theme?.preset ?? 'nocturne').includes(token) ? 'preset' : 'derived';
+  // The overrides go in because a pin is conditional: once the author has
+  // overridden a core colour, the preset's legacy pins yield to their
+  // derivations, and a row this pane still called "preset" would be naming a
+  // value the viewer is no longer painting.
+  return pinnedTokens(theme?.preset ?? 'nocturne', theme?.overrides).includes(token)
+    ? 'preset' : 'derived';
 }
 
 function baseOf(theme: Theme | null | undefined): Theme {
@@ -84,7 +89,11 @@ function swatchesFor(token: Token): string[] {
 const SWATCHES = new Map<Token, string[]>(
   [...TOP_ROWS, ...MORE_ROWS].map((r) => [r.token, swatchesFor(r.token)]));
 
-interface Reading { key: 'body' | 'accent' | 'button'; text: string; fails: boolean; }
+interface Reading {
+  key: 'body' | 'summary' | 'overlay' | 'accent' | 'button';
+  text: string;
+  fails: boolean;
+}
 
 function reading(key: Reading['key'], label: string, a: string, b: string): Reading {
   const ratio = contrastRatio(a, b);
@@ -133,10 +142,26 @@ export class ThemePane {
       [...TOP_ROWS, ...MORE_ROWS].map((r) => [r.token, stateOf(r.token, theme)]));
   });
 
+  /**
+   * The five pairs the author is shown. `summary` and `overlay` are here
+   * because the review's worked case — a light theme made by setting `paper`,
+   * `panel` and `ink` — left the stop summary at 1.69:1 and the overlay list
+   * at 1.09:1 while the readout reported a pass on body text and warned only
+   * about the accent. Those are the two surfaces most of a stop's words are
+   * on, so they are the two the readout was most wrong to leave out.
+   *
+   * `overlay` is ink on chip and not chip on anything: `.overlay-list button`
+   * is `color: inherit`, so what is painted there is the body colour.
+   *
+   * It is still only a warning. Nothing here disables a control or blocks a
+   * save, which was the author's decision.
+   */
   protected readonly readings = computed<Reading[]>(() => {
     const r = this.resolved();
     return [
       reading('body', 'Body text', r.ink, r.panel),
+      reading('summary', 'Stop summary', r.soft, r.panel),
+      reading('overlay', 'Overlay list', r.ink, r.chip),
       reading('accent', 'Accent colour', r.accent, r.panel),
       reading('button', 'Button label', r.onAccent, r.accent),
     ];

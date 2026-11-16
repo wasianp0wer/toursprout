@@ -62,10 +62,13 @@ button {
   position: absolute; left: 40%; top: 35%; width: 0.7rem; height: 0.7rem;
   border-radius: 50%; background: var(--accent); border: 2px solid var(--pin-ring);
 }
+/* The panorama's unselected and next-stop markers. --destination is a
+   panorama colour and appears nowhere else. */
+.marker.next { left: 62%; top: 55%; background: var(--wayfinding); }
+.marker.onward { left: 20%; top: 60%; background: var(--destination); }
 .pin {
   position: absolute; width: 0.6rem; height: 0.6rem; border-radius: 50%;
   border: 2px solid var(--pin-ring);
 }
 .pin.here { left: 25%; top: 50%; background: var(--accent); }
-.pin.next { left: 55%; top: 30%; background: var(--wayfinding); }
-.pin.onward { left: 75%; top: 60%; background: var(--destination); }
+.pin.next { left: 60%; top: 35%; background: var(--wayfinding); }

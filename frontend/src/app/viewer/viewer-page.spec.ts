@@ -226,6 +226,16 @@ describe('ViewerPage', () => {
       expect(rule).not.toContain('wayfinding');
     });
 
+    it('gives color-mix a fallback declaration, with no colour literal in it', () => {
+      // A browser without color-mix drops that declaration at parse time, and
+      // Leaflet's own rgba(255,255,255,0.8) then wins: grey credit text in a
+      // white box on a dark tour. The fallback is the solid token, which costs
+      // only the translucency and keeps this file free of colour literals.
+      const css = readFileSync(join(process.cwd(), 'src/app/map/map-pane.css'), 'utf8');
+      expect(css).toMatch(
+        /background:\s*var\(--attribution-bar\);\s*background:\s*color-mix\(in srgb,/);
+    });
+
     it('names only tokens that cssVariablesFor emits', () => {
       // A var() nobody emits renders as nothing, silently: jsdom, lint and
       // the production build all let it through.

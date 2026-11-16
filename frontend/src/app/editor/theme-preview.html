@@ -1,11 +1,18 @@
 <div class="mini" aria-hidden="true">
+  <!-- The markers sit where the viewer paints them. The panorama carries all
+       three marker colours (accent for the one you are looking at, wayfinding
+       for another stop, destination for the way onward); the map carries pins
+       in accent and wayfinding only, and has no destination-coloured pin at
+       all, so judging "The way onward" against it was judging it on a surface
+       it never reaches. Spec 5.2. -->
   <div class="pano">
     <span class="marker"></span>
+    <span class="marker next"></span>
+    <span class="marker onward"></span>
   </div>
   <div class="map">
     <span class="pin here"></span>
     <span class="pin next"></span>
-    <span class="pin onward"></span>
   </div>
   <div class="panel">
     <h2>The Courthouse</h2>

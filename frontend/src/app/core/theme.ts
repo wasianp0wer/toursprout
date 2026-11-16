@@ -70,7 +70,11 @@ type ColourToken =
 type CoreTokens = Pick<ResolvedTheme,
   'paper' | 'panel' | 'ink' | 'accent' | 'wayfinding' | 'destination' | 'error'>;
 
-/** A preset may pin any token, internal ones included; a pin beats a derivation. */
+/**
+ * A preset may pin any token, internal ones included, and a pin beats a
+ * derivation — until the author overrides one of the core six, at which point
+ * the pins listed in LEGACY_PINS give way to their derivations.
+ */
 type Preset = CoreTokens & Partial<Record<ColourToken, string>> & { pairing: TypePairing };
 
 const PRESETS: Record<PresetName, Preset> = {
@@ -108,13 +112,78 @@ const PRESETS: Record<PresetName, Preset> = {
   },
 };
 
+/** The six the author picks a preset for; every derivation reads one of them. */
+const CORE_TOKENS = ['paper', 'panel', 'ink', 'accent', 'wayfinding', 'destination'] as const;
+
+/**
+ * The pins that exist only to reproduce the appearance this application shipped
+ * before theming, and that yield once a core token carries an override.
+ *
+ * A pin beats a derivation so that Nocturne can be today's look exactly rather
+ * than approximately. But a pin exists to reproduce today's appearance, and
+ * once the author has moved the palette out from under it, reproducing the old
+ * value is no longer a feature but a bug: on Nocturne, setting `paper`, `panel`
+ * and `ink` to light values left `soft` pinned to #c3c7cf, which is a stop
+ * summary at 1.69:1, and `chip` pinned to #252a32 under an inherited dark
+ * `color`, which is an overlay list at 1.09:1 — invisible, and neither of them
+ * in the pane's readout. So the derivations take over, which is what spec 5.2
+ * promises an author who "wants one strange panel colour": coherent chips and
+ * rules for free.
+ *
+ * Any one of the six releases all nine, deliberately: an author who has
+ * repainted a core colour has made this preset their own, and tracking which
+ * derivation reads which core would be a rule nobody could predict. An
+ * override on a listed token still wins, so nothing the author set is lost.
+ *
+ * `onWayfinding` is on the list although it is internal and not authorable.
+ * Nocturne pins it to #ffffff purely for legacy exactness (spec 5.2 says the
+ * other three derive it "because they have no legacy appearance to preserve"),
+ * and it is derived from `wayfinding`, so an author who sets a pale wayfinding
+ * colour would otherwise get a white numeral on it. `error` and `pinRing` are
+ * not on the list and cannot be: neither is derived from the core, so there is
+ * nothing for either to fall back to.
+ *
+ * Every tour already in the wild carries no overrides at all, so no core token
+ * is overridden, every pin still applies, and none of them changes.
+ */
+const LEGACY_PINS = ['soft', 'muted', 'rule', 'chip', 'chipSelected',
+  'attributionBar', 'mutedWeak', 'panoCanvas', 'onWayfinding'] as const;
+
+/**
+ * The override values that survive validation, keyed by token. Shared by
+ * `resolveTheme` and `pinnedTokens` so that "the author overrode a core
+ * colour" means exactly one thing in both: a value that actually reaches CSS.
+ */
+function appliedOverrides(
+  overrides: ThemeOverrides | null | undefined,
+): Partial<Record<ColourToken, string>> {
+  // Lowercase what is set. The pydantic model lowercases on validation, but
+  // nothing rewrites the stored file, so a hand-authored tour.json may hold
+  // `#9C5A24` and the viewer reads it directly. Anything that is not six hex
+  // digits is ignored rather than trusted: the colour reaches CSS.
+  const set: Partial<Record<ColourToken, string>> = {};
+  const from: ThemeOverrides = overrides ?? {};
+  for (const key of OVERRIDABLE) {
+    const value = from[key];
+    if (typeof value === 'string' && HEX.test(value.toLowerCase())) {
+      set[key] = value.toLowerCase();
+    }
+  }
+  return set;
+}
+
+/** Whether the author has moved any of the core six, which releases the pins. */
+function coreMoved(set: Partial<Record<ColourToken, string>>): boolean {
+  return CORE_TOKENS.some((token) => set[token] !== undefined);
+}
+
 /**
  * The type pairing a preset starts with. The approved mockup paired each theme
  * with a face and moved the pairing with the theme; without this, Field notes
  * would be oxide-red colours in Georgia. Spec section 5.2.
  */
 export function presetPairing(preset: PresetName): TypePairing {
-  return PRESETS[preset].pairing;
+  return PRESETS[oneOf(PRESET_NAMES, preset, DEFAULT_PRESET)].pairing;
 }
 
 /**
@@ -122,9 +191,22 @@ export function presetPairing(preset: PresetName): TypePairing {
  * them. The pane uses it to say which rows are "preset" and which "derived".
  * Internal tokens (error, pinRing, mutedWeak, panoCanvas, onWayfinding) are
  * never listed, whether pinned or not.
+ *
+ * `overrides` is the stored overrides object, because a pin is conditional: it
+ * yields once the author has moved the core out from under it (see
+ * LEGACY_PINS). Called with one argument it answers for a tour with no
+ * overrides. Both this and `presetPairing` guard the preset name the way
+ * `resolveTheme` does: ThemePane passes `theme?.preset` straight from the
+ * document, so a hand-edited tour.json must not throw here either.
  */
-export function pinnedTokens(preset: PresetName): (keyof ThemeOverrides)[] {
-  return OVERRIDABLE.filter((token) => PRESETS[preset][token] !== undefined);
+export function pinnedTokens(
+  preset: PresetName, overrides?: ThemeOverrides | null,
+): (keyof ThemeOverrides)[] {
+  const table = PRESETS[oneOf(PRESET_NAMES, preset, DEFAULT_PRESET)];
+  const yielded: readonly string[] =
+    coreMoved(appliedOverrides(overrides)) ? LEGACY_PINS : [];
+  return OVERRIDABLE.filter(
+    (token) => table[token] !== undefined && !yielded.includes(token));
 }
 
 const TYPE_SCALE_FACTORS: Record<TypeScale, number> = {
@@ -209,24 +291,22 @@ export function resolveTheme(theme: Theme | null | undefined): ResolvedTheme {
   const preset = PRESETS[oneOf(PRESET_NAMES, theme?.preset, DEFAULT_PRESET)];
   const typeScale = oneOf(TYPE_SCALES, theme?.typeScale, DEFAULT_SCALE);
 
-  // Lowercase what is set. The pydantic model lowercases on validation, but
-  // nothing rewrites the stored file, so a hand-authored tour.json may hold
-  // `#9C5A24` and the viewer reads it directly. Anything that is not six hex
-  // digits is ignored rather than trusted: the colour reaches CSS.
-  const set: Partial<Record<ColourToken, string>> = {};
-  const overrides: ThemeOverrides = theme?.overrides ?? {};
-  for (const key of OVERRIDABLE) {
-    const value = overrides[key];
-    if (typeof value === 'string' && HEX.test(value.toLowerCase())) {
-      set[key] = value.toLowerCase();
-    }
-  }
+  const set = appliedOverrides(theme?.overrides);
 
   // Precedence for every token: author's override, then the preset's pin, then
   // the derivation. Derivations read the resolved core, so overriding `panel`
   // moves chip, rule and chipSelected with it.
+  //
+  // With one condition on the middle step: once any core token carries an
+  // override, the legacy-exactness pins give way to their derivations, so the
+  // palette the author started is the one the rest of the theme is built from.
+  // See LEGACY_PINS for why, and for why `error` and `pinRing` cannot join.
+  const released = coreMoved(set);
+  const pinned = (token: ColourToken): string | undefined =>
+    released && (LEGACY_PINS as readonly string[]).includes(token)
+      ? undefined : preset[token];
   const pick = (token: ColourToken, derive: () => string): string =>
-    set[token] ?? preset[token] ?? derive();
+    set[token] ?? pinned(token) ?? derive();
 
   const paper = pick('paper', () => '');
   const panel = pick('panel', () => '');
@@ -234,7 +314,15 @@ export function resolveTheme(theme: Theme | null | undefined): ResolvedTheme {
   const accent = pick('accent', () => '');
   const wayfinding = pick('wayfinding', () => '');
   const destination = pick('destination', () => '');
-  const muted = pick('muted', () => mix(ink, panel, 0.45));
+  // 0.28, not the mockup's 0.45. The ratio is only ever exercised on the three
+  // light presets, because Nocturne pins `muted`, and at 0.45 it resolved to
+  // the wrong side of AA on all three: the credits and "STOP 1 OF 6" read
+  // 3.48/3.62/3.62 against `panel` and the footer's credit links 2.76/2.75/2.87
+  // against `attributionBar`, for text the stylesheets size at 10 to 11.5 px.
+  // 0.28 gives 5.83/6.24/6.17 and 4.62/4.75/4.89, while leaving `muted` far
+  // from `ink` (14.09/15.65/15.50 against `panel`), so it still reads as a
+  // muted tone rather than as body text. theme.spec.ts holds the floors.
+  const muted = pick('muted', () => mix(ink, panel, 0.28));
 
   return {
     paper, panel, ink, accent, wayfinding, destination, muted,
@@ -245,9 +333,17 @@ export function resolveTheme(theme: Theme | null | undefined): ResolvedTheme {
     attributionBar: pick('attributionBar', () => mix(paper, ink, 0.08)),
     onAccent: pick('onAccent', () => readableOn(accent)),
     // Nocturne pins this to #ffffff, which is what map-pane.ts writes today;
-    // the contrast rule alone would give #121212 (4.56 against 4.11).
+    // the contrast rule alone would give #121212 (4.56 against 4.11). That pin
+    // is on LEGACY_PINS, so an author who repaints the core gets the rule's
+    // answer against their own wayfinding colour rather than a white numeral.
     onWayfinding: pick('onWayfinding', () => readableOn(wayfinding)),
-    mutedWeak: pick('mutedWeak', () => mix(muted, panel, 0.45)),
+    // 0.25, not 0.45, for the same reason: at 0.45 the disabled Prev/Next
+    // label was 1.30:1 against `rule` on the light presets, which is not a
+    // dimmed label but an invisible one. 0.25 gives 2.38/2.47/2.46, which is
+    // Nocturne's own pinned pair at 2.46 almost exactly, so the disabled
+    // control keeps the relationship this application already ships. AA does
+    // not govern a disabled control, which is why the floor is lower here.
+    mutedWeak: pick('mutedWeak', () => mix(muted, panel, 0.25)),
     panoCanvas: pick('panoCanvas', () => mix(paper, ink, 0.12)),
     // Never derived and never overridable: the colour of a fatal message must
     // not be something an author can make unreadable.

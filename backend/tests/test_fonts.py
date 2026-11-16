@@ -5,6 +5,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 from tests.theme_vocabulary import names_in
 
 REPO = Path(__file__).resolve().parents[2]
@@ -44,10 +46,37 @@ def test_every_declared_family_ships_its_licence():
         assert (REPO / f"frontend/src/assets/fonts/OFL-{slug}.txt").exists(), family
 
 
-def test_the_font_licences_reach_the_build_output():
+def test_the_font_licences_are_configured_to_ship():
     """src/assets only ships what a url() pulls in, and nothing resolves a
-    url() to a text file, so the licence needs its own assets entry."""
+    url() to a text file, so the licence needs its own assets entry.
+
+    This reads the build configuration and the source tree, which is all it
+    can: `make check` runs this suite before it builds the frontend, so there
+    is no `dist/` to read on a clean tree. The test below reads the output
+    when there is one. An earlier name for this test said it checked the build
+    output, which it never did.
+    """
     assets = json.loads((REPO / "frontend/angular.json").read_text()) \
         ["projects"]["frontend"]["architect"]["build"]["options"]["assets"]
     assert any("fonts" in json.dumps(a) for a in assets)
     assert list((REPO / "frontend/src/assets/fonts").glob("OFL-*.txt"))
+
+
+def test_the_font_licences_reach_the_build_output_when_there_is_one():
+    """The assets entry above is a promise; this is the output it produced.
+
+    Skipped rather than failed with no build present, because `make check`
+    runs the backend suite before `make build`: on a clean tree this has
+    nothing to read, and on any tree that has been built it has the real
+    thing. Redistributing these faces is conditional on the licence
+    travelling with them, so it is worth reading the output when it exists.
+    """
+    browser = REPO / "frontend/dist/frontend/browser"
+    if not (browser / "index.html").exists():
+        pytest.skip("no frontend build in frontend/dist; run `make build`")
+    css = (REPO / "frontend/src/styles.css").read_text()
+    families = _declared_families(css)
+    assert families, "no @font-face found"
+    for family in families:
+        slug = family.replace(" ", "").lower()
+        assert (browser / "fonts" / f"OFL-{slug}.txt").exists(), family

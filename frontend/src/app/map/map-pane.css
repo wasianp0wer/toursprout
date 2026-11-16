@@ -2,6 +2,13 @@
 
 /* Leaflet renders controls and attribution light by default. */
 .minimap :global(.leaflet-control-attribution) {
+  /* Two declarations on purpose. A browser without color-mix drops the second
+     at parse time, and Leaflet's own translucent white then wins: grey credit
+     text in a white box on a dark tour. The fallback costs only the
+     translucency, and it names a token rather than a colour, so this file
+     still holds no colour literal — including in this comment, which the
+     literal test in viewer-page.spec.ts reads as part of the file. */
+  background: var(--attribution-bar);
   background: color-mix(in srgb, var(--attribution-bar) 75%, transparent);
   color: var(--muted);
   font-size: calc(0.62rem * var(--type-scale));
