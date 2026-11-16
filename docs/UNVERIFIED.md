@@ -1320,7 +1320,7 @@ reasoning is there.*
      `muted` derivation was 3.48–3.62:1 against `panel` and 2.75–2.87 against
      `attributionBar` on these three presets, and `mutedWeak` was 1.30 against
      `rule`, because the ratios came from a mockup and only Nocturne — which
-     pins all three tokens — had ever been looked at. `theme.spec.ts` now holds
+     pins both tokens — had ever been looked at. `theme.spec.ts` now holds
      a contrast floor for every foreground/background pair the viewer paints,
      on all four presets, so arithmetic of this kind cannot go unmeasured
      again. **What a floor cannot fix is still here to look at:** Archival's

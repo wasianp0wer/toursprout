@@ -182,7 +182,7 @@ disabled control at 2.38–2.47, beside Nocturne's own pinned 2.46. `theme.ts`
 carries the measurements in comments, and `theme.spec.ts` carries a contrast
 floor for every foreground/background pair the viewer paints, on all four
 presets, so the next change to a ratio is answered by a test rather than by a
-mockup. Nocturne pins all three of those tokens, so none of its values moved.
+mockup. Nocturne pins both of those tokens, so none of its values moved.
 
 ## Costs
 

@@ -52,7 +52,7 @@ const LAYOUT_LABELS: Record<LayoutName, string> = {
 };
 
 /**
- * WCAG AA for body text, applied to all three pairs. That is deliberately
+ * WCAG AA for body text, applied to all five pairs. That is deliberately
  * stricter than AA asks of large text or a UI colour: Archival's accent on its
  * panel is 4.9, so a small darkening turns it amber. The warning is only a
  * warning; nothing is refused.

@@ -228,17 +228,40 @@ happened to hit them would be worse than writing them down.
 | `wayfinding` | preset | the pin for any *other* stop, and an unselected panorama marker |
 | `destination` | preset | the panorama marker pointing at the next stop |
 | `soft` | `mix(ink, panel, 0.22)` | stop summary, slider labels |
-| `muted` | `mix(ink, panel, 0.45)` | small caps, credits, attribution text |
+| `muted` | `mix(ink, panel, 0.28)` | small caps, credits, attribution text |
 | `rule` | `mix(panel, ink, 0.18)` | borders and dividers |
 | `chip` | `mix(panel, ink, 0.07)` | an overlay list item |
 | `chipSelected` | `mix(panel, accent, 0.14)` | the selected one |
 | `attributionBar` | `mix(paper, ink, 0.08)` | the footer, and Leaflet's control at 75% |
 | `onAccent` | `#121212` or `#ffffff`, whichever has more contrast against `accent` | button label, the current pin's number |
 | `onWayfinding` (internal) | the same rule, against `wayfinding` | another stop's pin number |
-| `mutedWeak` (internal) | `mix(muted, panel, 0.45)` | disabled control text |
+| `mutedWeak` (internal) | `mix(muted, panel, 0.25)` | disabled control text |
 | `panoCanvas` (internal) | `mix(paper, ink, 0.12)` | the mapillary container, seen while an image loads |
 | `error` (internal) | preset; never derived, never overridable | the viewer's fatal message, a panorama error |
 | `pinRing` (internal) | `#ffffff`, fixed | the ring separating a pin from the map tiles |
+
+**Two ratios were corrected after measurement, and a pin now yields.** The
+whole-branch review found that the ratios above had only ever been *exercised*
+on the three light presets — Nocturne pins these tokens — and had never been
+measured there: `muted` sat at 2.75:1 against the attribution bar and
+`mutedWeak` at 1.31:1 against `rule`, against AA's 4.5 for the 10-11.5 px text
+they paint. `muted` is therefore `0.28` and `mutedWeak` `0.25`, which clears AA
+on all three and puts the disabled control at ~2.4, matching Nocturne's own
+pinned 2.46. No existing tour moved, because Nocturne pins both.
+
+The same review found the paragraph below false where it matters most. A pin
+beats a derivation, and Nocturne pins twelve authorable tokens — so on the
+default preset, overriding `panel` did **not** bring the chips and rules with
+it, and an author who lightened the palette shipped a stop summary at 1.69:1
+and an overlay list at 1.09:1 while the pane reported a pass. **So a preset's
+legacy-exactness pins — `soft`, `muted`, `rule`, `chip`, `chipSelected`,
+`attributionBar`, `mutedWeak`, `panoCanvas`, `onWayfinding` — yield to their
+derivations once any of the core six carries a valid override, unless that
+token is itself overridden.** A pin exists to reproduce today's appearance;
+once the author has moved the palette out from under it, reproducing the old
+value is a bug rather than a feature. `error` and `pinRing` never yield:
+neither is derived from the core. Existing tours are untouched because they
+carry no overrides at all.
 
 `wayfinding` and `destination` are in the author's hands rather than fixed per
 preset, which was the author's decision. They carry **state, not brand**:
