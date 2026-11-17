@@ -445,6 +445,25 @@ def test_tour_data_tells_the_browser_it_must_revalidate(client, cfg):
         assert r.status_code == 200, path
         assert "no-cache" in r.headers.get("cache-control", ""), path
 
+    # ...and MEDIA must not revalidate, which the first version of this got
+    # wrong. A media id is a content hash, so that url can never mean a
+    # different file: revalidating it buys nothing and costs a round trip per
+    # file. The Fairfax tour references fifteen, 4.5 MB of panoramas,
+    # photographs and narration, and putting `no-cache` on all of them made
+    # the editor visibly slow to load — reported by the author, not caught
+    # here. `immutable` is the honest description of a content-hashed name.
+    media = cfg.sessions_dir / client.cookies["tour_sid"] / "media"
+    media.mkdir(parents=True, exist_ok=True)
+    (media / "court-1863.jpg").write_bytes(b"\xff\xd8\xff not really a jpeg")
+    (media / "pano").mkdir(exist_ok=True)
+    (media / "pano" / "p.jpg").write_bytes(b"\xff\xd8\xff nor this")
+    for path in ("media/court-1863.jpg", "media/pano/p.jpg"):
+        r = client.get(f"/tour-data/{path}")
+        assert r.status_code == 200, path
+        cc = r.headers.get("cache-control", "")
+        assert "no-cache" not in cc, f"{path} must not revalidate: {cc!r}"
+        assert "immutable" in cc, f"{path} should be immutable: {cc!r}"
+
     # And on the 304 itself, or a browser could cache the bodyless response
     # and stop revalidating from then on.
     etag = client.get("/tour-data/tour.json").headers["etag"]

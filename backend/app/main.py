@@ -871,6 +871,21 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404)
         target, st = found
 
+        # Two kinds of url live under `tour-data/`, and they want opposite
+        # headers. `media/<mediaId>` is named by a CONTENT HASH, so that url
+        # can never mean a different file: revalidating it buys nothing and
+        # costs a round trip per file. The Fairfax tour references fifteen,
+        # 4.5 MB of panoramas, photographs and narration, and the first
+        # version of this put `no-cache` on all of them — which made the
+        # editor visibly slow to load and was reported by the author rather
+        # than caught here. `immutable` is simply the truth about a
+        # content-hashed name. Everything else under this route (`tour.json`,
+        # `config.json`, `bundle.json`) is mutable at a fixed url and gets
+        # the revalidation below.
+        if path.startswith("media/"):
+            cache_header = "public, max-age=31536000, immutable"
+        else:
+            cache_header = "no-cache"
         # `no-cache` means "you may keep a copy, but ask before using it",
         # which is the only directive that makes the 304 below worth having.
         # Without it there is no explicit freshness at all, so a browser
@@ -888,7 +903,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         # the 304 path exists to avoid.
         response = FileResponse(target, stat_result=st,
                                 headers={"X-Content-Type-Options": "nosniff",
-                                         "Cache-Control": "no-cache"})
+                                         "Cache-Control": cache_header})
         # `FileResponse` advertises `ETag` and `Last-Modified` but ignores
         # the validators a client sends back, so every editor reload
         # re-transferred every panorama and audio clip in the tour. The
