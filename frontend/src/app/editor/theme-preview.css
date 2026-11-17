@@ -10,7 +10,9 @@
      fallbacks are Georgia, so a host with no matching attribute rule still
      reads as the default pairing rather than as the editor's own font. */
   font-family: var(--body, Georgia, 'Times New Roman', serif);
-  font-size: calc(0.7rem * var(--type-scale, 1));
+  /* 0.7rem while this lived in a ~20rem sidebar. It is in a dialog now, with
+     a column of its own, and at the old size the author could not read it. */
+  font-size: calc(0.9rem * var(--type-scale, 1));
   border: 1px solid var(--rule);
   border-radius: 4px;
   overflow: hidden;
@@ -18,7 +20,10 @@
 .mini {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  grid-template-rows: 4.5rem 3.5rem auto;
+  /* Was 4.5rem/3.5rem for a sidebar. The panorama keeps the larger share, as
+     the viewer's own 3fr/2fr does, so the proportions still read as the
+     layout being previewed rather than as a generic box. */
+  grid-template-rows: 11rem 7rem auto;
   grid-template-areas: "pano panel" "map panel" "attr attr";
 }
 :host([data-layout='panelLeft']) .mini {

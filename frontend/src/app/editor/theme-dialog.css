@@ -19,14 +19,17 @@
   background: rgba(10, 12, 15, 0.72);
 }
 
-/* Wider than CloseDialog's 32rem because the miniature has to be worth
+/* Much wider than CloseDialog's 32rem because the miniature has to be worth
    looking at: this is the only place an author sees the theme before
-   publishing, and a cramped preview is a preview that misleads. `max-height`
-   with its own scroll so the thirteen colour rows cannot push the Done
-   button off a short screen. */
+   publishing, and a cramped preview is a preview that misleads. The first
+   version of this dialog kept the miniature at its sidebar size and the
+   author could not see it — so the width is now set by the two-column
+   arrangement the approved mockup actually had, controls beside the preview,
+   rather than by the controls alone. `max-height` with its own scroll so the
+   thirteen colour rows cannot push the Done button off a short screen. */
 .theme {
   box-sizing: border-box;
-  width: min(42rem, 100%);
+  width: min(64rem, 100%);
   max-height: 100%;
   overflow-y: auto;
   padding: 1.5rem;
@@ -39,6 +42,39 @@
   gap: 0.5rem;
 }
 .theme h2 { margin: 0 0 0.25rem; font-size: 1.1rem; color: #e8b04b; letter-spacing: 0.03em; }
+
+/* Controls on the left, miniature on the right, as the mockup had them. The
+   miniature is FIRST in the markup and placed right by the grid, so that the
+   narrow fallback below stacks it ABOVE thirteen colour rows instead of
+   burying it under them — and a screen reader still meets it first. */
+.body {
+  display: grid;
+  grid-template-columns: 21rem minmax(0, 1fr);
+  grid-template-areas: "controls preview";
+  gap: 1.25rem;
+  align-items: start;
+}
+.controls { grid-area: controls; display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+/* Sticky because watching it is the point: an author changes a colour low down
+   the control column and the thing that tells them whether it worked must not
+   have scrolled away. `.theme` is the scroll container, so this sticks to the
+   top of the dialog's own scrollport. */
+app-theme-preview {
+  grid-area: preview;
+  position: sticky;
+  top: 0;
+}
+
+/* One column when there is not room for two. The miniature keeps its height
+   here: this is the case where it is the only thing on screen above the
+   controls, so shrinking it would defeat the fallback. */
+@media (max-width: 58rem) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "preview" "controls";
+  }
+  app-theme-preview { position: static; }
+}
 .actions { display: flex; justify-content: flex-end; margin-top: 0.75rem; }
 .actions .quiet {
   font: inherit;

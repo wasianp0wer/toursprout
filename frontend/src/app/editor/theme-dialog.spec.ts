@@ -94,7 +94,11 @@ describe('ThemeDialog', () => {
   describe('colour rows', () => {
     it('puts six rows on top and the other seven behind the disclosure', async () => {
       await start();
-      const top = qa('.theme > .colours > [data-row]').map((r) => r.getAttribute('data-row'));
+      // `.controls >` and not just `.colours >`: there are two `.colours`
+      // blocks, the top six and the seven inside the disclosure, and only the
+      // ancestor tells them apart. (It was `.theme >` until the controls
+      // gained a column of their own beside the miniature.)
+      const top = qa('.controls > .colours > [data-row]').map((r) => r.getAttribute('data-row'));
       expect(top).toEqual(['paper', 'panel', 'ink', 'accent', 'wayfinding', 'destination']);
       const more = qa('details [data-row]').map((r) => r.getAttribute('data-row'));
       expect(more.sort()).toEqual(
@@ -375,5 +379,33 @@ describe('ThemeDialog as a dialog', () => {
 
   it('takes focus when it opens, so the keyboard is already inside it', () => {
     expect(document.activeElement).toBe(q('[data-theme-dialog]'));
+  });
+
+  it('puts the miniature beside the controls, at a size worth looking at', () => {
+    // jsdom computes no layout, so this reads the stylesheet as text — the
+    // same idiom entry-page.spec.ts uses for its load-bearing CSS.
+    //
+    // The miniature was sized for a ~20rem sidebar: rows of 4.5rem and 3.5rem
+    // at 0.7rem type, about 8rem tall in total. In a dialog that is small for
+    // no reason, and the author reported not being able to see it. The dialog
+    // is wide enough for the two-column arrangement the approved mockup
+    // actually had — controls on one side, the miniature on the other.
+    const dialogCss = read('src/app/editor/theme-dialog.css');
+    expect(dialogCss).toMatch(/grid-template-areas:\s*['"]controls preview['"]/);
+    // Preview first in the DOM, so a narrow screen stacks it ABOVE thirteen
+    // colour rows rather than below them, and a screen reader still meets it
+    // first. The side-by-side order is the grid's, not the markup's.
+    const html = read('src/app/editor/theme-dialog.html');
+    expect(html.indexOf('app-theme-preview')).toBeLessThan(html.indexOf('class="controls"'));
+    expect(dialogCss).toMatch(/@media[^{]*\{[\s\S]*grid-template-areas:\s*['"]preview['"]\s*['"]controls['"]/);
+    // It stays put while the controls scroll, which is the whole point of
+    // having it: an author changes a colour and watches this, not the list.
+    expect(dialogCss).toMatch(/app-theme-preview\s*\{[^}]*position:\s*sticky/);
+
+    const previewCss = read('src/app/editor/theme-preview.css');
+    const rows = previewCss.match(/grid-template-rows:\s*([^;]+);/)![1];
+    const [pano, map] = rows.split(/\s+/).map((v) => parseFloat(v));
+    expect(pano).toBeGreaterThanOrEqual(9);
+    expect(map).toBeGreaterThanOrEqual(6);
   });
 });

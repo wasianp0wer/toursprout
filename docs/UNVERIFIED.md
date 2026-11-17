@@ -1394,12 +1394,21 @@ reasoning is there.*
      and the panel beneath it.** `.panel-slot` loses its `border-left` and
      `.map-slot` keeps only its `border-top`, so the join between panorama and
      panel may read as one surface. Judge by eye whether it needs a divider.
-  9. **The theme dialog's fit, at both widths.** It is `min(42rem, 100%)`
-     wide with its own scroller inside a scrim, so the questions the
-     sidebar version raised (squeezing the inspector, a scroller nested in
-     a scroller) are gone — but nobody has seen whether thirteen colour
-     rows plus the miniature fit a short screen without the *Done* button
-     needing a scroll to reach, or how it reads at phone width.
+  9. **The theme dialog's fit, at both widths, and whether the miniature is
+     now big enough.** `min(64rem, 100%)` wide, two columns — a 21rem control
+     column beside the miniature, which is `position: sticky` so it stays in
+     view while the controls scroll — collapsing to one column under 58rem
+     with the miniature stacked above. The miniature's own rows went from
+     4.5rem/3.5rem at 0.7rem type to 11rem/7rem at 0.9rem.
+     **The first version shipped the sidebar-sized miniature into the dialog
+     and the author reported being unable to see it**, which is the whole
+     reason for these numbers — and nothing in this repository can tell
+     whether the new ones are right either. Check: that the miniature is
+     legible; that the sticky column behaves as the controls scroll; that
+     thirteen rows plus the miniature fit a short screen without the *Done*
+     button needing a scroll to reach; and how the one-column fallback reads
+     at phone width. The questions the sidebar version raised (squeezing the
+     inspector, a scroller nested in a scroller) are gone.
   10. **No browser has rendered the type pairings in the miniature.** The
       attribute-scoped `[data-type-pairing='…']` rules are what give the
       preview its fonts, because it sits inside the editor and not inside the
