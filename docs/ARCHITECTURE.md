@@ -471,9 +471,22 @@ last published in 2023 and is expected to be replaced. Everything goes through
 `map/map-pane.ts` and `editor/edit-map-pane.ts` only.
 
 **`models.py` is the schema; `tour.json` changes only through `Session`.**
-The TypeScript interfaces mirror it by hand. `Session.write_tour` is the only
-writer of `tour.json` in the app (import writes the migrated copy during its
-staged swap), and it validates first.
+The TypeScript interfaces mirror it by hand. There are **two** writers of
+`tour.json`, and both validate first: `Session.write_tour`, and
+`Session.tour`, which writes the migrated document back when a read had to
+migrate it (import writes the migrated copy during its staged swap, which is
+a third path but through the same staging machinery).
+
+`Session.tour` became a writer because migrating in memory was not enough.
+Session directories outlive deploys by design, so after a schema bump the
+host holds documents at the previous version; every backend read coped, but
+`/tour-data/tour.json` serves that file **verbatim** — it must, because a
+published site has to receive the same bytes — so the editor loaded the old
+version, autosaved it back, and `write_tour` refused it. A `PUT` must never
+migrate, or a stale tab could overwrite a newer document with an older
+shape, so healing belongs on the read. It fires only when the version
+actually moved, so an ordinary read neither rewrites the file nor churns its
+mtime.
 
 **Every mutating route refuses a cross-site request.** `_reject_cross_site`
 (Fetch Metadata `Sec-Fetch-Site: cross-site`) is a `Depends` on each POST/PUT

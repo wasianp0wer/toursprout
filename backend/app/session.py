@@ -99,8 +99,44 @@ class Session:
         return (self.path / "tour.json").is_file()
 
     def tour(self) -> Tour:
+        """Read the open document, migrating it and HEALING THE FILE.
+
+        Migrating in memory was not enough, and production proved it. Session
+        directories outlive deploys on purpose — they sit outside the deploy
+        tree so `rsync` cannot reach them — so after a schema bump the host
+        holds documents at the previous version. Every backend read coped,
+        because this method migrates; but the file stayed old, and
+        `/tour-data/tour.json` hands that file over verbatim, because a
+        published site has to receive the same bytes and so the route cannot
+        parse or rewrite anything. The editor therefore loaded the old
+        version, autosaved it back, and `write_tour` refused it — correctly,
+        since a `PUT` must never migrate or a stale tab could overwrite a
+        newer document with an older shape. The author met that as a bare
+        pydantic `literal_error` in production, and restarting the backend
+        could not clear it.
+
+        So a read that had to migrate writes the result back. Validation
+        comes first, exactly as in `write_tour`, so a document that cannot be
+        migrated is never persisted; the write is atomic for the same reason
+        every other write here is; and it fires only when the version
+        actually moved, so an ordinary read does not rewrite the file or
+        churn its mtime on every page load.
+
+        This makes `tour()` the second writer of `tour.json`, where
+        `write_tour` used to be the only one in the app — `ARCHITECTURE.md`
+        says so and has been corrected. A failed heal is deliberately not
+        swallowed: the only way it fails is a session directory this process
+        cannot write, and in that state autosave cannot work either, so a
+        loud failure beats a confusing 422 later.
+        """
         raw = json.loads((self.path / "tour.json").read_text())
-        return Tour.model_validate(migrate(raw))
+        migrated = migrate(raw)
+        tour = Tour.model_validate(migrated)
+        if migrated.get("schemaVersion") != raw.get("schemaVersion"):
+            _atomic_write_text(
+                self.path / "tour.json", json.dumps(migrated, indent=2) + "\n"
+            )
+        return tour
 
     def new(self, title: str, *, force: bool = False) -> Tour:
         """Start a brand-new skeleton tour, discarding whatever is open now.

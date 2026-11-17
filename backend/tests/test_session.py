@@ -69,6 +69,41 @@ def test_a_fresh_session_accepts_new_without_force(session):
     assert session.tour().title == "First"
 
 
+def test_reading_an_older_document_heals_it_on_disk(session):
+    """A session directory that predates a schema bump must not stay stuck.
+
+    Session directories outlive deploys by design — they sit outside the
+    deploy tree so `rsync` cannot reach them — so after a bump, production
+    holds documents of the previous version. The backend copes on every read
+    because `tour()` migrates, but it migrated only IN MEMORY: the file stayed
+    old, and `/tour-data/tour.json` serves that file verbatim because a
+    published site must get the same bytes. So the editor loaded v3, autosaved
+    it back, and `write_tour` refused it — which is the error the author hit in
+    production, and which restarting the backend cannot fix.
+
+    Reading now writes the migrated document back. Validation happens first,
+    as in `write_tour`, so a document that cannot be migrated is never
+    persisted; the write is atomic; and it only fires when the version
+    actually changed, so an ordinary read does not churn the file.
+    """
+    session.new("Old Tour")
+    path = session.path / "tour.json"
+    doc = json.loads(path.read_text())
+    doc["schemaVersion"] = SCHEMA_VERSION - 1
+    path.write_text(json.dumps(doc, indent=2) + "\n")
+
+    tour = session.tour()
+    assert tour.schema_version == SCHEMA_VERSION
+    on_disk = json.loads(path.read_text())
+    assert on_disk["schemaVersion"] == SCHEMA_VERSION, "the file itself must be healed"
+
+    # Idempotent, and a read of an already-current document leaves the bytes
+    # exactly as they were — no rewrite, no mtime churn on every page load.
+    before = path.read_bytes()
+    session.tour()
+    assert path.read_bytes() == before
+
+
 def test_write_tour_validates_and_persists(session):
     session.new("My Tour")
     doc = json.loads((session.path / "tour.json").read_text())
