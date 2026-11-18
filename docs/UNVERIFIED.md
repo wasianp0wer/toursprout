@@ -512,9 +512,12 @@ components at all.*
   loading entirely from `tour-data/` with no backend, the Mapillary token in
   `tour-data/config.json` working from a different origin, and Mapillary and
   tile attribution showing. New since the front door: `/` on a published site
-  is no longer the viewer directly but `EntryPage`, which probes
-  `/api/session`, gets nothing, and reveals the viewer it already mounted —
-  see entries 20 to 22, which are the parts of that worth checking separately.
+  is no longer the viewer directly but `EntryPage`, which reads the
+  publish-time mark (`<html data-published>`) and reveals the viewer it already
+  mounted **without making any `/api` request** — see entry 45, which is the
+  part of that worth checking separately. (Until 2026-11-17 this said that
+  `EntryPage` probes, gets nothing and reveals; a page marked at publish time
+  no longer probes.)
 - **Why not here:** no browser. The jsdom spy "reads everything from tour-data/
   and never touches /api" is the strongest proxy and proves `TourApi` only; the
   bundle-and-publish spec says the author should spot-check a published site
@@ -525,7 +528,10 @@ components at all.*
   `/view`: a plain static server has no SPA rewriting, so only `/` and
   `index.html` resolve.) It must work with the backend off. Open it from a
   subdirectory URL too, since `<base href>` is what that depends on. Network
-  tab: one failed `/api/session` from the probe, and nothing else to `/api`.
+  tab: **no request to `/api/` at all.** Pass is an empty filter, not one
+  failed request: a failed `/api/session` here would mean the page was not
+  marked (see entry 45 item 1), and would, on a host that black-holes it, show
+  the waiting line forever instead of the tour.
 
 ## 20. The probing wrapper's layout on a real published build
 
@@ -534,8 +540,10 @@ components at all.*
 > A published `index.html` is now marked and reveals the viewer at once, so
 > the published visitor no longer sits behind a hidden wrapper while a probe
 > runs. The wrapper is still mounted hidden on the unmarked path, and the
-> sizing hazard below is still the thing to check on the reveal itself. The
-> text is kept as written.
+> sizing hazard below is still the thing to check on the reveal itself — but
+> it can now only be reached on an unmarked `dist/` or on the authoring host,
+> not on a published build. The text is kept as written, with its procedure
+> redirected below.
 
 *The most likely way the front door breaks a published site, and the hazard
 runs in the direction that is easy to get backwards.*
@@ -557,9 +565,22 @@ runs in the direction that is easy to get backwards.*
   CSS file as text and fails if `display: none` appears in that rule or if
   `display: block` and `visibility: hidden` do not, which pins the intent and
   proves nothing about a rendered page. (`pointer-events` is not checked.)
-- **Close it:** on a published build whose `/api/session` *hangs* rather than
-  refusing (entry 21 sets one up), wait out the deadline and then look at the
-  map and the panorama. Pass: both are correctly sized and interactive. Fail:
+- **Why this is more likely now:** the hidden window is no longer a 2 s probe
+  but however long the backend takes, 12-14 s and once 73.2 s on the deployed
+  host. The viewer's own `tour-data/` fetches go through the same slow path, so
+  which finishes first is unmeasured, but a longer window can only make
+  `ready()` before the reveal likelier. It matters only when the reveal
+  happens at all: on the authoring host that is the editor chunk failing to
+  load and falling back to the viewer, and on a static host it is the normal
+  unmarked case.
+- **Close it:** on an **unmarked** `dist/` (not a published build, which no
+  longer probes and so never hides the viewer): serve
+  `frontend/dist/frontend/browser/` from a static server whose `/api/session`
+  answers 404 slowly, or hold the request open in a browser proxy for 15 s
+  and then fail it with a 404, and look at the map and the panorama after the
+  reveal. Or, on the authoring
+  host, make the editor chunk fail to load. Pass: both are correctly sized and
+  interactive. Fail:
   a grey or clipped minimap, or a panorama at the wrong aspect, means the
   viewer measured a box it did not end up with — the fix is to add an
   `invalidateSize` on reveal rather than to weaken the CSS. Adding one fails
@@ -570,10 +591,12 @@ runs in the direction that is easy to get backwards.*
 ## 21. The 2 s probe deadline against a host that black-holes `/api/session`
 
 > **Superseded 2026-11-17.** The 2 s deadline (`SESSION_PROBE_TIMEOUT_MS`) is
-> gone: the deployed authoring host answers `/api/session` in 12-73 s, so it
-> always lost, and a published page no longer probes at all. The constant is
-> now `AUTHORING_HOST_FALLBACK_MS` (30 s) and applies to unmarked pages only.
-> See ADR [0010](decisions/0010-a-published-page-knows-it-is-published.md) and
+> gone: the deployed authoring host answers `/api/session` in 12-14 s and once
+> took 73.2 s, so it always lost, and a published page no longer probes at all.
+> A 30 s replacement (`AUTHORING_HOST_FALLBACK_MS`) was built and then removed
+> because it was shorter than the 73.2 s answer; an unmarked page now waits
+> with no deadline. See ADR
+> [0010](decisions/0010-a-published-page-knows-it-is-published.md) and
 > [entry 45](#45-a-published-page-that-knows-it-is-published). Kept as
 > written, because it records what was reasoned before the host was measured.
 
@@ -596,9 +619,10 @@ runs in the direction that is easy to get backwards.*
 ## 22. What a black-holed probe costs the published visitor
 
 > **Superseded 2026-11-17.** A marked, published page makes no probe, so the
-> published visitor no longer pays this blank page. The same cost, now up to
-> 30 s, is borne only by an unpublished bundle hand-copied onto a host with no
-> backend: [entry 45](#45-a-published-page-that-knows-it-is-published), part 2.
+> published visitor no longer pays this blank page. The same cost, now
+> unbounded, is borne only by an unpublished bundle hand-copied onto a static
+> host that black-holes `/api`, which shows the waiting line indefinitely:
+> [entry 45](#45-a-published-page-that-knows-it-is-published), item 2.
 
 *Written down because it is a deliberate trade, not a bug, and the next person
 to see it should not have to rediscover that.*
@@ -1518,8 +1542,10 @@ document pinning an old tour — and the two are worth reading together.
 ## 45. A published page that knows it is published
 
 *Written 2026-11-17, with ADR
-[0010](decisions/0010-a-published-page-knows-it-is-published.md). It
-supersedes entries 20 to 22 on the probe deadline.*
+[0010](decisions/0010-a-published-page-knows-it-is-published.md), and
+rewritten the same day when the unmarked path stopped having a deadline. It
+supersedes entries 20 to 22 on the probe deadline. Items 1, 2, 5 and 6 need a
+host, or a proxy in front of one, rather than a browser alone.*
 
 1. **Unproven: the published path in a browser.** That a published
    `index.html` carrying `<html data-published>` really reveals the viewer at
@@ -1528,23 +1554,60 @@ supersedes entries 20 to 22 on the probe deadline.*
    pins that the zip's `index.html` is marked and the on-disk one is not. No
    browser has loaded a real published zip, and a host that rewrites or
    re-serves `index.html` could in principle drop the attribute.
-   - **Close it:** publish, unzip onto a static host, open it with the network
-     panel up. Pass: the tour appears with no request to `/api/` at all.
-     Then open the authoring host's own `/`: the attribute must be absent from
-     the served `index.html` and the probe must still run.
-2. **Reasoned, not observed: the hand-copied unpublished bundle.** The 30 s
-   fallback is the accepted price of an unmarked `dist/` copied onto a host
-   that black-holes `/api`: a blank page for up to 30 s, then the viewer. A
-   refused connection or a 200 of HTML reveals it at once. Nobody has seen
-   either.
+   - **Close it (a host and a browser):** publish, unzip onto a static host,
+     open it with the network panel up. Pass: the tour appears with no request
+     to `/api/` at all. Then open the authoring host's own `/`: the attribute
+     must be absent from the served `index.html`, and the page must make its
+     one `/api/session` request and wait for it.
+2. **Reasoned, not observed: the hand-copied unpublished bundle.** An unmarked
+   `dist/` copied onto a static host is read by the answer it gets for
+   `/api/session`. A host that **refuses** the request, answers **404**, or
+   answers 200 with HTML reveals the tour at once. A host that **black-holes**
+   `/api` (accepts the connection, never answers) shows "Waiting for the tour
+   service…" after 5 s and **never the tour**: there is no deadline, by the
+   author's ruling, because every deadline tried (2 s, then 30 s) was shorter
+   than a measured answer from the real authoring host, whose slowest was
+   73.2 s. That is the trade, and it is accepted. Nobody has watched any of
+   the three.
+   - **Close it (a host, or a proxy standing in for one):** serve an unmarked
+     `dist/` behind (a) a refusal, (b) a 404 and (c) a swallowed `/api/session`
+     (a reverse proxy pointed at a dead upstream, or a firewall `DROP`). Pass:
+     (a) and (b) show the tour at once; (c) shows the waiting line after 5 s
+     and keeps showing it. Also try a 403 and a 524 from a stand-in: both must
+     show "The tour service answered with an error (…)", with no viewer.
 3. **Never extracted for real on the host: the 0644 modes.** Verified on a
-   real build after a real `unzip` (31 entries, all 0644), not on the shared
-   host itself.
-4. **For the record, a small gap in Task 1's test.** The mode test chmods
-   `tour.json` and `index.html` to 0600 in the sources but not the other
-   `dist/` files, so a regression that copied source modes for only those
-   would pass. Every entry goes through the one helper `_add`, so the risk is
-   low; the gap is noted, not closed.
+   real build after a real `unzip` (31 entries, all 0644; `index.html` marked
+   once and otherwise byte-identical), not on the shared host itself, and not
+   against a web server that would have refused a 0600 file in the first
+   place. Whether 0600 ever actually broke a site was never checked; the change
+   is correct on its face and unproven in effect.
+4. **For the record, a gap in Task 1's test.** The mode test
+   (`test_every_published_file_is_world_readable`) chmods only `tour.json` and
+   `dist/index.html` to 0600 before publishing. A regression that copied the
+   source modes for the *other* `dist/` files, or for the session's other
+   files (`config.json`, `media/*`), would therefore still pass, because those
+   start at whatever mode the fixture gave them. Every entry goes through the
+   one helper `_add` at a single call site, so the risk is low. It is closable
+   with a loop that chmods every file in both trees to 0600 before the build.
+   Noted, not closed.
+5. **Unchecked: a proxy that drops instead of answering.** Status 0 is read as
+   "no backend" and reveals the viewer. On the authoring host, a proxy that
+   *drops* a long-held connection without answering gives the browser status
+   0, which would send an author to the viewer. Cloudflare answers 524
+   rather than dropping, which is why this is probably rare behind Reclaim's
+   chain (Cloudflare, Caddy, Apache, CGI); nobody has held a request open for
+   73 s or more through it to see what comes back.
+   - **Close it (the host):** `curl -sv` a `/api/session` against the
+     deployed host, and when it is slow, watch what ends it. Also load the
+     authoring page in a browser on a throttled day and see whether "Waiting
+     for the tour service…" ever gives way to the viewer instead of the
+     editor.
+6. **Unproven: that nothing in front of a live backend ever answers 404.** The
+   404-only rule rests on the backend never sending a 4xx from
+   `GET /api/session` (the route and `mint_session` raise none), which is code
+   and not observation. If Reclaim's chain ever answered 404 for a live
+   backend (a maintenance page, say), an author would be sent to the viewer.
+   Unobserved.
 
 ## Not on this list, deliberately
 

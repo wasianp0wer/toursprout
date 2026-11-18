@@ -17,8 +17,9 @@ the page, which is why a published tour needs no server.
  browser                                   FastAPI (backend/app)            disk
  ───────                                   ─────────────────────            ────
  entry    EntryPage ──GET /api/session──►  session.summary()
-            no answer → reveal the viewer in place (published site)
+            no backend (0 / 404 / not a summary) → viewer in place (static host)
             open:true → /edit       open:false → WelcomePage (lazy)
+            any other 4xx, any 5xx → "broken" message
 
  welcome  WelcomePage ─POST import / import-files / examples / new──────►  bundle.py,
                                                                           loose_import.py,
@@ -63,7 +64,7 @@ the page, which is why a published tour needs no server.
 | Folder | Owns |
 | --- | --- |
 | `core/` | Shared by viewer and editor. `tour.models.ts` (TypeScript mirror of the schema), `tour-api.ts` (`TourApi`: reads `tour-data/`), `tour-store.ts` (`TourStore`: the viewer's walking state), `arrival.ts`, `geo.ts`, `credit.ts`, `config-store.ts`, `theme.ts` (the pure layer between a tour's stored theme and the colours the app paints with: the preset table, `resolveTheme`, `cssVariablesFor`, `markerColoursFor`, and the one definition of the token set; no DOM, no Angular). Also the **editor-only** clients, which live here but are never used by the viewer: `session-api.ts` and `tools-api.ts` (place search, the one tool still on the server) talk to our backend, and `mapillary-search.ts` (`MapillarySearch`) talks to `graph.mapillary.com` directly. |
-| `entry/` | Route `''`. `entry-page.ts` (`EntryPage`): the three-way decision below, `isPublishedPage` (the publish-time mark) and `AUTHORING_HOST_FALLBACK_MS`. Eager, and deliberately small. Its CSS is load-bearing — read the comment in `entry-page.css` before changing it. |
+| `entry/` | Route `''`. `entry-page.ts` (`EntryPage`): the decision below, `isPublishedPage` (the publish-time mark) and `WAITING_NOTICE_MS` (how long before the waiting line appears; it decides nothing). Eager, and deliberately small. Its CSS is load-bearing — read the comment in `entry-page.css` before changing it. |
 | `welcome/` | The front door, a lazy chunk reached only from `EntryPage`. `welcome-page.ts` (`WelcomePage`) and `dropped-files.ts`, which is the pure part: `readDroppedFiles` walks a dropped directory with `webkitGetAsEntry`, and `sortDrop` files each part under `media/`, keeps its nesting, and filters what a tour cannot contain. |
 | `viewer/` | `viewer-page.ts` (`ViewerPage`): loads config and tour, composes `map/`, `panorama/`, `stop/`. Routes `view` and `**`, and mounted in place by `EntryPage` at `''`. |
 | `map/`, `stop/` | The viewer's minimap (`map-pane.ts`, `route.ts`) and stop panel (`stop-panel.ts`). |
@@ -117,44 +118,84 @@ valueless attribute `data-published` to the `<html>` tag of the zip's
 `index.html` (`mark_published`), and only there: the `dist/index.html` on disk,
 which the authoring host serves, is never marked. `EntryPage` reads it
 (`isPublishedPage`). A marked page reveals `ViewerPage` at once and makes no
-`/api` request at all. Only an unmarked page — the authoring host, or a bundle
-copied by hand — probes `/api/session` once:
+`/api` request at all. An unmarked page is, **by contract, the authoring
+host**, and it asks `GET /api/session` once and waits for the answer — with no
+deadline — before deciding anything:
 
-| What the page says or the probe says | What happens |
+| What the page says or the answer is | What happens |
 | --- | --- |
-| `<html data-published>` | Reveal `ViewerPage` **in place**, immediately, with no probe. No navigation, so the published URL is untouched. |
-| Unmarked, and the request failed, or answered 200 with something that is not a session summary, or did not answer inside `AUTHORING_HOST_FALLBACK_MS` (30 s) | Reveal `ViewerPage` in place, as above. |
+| `<html data-published>` | Reveal `ViewerPage` **in place**, immediately, with no request. No navigation, so the published URL is untouched. |
+| Unmarked, and the request is refused or dead (status 0), or answers 404, or answers 200 with something that is not a session summary | Reveal `ViewerPage` in place, at once. These are the signatures of a static host: a refused connection, no SPA rewrite, or `index.html` served for every path. |
 | Unmarked, `{"open": true, …}` | Navigate to `/edit`. |
 | Unmarked, `{"open": false}` | Render the welcome screen, its own lazy chunk. |
+| Unmarked, any other 4xx, or any 5xx | **Broken.** Show "The tour service answered with an error (524). Reload to try again." with the status in it. The viewer is not shown, nothing navigates, nothing retries. |
+| Unmarked, no answer yet | Nothing is decided and the viewer stays hidden. After `WAITING_NOTICE_MS` (5 s) a line says "Waiting for the tour service…"; it is information only, and goes when the answer comes or the page is left. |
 
-This reverses an earlier design in which one byte-identical bundle was served
-everywhere and a 2 s probe told the two worlds apart. The deployed authoring
-host answers `/api/session` in 12-73 s (measured; the latency is the host's
-path to its origin, not CGI and not the app), so that probe always timed out
-and showed the viewer to an author. ADR
+The design has moved three times, and the earlier stages are worth knowing
+because each failed for a reason that is still true. The first was one
+byte-identical bundle served everywhere, with a 2 s probe telling the two
+worlds apart. The deployed authoring host answers `/api/session` in 12-14 s
+usually and once took 73.2 s to first byte (measured; the latency is the
+host's path to its origin, not CGI and not the app), so that probe always timed
+out and showed the viewer to an author. The second stage marked the published
+page and gave the unmarked page a 30 s fallback, on the thought that 30 s was
+comfortably longer than 14. It was not longer than 73.2, so it still misrouted
+an author now and then, and while it waited it showed a blank page for up to
+30 s. The author then ruled that an unmarked page *is* the authoring host by
+contract, and that the right thing for it to do is simply wait. The third
+stage, which is the code, removed the deadline altogether and narrowed the
+"static" reading of a failed request to 404 (see below). ADR
 [0010](decisions/0010-a-published-page-knows-it-is-published.md) has the
-measurements and the reasoning; the proposal to mark the page was the author's.
+measurements and the reasoning; the proposals to mark the page and to await
+the backend were the author's.
 
-Three things about the unmarked path are deliberate and are easy to undo by accident. The long deadline exists only so that an *unpublished* bundle hand-copied onto a host that black-holes `/api` degrades after 30 s instead of hanging hidden; that wait is the accepted trade (`UNVERIFIED.md` entry 45).
+Three things about the unmarked path are deliberate and are easy to undo by
+accident.
 
-- **A 200 is not proof of a backend.** This still holds for the unmarked path. A static host with SPA rewriting
-  answers every unknown path with `index.html`, so the body's *shape* is
-  checked (`isSessionSummary`: an object with a boolean `open`) and not just
-  the status. The cost of believing a 200 is showing the workbench to the
-  public.
+- **There is no deadline, and that is on purpose.** `SessionApi.get()` takes no
+  timeout. Any number would misroute an author eventually, because the slowest
+  answer measured is 73.2 s and the next one is unmeasured, and falling back to
+  the viewer helps no author on the authoring host: the viewer reads
+  `tour-data/` from the same backend. The price is borne by one visitor only:
+  someone using a hand-copied, *unpublished* `dist/` on a static host that
+  **black-holes** `/api` — accepts the connection and never answers — sees the
+  waiting line indefinitely and never the tour. On a static host that refuses
+  the request or answers 404 they get the tour at once. That trade was accepted
+  by the author; it is reasoned, not observed (`UNVERIFIED.md` entry 45).
+- **404 is the only 4xx that means "no backend".** The backend never returns
+  a 4xx from `GET /api/session`, so on the authoring host a 403, 408 or 429
+  can only come from the CDN or proxy in front of a *live* backend, blocking
+  or throttling it. That is "failing, not absent", like Cloudflare's 524 (its
+  answer when the origin outlives its 100 s limit), and showing the viewer
+  there would put the tour in front of an author whose backend is merely
+  failing. An unmarked bundle on S3, which answers 403 for a missing key,
+  therefore shows "broken (403)": out of contract, visible, accepted. One
+  residual goes the other way: status 0 is read as "no backend", so a proxy
+  that *drops* a long-held connection without answering would reveal the
+  viewer to an author. Cloudflare answers 524 rather than dropping, so this is
+  probably rare behind Reclaim's chain; nobody has checked (`UNVERIFIED.md`
+  entry 45).
+- **A 200 is not proof of a backend.** This still holds for the unmarked
+  path. A static host with SPA rewriting answers every unknown path with
+  `index.html`, so the body's *shape* is checked (`isSessionSummary`: an object
+  with a boolean `open`) and not just the status. The cost of believing a 200
+  is showing the workbench to the public.
 - **The viewer is mounted before the probe resolves, not after.** It is in the
   DOM from the first paint and merely hidden, so its `tour-data/` fetches are
-  issued concurrently with the probe and the published visitor pays no extra
-  round trip — which is the same promise `''` kept by being `ViewerPage`
-  outright. It is hidden rather than shown because in an authoring checkout
-  with nothing open those fetches 404, and the viewer's "no tour is open"
-  message must not flash in front of an author on their way to `/edit`.
+  issued concurrently with the probe, so that when the answer is "no backend"
+  the tour is already loading rather than starting from nothing — the same
+  promise `''` kept by being `ViewerPage` outright. (A marked page has no probe
+  to wait on and needs no such promise.) It is hidden rather than shown
+  because in an authoring checkout with nothing open those fetches 404, and
+  the viewer's "no tour is open" message must not flash in front of an author
+  on their way to `/edit`.
 - **Hidden means `visibility`, never `display`.** `.viewer-slot[hidden]` sets
   `display: block; visibility: hidden; pointer-events: none`, and the
   `display: block` is there to override the UA stylesheet's
   `[hidden] { display: none }` by hand. With no layout box the viewer's
-  `tour-data/` fetches — which usually win the race against the probe — would
-  have `MapPane` initialise Leaflet against a 0×0 container, and **nothing in
+  `tour-data/` fetches — which can finish before the probe does, and the
+  probe now takes as long as the backend takes — would have `MapPane`
+  initialise Leaflet against a 0×0 container, and **nothing in
   `frontend/src` calls `invalidateSize` or watches for a resize**, so the map
   would stay grey after the reveal. `entry-page.spec.ts` reads the CSS as text
   and fails if `display: none` appears in that rule or if `display: block` and

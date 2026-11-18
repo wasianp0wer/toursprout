@@ -282,9 +282,10 @@ A bundle is `bundle.json`, `tour.json` and `media/`, as a zip.
    writes every entry at 0644; the on-disk `dist/index.html` is deliberately
    left unmarked. `isPublishedPage` in `entry/entry-page.ts` is where the
    decision lives: marked, it reveals the `ViewerPage` it already mounted and
-   makes no `/api` request; unmarked, it probes, with the deadline
-   `AUTHORING_HOST_FALLBACK_MS` (30 s). **Everything in `EntryPage` is
-   downloaded and run by the public**, ADR
+   makes no `/api` request; unmarked, it is the authoring host by contract and
+   asks `GET /api/session`, **with no deadline**, reading the answer three
+   ways (static, a session, or broken; entry 10 has the rules). **Everything
+   in `EntryPage` is downloaded and run by the public**, ADR
    [0010](decisions/0010-a-published-page-knows-it-is-published.md). Keep it
    small, keep the welcome screen inside its `@defer` block (importing
    `WelcomePage` anywhere outside it silently pulls the chunk into the eager
@@ -303,19 +304,25 @@ A bundle is `bundle.json`, `tour.json` and `media/`, as a zip.
 5. What `config.json` holds is `_viewer_config` in `main.py`; the viewer reads
    it through `core/config-store.ts`.
 6. Anything the viewer newly needs must come from `tour-data/`. It must never
-   reach for `/api` (a published site has none). `EntryPage`'s probe is the
-   one `/api` call on the published path, and it belongs to the router, not to
-   the viewer.
+   reach for `/api` (a published site has none). A *marked* page makes no
+   `/api` call at all; `EntryPage`'s one request, `GET /api/session`, is made
+   only by an unmarked page (the authoring host) and belongs to the router, not
+   to the viewer.
 
 **Fails if incomplete:** `backend/tests/test_publish.py`
 (`test_the_site_contains_the_application_and_the_tour`,
 `test_leaflet_media_and_tour_media_do_not_collide`,
-`test_the_published_tour_document_is_the_working_one`); the spec *"reads
+`test_the_published_tour_document_is_the_working_one`) and, for the mark and
+the modes, `test_the_published_index_is_marked_and_the_built_one_is_not`,
+`test_only_the_root_index_is_marked`, the two `test_mark_published_*` tests
+and `test_every_published_file_is_world_readable`; the spec *"reads
 everything from tour-data/ and never touches /api"* in
 `frontend/src/app/core/tour-api.spec.ts`; `viewer/viewer-page.spec.ts` for the
-viewer's loading; `entry/entry-page.spec.ts` for the published branch — it
-covers a failed probe, a 200 of HTML, a timeout, and (by reading the CSS as
-text) the hidden-but-laid-out wrapper. The Playwright suite in
+viewer's loading; `entry/entry-page.spec.ts` for the published branch — the
+marked-page spec (*"reveals the viewer at once on a published page and never
+calls /api"*, which uses `expectNone`), the refused request, the 404 and the
+200 of HTML, and (by reading the CSS as text) the hidden-but-laid-out
+wrapper. The Playwright suite in
 `frontend/tests/e2e/` (`make e2e`) can exercise the real thing but cannot run
 inside the Claude Code sandbox; nothing in this repository's `make check`
 renders a page.
@@ -448,14 +455,19 @@ the argument for each route's eagerness; read it before moving anything.
    authoring route is lazy. A new route that a *published* site could reach
    is a different question — there are only two such URLs, `/` and
    `index.html` — and the answer is almost certainly no.
-2. `frontend/src/app/entry/entry-page.ts` for the decision itself. The three
-   outcomes and why each is what it is are in "Routing: who is asking"
-   ([`ARCHITECTURE.md`](ARCHITECTURE.md)). Two rules that are not obvious from
-   the code: a non-JSON 200 must be treated as "no backend", because that is
-   what a static host with SPA rewriting answers and the cost of believing it
-   is showing the workbench to the public; and anything that resolves the
-   probe must also check `gone`, because the visitor may have navigated away
-   inside the probe window and deciding on their behalf would move them.
+2. `frontend/src/app/entry/entry-page.ts` for the decision itself. What each
+   outcome is and why is in "Routing: who is asking"
+   ([`ARCHITECTURE.md`](ARCHITECTURE.md)). Rules that are not obvious from the
+   code: a non-JSON 200 must be treated as "no backend", because that is what
+   a static host with SPA rewriting answers and the cost of believing it is
+   showing the workbench to the public; **404 is the only 4xx that means "no
+   backend"** (the backend never sends a 4xx from `GET /api/session`, so any
+   other 4xx is a CDN or proxy failing in front of a live one, and revealing
+   the viewer there would hide it), while every other 4xx and every 5xx is
+   `'broken'`; **there is no deadline**, and the `timeoutMs` parameter on
+   `SessionApi.get()` is gone on purpose; and anything that resolves the probe
+   must also check `gone`, because the visitor may have navigated away inside
+   the probe window and deciding on their behalf would move them.
 3. `entry/entry-page.html` and `entry-page.css` together. The viewer is
    mounted from the first paint and hidden, so its `tour-data/` fetches run
    concurrently with the probe; hiding it with `display: none` gives Leaflet a
@@ -463,22 +475,30 @@ the argument for each route's eagerness; read it before moving anything.
    guard test in `entry-page.spec.ts` stops that stopping being true without
    anyone noticing. If you need the probing state to show something, add it to
    the `probing` branch — do not reveal the viewer earlier.
-4. `AUTHORING_HOST_FALLBACK_MS` if the deadline is what is wrong. It applies
-   to an unmarked page only, and exists so that an unpublished bundle
-   hand-copied onto a host that black-holes `/api/session` degrades instead of
-   hanging. The cost of raising it is a longer blank page for that visitor; the
-   cost of lowering it is an author on a slow host being sent to the viewer,
-   which is what the old 2 s did (the host answers in 12-73 s).
+4. `WAITING_NOTICE_MS` is the only number, and it is not a deadline: it is how
+   long an unmarked page waits before it shows "Waiting for the tour
+   service…", and it decides nothing. Do not turn it, or anything else, into a
+   timeout. Both deadlines this page has had failed against the same fact:
+   the authoring host answered in 12-14 s and once in 73.2 s, so the 2 s one
+   always lost and the 30 s one lost to the 73.2 s answer. The price of having
+   none is that a hand-copied, unpublished `dist/` on a static host that
+   black-holes `/api` shows the waiting line for good (`UNVERIFIED.md` entry
+   45); that is the author's accepted trade, so do not "fix" it without
+   asking.
 
 **Fails if incomplete:** `frontend/src/app/entry/entry-page.spec.ts` covers
-all three outcomes, the timeout, the HTML-200 case, the concurrent viewer
-bootstrap, the already-left case, and the CSS declarations (read as text,
-because jsdom computes no layout). `app.spec.ts` covers the route table
-itself: `''` to the entry page, `view` to the viewer, `edit` to the editor.
-**Nothing
-fails** if you break the published site's *appearance* — no test in this
-repository renders a page, so entries 19 to 22 of
-[`UNVERIFIED.md`](UNVERIFIED.md) are the only check that exists.
+the marked page (reveal at once, `expectNone` on `/api`), the refused request,
+the 404 and the HTML-200 case, an answer that arrives after a long wait (no
+deadline), the waiting line appearing and going, a 524 and a 403 (both
+`'broken'`, with the status in the message, no navigation), the timer being
+cleared on destroy, the concurrent viewer bootstrap, the already-left case,
+and the CSS declarations (read as text, because jsdom computes no layout).
+`backend/tests/test_publish.py` covers the mark and the 0644 modes (entry 7
+lists them). `app.spec.ts` covers the route table itself: `''` to the entry
+page, `view` to the viewer, `edit` to the editor. **Nothing fails** if you
+break the published site's *appearance* — no test in this repository renders
+a page, so entries 19, 20 and 45 of [`UNVERIFIED.md`](UNVERIFIED.md) are the
+only check that exists.
 
 ## 11. Change what an author can theme
 

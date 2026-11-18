@@ -22,39 +22,58 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 719 backend (pytest), 863 frontend (Vitest, 38 files); lint and
+**Tests:** 719 backend (pytest), 867 frontend (Vitest, 38 files); lint and
 production build clean via `make check`, which exits 0 and prints `All checks
 passed!` (run on 2026-11-17, on `docs/publish-mark`). Eager bundle 2.17 MB raw
-/ 374.96 kB transferred (2.15 MB / 372.22 kB before per-tour theming; the
-editor, welcome and unnamed lazy chunks now print 122.47 / 12.56 / 10.15 kB
-raw, so the chunk figures just below are older).
+/ 375.52 kB transferred (2.15 MB / 372.22 kB before per-tour theming); the
+editor, welcome and unnamed lazy chunks print 122.46 / 12.57 / 10.14 kB raw,
+and the chunk paragraph below carries the same figures.
 
 **The deployed authoring host is slow, and published pages now know they are
 published (2026-11-17, ADR [0010](decisions/0010-a-published-page-knows-it-is-published.md)).**
-`area51.reclaimhosting.com` (cPanel/CloudLinux, behind Cloudflare and Reclaim's
-proxy) answers `/api/session` in 12-73 s, measured. A cold CGI request of this
-app is 0.2 s locally, TLS is 0.06 s, and a 15 kB favicon takes 12.2 s on a
+`area51.reclaimhosting.com` (cPanel/CloudLinux; Cloudflare, then Reclaim's
+Caddy, then Apache, then CGI) answers `/api/session` in 12.6-14.0 s and once
+took 73.2 s to first byte, measured. A cold CGI request of this app is
+0.20-0.32 s locally, TLS is 0.06 s, and a 15 kB favicon takes 12.2 s on a
 Cloudflare miss against 0.33 s on a hit, so the latency is the host's path to
 its origin, not CGI and not the app. `EntryPage`'s 2 s probe therefore always
-timed out and showed the viewer to the author. The fix, which was the author's
-own proposal: `publish.py` marks the zip's `index.html` with `data-published`
-(the on-disk `dist/index.html` stays unmarked), a marked page never calls
-`/api`, and an unmarked page's probe deadline is now
-`AUTHORING_HOST_FALLBACK_MS` (30 s). Every zip entry is also written at 0644
-now (the session's 0600 used to leak onto `tour-data/*`). None of it has been
-seen in a browser or on the host: `UNVERIFIED.md` entry 45, which supersedes
-20 to 22.
+timed out and showed the viewer to the author. The fix went through three
+stages, all the same day. The author proposed the first: `publish.py` marks
+the zip's `index.html` with `data-published` (the on-disk `dist/index.html`
+stays unmarked) and a marked page never calls `/api`. The second gave the
+unmarked page a 30 s fallback; it was found to be shorter than the 73.2 s
+answer and was withdrawn. The third, by the author's ruling that an unmarked
+page *is* the authoring host by contract, is what the code does now: an
+unmarked page awaits `/api/session` with **no deadline**, shows "Waiting for
+the tour service…" after 5 s as information only, and reads the answer three
+ways: status 0, a 404 or a 200 that is not a session summary reveals the
+viewer at once (static-host signatures); a session summary goes to `/edit` or
+the welcome screen; every other 4xx and every 5xx is a visible "broken"
+message with the status, with no navigation. The accepted trade: a
+hand-copied, *unpublished* `dist/` on a static host that *black-holes* `/api`
+shows the waiting line for good (reasoned, not observed). Every zip entry is
+also written at 0644 now (the session's 0600 used to leak onto `tour-data/*`).
+None of it has been seen in a browser or on the host: `UNVERIFIED.md` entry
+45, which supersedes 20 to 22.
 
-**Where the work is, as of 2026-11-17.** From the author's merge onward the
-work landed directly on `main` rather than on a feature branch: two commits
-were already on `origin/main` (`cebdc9f`, `dc43ad5`) and the five after them
-(`51ee7be` to `234b5d0`, the publish-mark work) were unpushed when this was
-written; this documentation is on `docs/publish-mark`. The City Hall panorama
-swap that `make content` produced (`content/coverage-report.json`,
-`content/media/manifest.json`, `content/tours/fairfax-old-town.json`) is
-parked in `stash@{0}`, taken on `feature/ui-customization`, and **whether to
-apply it is an open decision** for the author, not something to pop to make the
-tree clean. **A cache bug found while the branch was being handed over, and fixed on
+**Where the work is, as of 2026-11-17.** From the author's merge (2026-11-16,
+when HEAD moved to `main`) the work landed directly on `main` rather than on a
+feature branch, until `87e22fa`. `origin/main` is at `dc43ad5`; `cebdc9f` and
+`dc43ad5` are on it. Five commits on `main` are **not pushed**: `51ee7be`
+(the media-cache window, "Cache media for an hour, not immutably for a year",
+which is **not** publish-mark work) and the four publish-mark commits after
+it, `b618229` (the plan), `f504730`, `17cff28` and `234b5d0`.
+`feature/ui-customization` points at the same commit as `main` and is now
+meaningless. `docs/publish-mark` carries `87e22fa`, `240fe87`, `08270dd` and
+the documentation commit that rewrote this note. `stash@{0}` holds exactly the City
+Hall panorama swap (`1047663651213936`, 200.9 changed to `1412217390816350`,
+193.9, across `content/coverage-report.json`, `content/media/manifest.json`
+and `content/tours/fairfax-old-town.json`); the author reported that it came
+from re-running `make content`. **Whether to apply it is an open decision**
+for the author, not something to pop to make the tree clean. (`stash@{1}` is
+older and unrelated.)
+
+**A cache bug found while the branch was being handed over, and fixed on
 it.** The author's editor kept loading a tour from an earlier session while
 the session on disk held another, so every autosave was refused for the wrong
 schema version. `GET /tour-data/*` advertised `ETag` and `Last-Modified` but
@@ -73,8 +92,8 @@ The browser-side checks nobody here can run, including how a reload behaves
 offline, are `UNVERIFIED.md` entry 44.
 
 There are **three** lazy chunks: the editor,
-120.26 kB raw / 27.80 kB transferred (was 105.34 / 24.68); the welcome screen,
-12.56 kB / 4.07 kB; and a third, unnamed one, 10.15 kB / 3.60 kB. The third was
+122.46 kB raw / 28.05 kB transferred (was 105.34 / 24.68); the welcome screen,
+12.57 kB / 4.04 kB; and a third, unnamed one, 10.14 kB / 3.59 kB. The third was
 not recorded here before and is not a regression: it is the Mapillary search
 client (`graph.mapillary.com/images`, its field list and bounding-box helper)
 with a little shared document code, shared by the editor and welcome chunks
@@ -208,17 +227,21 @@ The checklist for the first browser session, in the order to do it, is
 **What exists:**
 
 - **A front door** (`/`). `''` is no longer the viewer: it is a small eager
-  `EntryPage` that reads the publish-time mark and, if absent, probes
-  `GET /api/session` (30 s fallback deadline; it was 2 s until 2026-11-17, see
-  the note above). A marked page (`<html data-published>`) renders the viewer
-  at once with no request. Unmarked, it resolves three ways. Request failed, a 200 that is not a session summary (what a
-  static host with SPA rewriting answers), or the deadline → render the
-  **viewer in place**, no navigation, which is the published-site case.
-  `{open: true}` → go to `/edit`. `{open: false}` → the welcome screen, a
-  lazy chunk. The viewer is mounted from the first paint and merely hidden
-  while the probe runs, so its `tour-data/` fetches are already in flight and
-  a published visitor pays no extra round trip. See `ARCHITECTURE.md`,
-  "Routing: who is asking".
+  `EntryPage` that reads the publish-time mark and, if absent, asks
+  `GET /api/session` with **no deadline** (it was 2 s until 2026-11-17, then
+  30 s, briefly; see the note above). A marked page
+  (`<html data-published>`) renders the viewer at once with no request.
+  Unmarked, it reads the answer three ways. Status 0, a 404, or a 200 that is
+  not a session summary (what a static host with SPA rewriting answers) →
+  render the **viewer in place**, no navigation, which is the static-host
+  case. `{open: true}` → go to `/edit`. `{open: false}` → the welcome screen,
+  a lazy chunk. Any other 4xx, or any 5xx → a "broken" message carrying the
+  status, the viewer not shown, nothing navigating. After 5 s without an
+  answer a "Waiting for the tour service…" line appears; it decides nothing.
+  The viewer is mounted from the first paint and merely hidden while the
+  request is outstanding, so its `tour-data/` fetches are already in flight
+  when the answer is "no backend". See `ARCHITECTURE.md`, "Routing: who is
+  asking".
 - **Welcome screen** (the `{open: false}` branch of `/`). The only screen that
   can get a tour into the session, and there are four ways: drop or browse to
   a `.zip` bundle; drop or browse to a loose `tour.json` with its `media`
@@ -868,9 +891,11 @@ Two things worth keeping in mind afterwards:
   2026-11-17.)* It was issued concurrently with the viewer's own `tour-data/`
   fetches, and a host that black-holed `/api/session` cost the full 2 s
   deadline as a blank page, written down in `UNVERIFIED.md` entries 20 to 22.
-  A marked page now makes no probe (ADR 0010); the only visitor who can still
-  wait is one using an unpublished bundle hand-copied onto a host with no
-  backend, for up to 30 s.
+  A marked page now makes no probe (ADR 0010). The only visitor who can still
+  wait is one using an unpublished bundle hand-copied onto a static host that
+  black-holes `/api`, and they wait indefinitely: the unmarked path has no
+  deadline (the 30 s one that replaced the 2 s was withdrawn because the host
+  once took 73.2 s), so they see the waiting line and never the tour.
 
 One thing this branch broke and the documentation pass caught: **the viewer's
 own 404 message had gone stale in exactly the way the entry above describes.**
