@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom, timeout, type Observable } from 'rxjs';
+import { firstValueFrom, type Observable } from 'rxjs';
 import type { Tour } from './tour.models';
 
 export interface SessionSummary {
@@ -47,18 +47,13 @@ export class SessionApi {
   private readonly http = inject(HttpClient);
 
   /**
-   * What is open, if anything. The one request a caller may need to make
-   * against a host that is not a backend at all, so it takes an optional
-   * deadline in milliseconds: the entry page probes '/api/session' to find
-   * out whether there is a backend, and a static host may simply never
-   * answer. The deadline rejects *and* aborts, so a late answer cannot
-   * arrive after the caller has given up. The editor passes none — it only
-   * runs against a backend, and would rather wait than guess.
+   * What is open, if anything. Takes no deadline: the entry page probes this
+   * on the authoring host, which has a backend by definition and may take
+   * over a minute to answer, so it waits and reads the failure's shape
+   * instead. The editor likewise only runs against a backend.
    */
-  get(timeoutMs?: number): Promise<SessionSummary> {
-    const request = this.http.get<SessionSummary>('/api/session');
-    return firstValueFrom(
-      timeoutMs === undefined ? request : request.pipe(timeout(timeoutMs)));
+  get(): Promise<SessionSummary> {
+    return firstValueFrom(this.http.get<SessionSummary>('/api/session'));
   }
 
   putTour(doc: Tour): Promise<SessionSummary> {
@@ -181,8 +176,8 @@ async function readBlobError(err: unknown): Promise<unknown> {
  * The wording must be true for any session request, not just uploads.
  *
  * `get()` and `putTour()` deliberately do not use it: the entry page has to
- * tell a dead connection, a non-JSON 200 from a static host and a timeout
- * apart by the shape of the failure, which a flattened string would destroy,
+ * tell a dead connection, a 404 or non-JSON 200 from a static host and a
+ * 5xx or 403 from a failing backend apart by the status of the failure, which a flattened string would destroy,
  * and autosave has its own `messageFrom` for putTour. */
 function sessionMessage(err: unknown): string {
   if (err instanceof HttpErrorResponse) {

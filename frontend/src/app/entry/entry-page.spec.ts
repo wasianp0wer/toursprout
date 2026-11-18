@@ -199,6 +199,30 @@ describe('EntryPage', () => {
     http.expectNone((r) => r.url.startsWith('/api'));
   });
 
+  it('says so on a 403 too: only what sits in front of the app sends one', async () => {
+    const fixture = mount();
+    http.expectOne('/api/session').flush(null, { status: 403, statusText: 'Forbidden' });
+    await settle(fixture);
+
+    expect(decisionOf(fixture)).toBe('broken');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('403');
+    expect(viewerWrapper(fixture)).toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('clears the waiting-line timer when destroyed before it fires', async () => {
+    vi.useFakeTimers();
+    const fixture = mount();
+    http.expectOne('/api/session');
+    fixture.destroy();
+
+    await vi.advanceTimersByTimeAsync(WAITING_NOTICE_MS * 2);
+
+    expect((fixture.componentInstance as unknown as { waiting: () => boolean }).waiting())
+      .toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('reveals the viewer at once on a 404 (a static host with no SPA rewrite)', async () => {
     const fixture = mount();
     http.expectOne('/api/session').flush(null, { status: 404, statusText: 'Not Found' });

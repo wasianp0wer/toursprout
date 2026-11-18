@@ -18,7 +18,10 @@ Global Constraints).
 **Spec:** this reverses the "one byte-identical bundle, probe once" decision in
 `docs/ARCHITECTURE.md` *Routing: who is asking*. The author approved the
 reversal on 2026-11-17 with the trade stated: a hand-copied, unpublished
-`dist/` on a static host waits up to the fallback before showing the tour.
+`dist/` on a host that *black-holes* `/api` never shows the tour (it shows the
+waiting line indefinitely); on a host that refuses or answers 404 it shows the
+tour at once. The author accepted this when ruling for an unbounded wait after
+the 73.2 s measurement (the original trade was a 30 s wait).
 Why: the deployed authoring host (Reclaim, behind Cloudflare and a proxy)
 answers `/api/session` in 12–73 s measured, so a 2 s probe always timed out and
 the host was unusable for authoring. A cold CGI request of this app takes 0.2 s
@@ -43,9 +46,9 @@ locally; the latency is the host's.
   **73.2 s**, so any deadline still misroutes an author to the viewer, and an
   unmarked page is the authoring host by contract, where the viewer helps
   nobody (it loads `tour-data/` from the same backend). The answer is read
-  three ways: a refused connection (status 0), any 4xx, or a 200 that is not a
+  three ways: a refused connection (status 0), a 404, or a 200 that is not a
   session summary reveals the viewer immediately; a session summary routes;
-  any 5xx is `'broken'` (a plain message with the status, viewer hidden, no
+  every other 4xx and every 5xx is `'broken'` (a plain message with the status, viewer hidden, no
   navigation). A waiting line appears after `WAITING_NOTICE_MS = 5_000`; it
   decides nothing.
 - **`make check` green at the end of every task.** Commits end with
@@ -57,7 +60,7 @@ locally; the latency is the host's.
    → Task 2 asserts no request was issued at all.
 2. An unmarked page whose backend answers arbitrarily late (the spec waits
    60 s; measured worst case 73.2 s) must still reach `/edit`, with the
-   viewer hidden and the request not cancelled. A 5xx must be `'broken'`,
+   viewer hidden and the request not cancelled. A 5xx or a non-404 4xx must be `'broken'`,
    never the viewer. (Originally "falls back after 30 s"; replaced after the
    73.2 s measurement.) → Task 2.
 3. The substitution must be anchored to the `<html` tag and applied once; a
@@ -158,7 +161,8 @@ git commit -m "Mark a published index.html so it never probes /api"
 - `flush(null, {status: 524, ...})` → `'broken'`, message contains `524`,
   viewer gone, no navigation, no `/api` retry.
 - `flush(null, {status: 404, ...})` → `'published'` at once (static host with
-  no SPA rewrite). Refused (status 0) and 200-of-HTML stay immediate.
+  no SPA rewrite); `{status: 403}` → `'broken'`, message contains `403`.
+- Destroying before `WAITING_NOTICE_MS` leaves no timer behind. Refused (status 0) and 200-of-HTML stay immediate.
 - Remove the 30 s boundary test; its premise is gone. Clear `data-published`
   in `afterEach`.
 
@@ -174,68 +178,8 @@ Expected: FAIL — the unmarked page still reveals the viewer on a 5xx; no
 constructor: if published, `decision.set('published')` and return without
 probing. Otherwise start the waiting timer (cleared on answer and on destroy)
 and `probe()`: `SessionApi.get()` with no timeout; classify the failure by its
-`HttpErrorResponse.status` (5xx → `'broken'`, everything else → viewer).
-Keep the `gone` guard and the lazy-chunk fallback exactly as they are.
-
-- [ ] **Step 4: Verify**
-
-Run: `cd backend && uv run ruff check app tests ../content/scripts && uv run pytest -q`
-Expected: PASS, ruff clean.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add backend/app/publish.py backend/tests/test_publish.py
-git commit -m "Mark a published index.html so it never probes /api"
-```
-
----
-
-### Task 2: `EntryPage` reads the mark; the host awaits
-
-**Files:**
-- Modify: `frontend/src/app/entry/entry-page.ts`
-- Test: `frontend/src/app/entry/entry-page.spec.ts`
-
-**Interfaces:**
-- Consumes: the contract above.
-- Produces: `AUTHORING_HOST_FALLBACK_MS = 30_000` replaces
-  `SESSION_PROBE_TIMEOUT_MS`; `isPublishedPage(doc: Document): boolean`
-  exported for the test.
-
-- [ ] **Step 1: Write the failing tests** in `entry-page.spec.ts`
-
-```ts
-it('reveals the viewer at once on a published page and never calls /api', () => {
-  document.documentElement.setAttribute('data-published', '');
-  mount();
-  expect(decision()).toBe('published');
-  httpTesting.expectNone(/\/api/);          // none — not a fast one
-});
-it('awaits a slow backend on the authoring host instead of giving up', async () => {
-  // unmarked; answer after 5 s of fake time, past the old 2 s deadline
-  mount(); vi.advanceTimersByTime(5_000); flush({ open: true });
-  expect(navigatedTo).toBe('/edit');
-});
-it('still treats a refused connection or a 200 of HTML as no backend', …);
-it('falls back to the viewer only after AUTHORING_HOST_FALLBACK_MS', …);
-```
-
-Rename or replace `treats a probe timeout as no backend` — its premise is gone.
-Clear the `data-published` attribute in `afterEach`; jsdom's document persists
-between tests.
-
-- [ ] **Step 2: Run to verify they fail**
-
-Run: `cd frontend && npx ng test --watch=false`
-Expected: FAIL — `/api` still requested on a marked page; a 5 s answer still
-reveals the viewer.
-
-- [ ] **Step 3: Implement**
-
-`isPublishedPage(doc)` → `'published' in doc.documentElement.dataset`. In the
-constructor: if published, `decision.set('published')` and return without
-probing. Otherwise `probe()` as today but with `AUTHORING_HOST_FALLBACK_MS`.
+`HttpErrorResponse.status` (404 and status 0 → viewer; every other 4xx and every 5xx → `'broken'`; the
+backend sends no 4xx itself, so those come from a proxy in front of it).
 Keep the `gone` guard and the lazy-chunk fallback exactly as they are.
 
 - [ ] **Step 4: Verify**
@@ -246,9 +190,76 @@ Expected: `All checks passed!`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src/app/entry
-git commit -m "Trust the publish-time mark; await the backend on the host"
+git add frontend/src/app/entry frontend/src/app/core/session-api.ts
+git commit -m "Await the backend with no deadline; read its answer three ways"
 ```
+
+---
+
+#### Superseded on 2026-11-17 (kept as history)
+
+> The original Task 2, built first (30 s fallback) and replaced after
+> the 73.2 s measurement. **Do not execute it**; the revised Task 2 above is
+> the live one.
+>
+> **Task 2 (superseded):** `EntryPage` reads the mark; the host awaits
+>
+> **Files:**
+> - Modify: `frontend/src/app/entry/entry-page.ts`
+> - Test: `frontend/src/app/entry/entry-page.spec.ts`
+>
+> **Interfaces:**
+> - Consumes: the contract above.
+> - Produces: `AUTHORING_HOST_FALLBACK_MS = 30_000` replaces
+>   `SESSION_PROBE_TIMEOUT_MS`; `isPublishedPage(doc: Document): boolean`
+>   exported for the test.
+>
+> - [ ] **Step 1: Write the failing tests** in `entry-page.spec.ts`
+>
+> ```ts
+> it('reveals the viewer at once on a published page and never calls /api', () => {
+>   document.documentElement.setAttribute('data-published', '');
+>   mount();
+>   expect(decision()).toBe('published');
+>   httpTesting.expectNone(/\/api/);          // none — not a fast one
+> });
+> it('awaits a slow backend on the authoring host instead of giving up', async () => {
+>   // unmarked; answer after 5 s of fake time, past the old 2 s deadline
+>   mount(); vi.advanceTimersByTime(5_000); flush({ open: true });
+>   expect(navigatedTo).toBe('/edit');
+> });
+> it('still treats a refused connection or a 200 of HTML as no backend', …);
+> it('falls back to the viewer only after AUTHORING_HOST_FALLBACK_MS', …);
+> ```
+>
+> Rename or replace `treats a probe timeout as no backend` — its premise is gone.
+> Clear the `data-published` attribute in `afterEach`; jsdom's document persists
+> between tests.
+>
+> - [ ] **Step 2: Run to verify they fail**
+>
+> Run: `cd frontend && npx ng test --watch=false`
+> Expected: FAIL — `/api` still requested on a marked page; a 5 s answer still
+> reveals the viewer.
+>
+> - [ ] **Step 3: Implement**
+>
+> `isPublishedPage(doc)` → `'published' in doc.documentElement.dataset`. In the
+> constructor: if published, `decision.set('published')` and return without
+> probing. Otherwise `probe()` as today but with `AUTHORING_HOST_FALLBACK_MS`.
+> Keep the `gone` guard and the lazy-chunk fallback exactly as they are.
+>
+> - [ ] **Step 4: Verify**
+>
+> Run: `make check`
+> Expected: `All checks passed!`.
+>
+> - [ ] **Step 5: Commit**
+>
+> ```bash
+> git add frontend/src/app/entry
+> git commit -m "Trust the publish-time mark; await the backend on the host"
+> ```
 
 ---
 

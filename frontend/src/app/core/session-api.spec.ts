@@ -36,21 +36,6 @@ describe('SessionApi', () => {
     expect((await promise).title).toBe('My Tour');
   });
 
-  it('abandons the summary request when the caller gives it a deadline', async () => {
-    vi.useFakeTimers();
-    const promise = api.get(50);
-    const req = http.expectOne('/api/session');
-    // The rejection handler has to be attached before the clock moves, or
-    // the deadline rejects an unwatched promise and vitest reports it as an
-    // unhandled error.
-    const rejects = expect(promise).rejects.toThrow();
-    await vi.advanceTimersByTimeAsync(50);
-    await rejects;
-    // Abandoning means aborting: a host that never answers must not leave
-    // the request open behind the caller's back.
-    expect(req.cancelled).toBe(true);
-  });
-
   it('puts the tour document and returns the updated summary', async () => {
     const doc = tour();
     const promise = api.putTour(doc);

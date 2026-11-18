@@ -108,15 +108,21 @@ export class EntryPage {
    * `get()` is called without one and the answer is read three ways.
    *
    * 1. Static-host signatures reveal the viewer at once: a refused or dead
-   *    connection (status 0), any 4xx (a plain static host with no SPA
-   *    rewrite answers `/api/session` with a 404, and that is exactly the
-   *    published case the viewer exists for), or a 200 that is not a
-   *    session summary.
+   *    connection (status 0), a 404, or a 200 that is not a session summary.
+   *    404 is the one 4xx that means "no backend here": it is what a bundle
+   *    on Pages, Netlify or Apache without an SPA rewrite answers for an
+   *    unknown path, and that is exactly the published case the viewer
+   *    exists for.
    * 2. A session summary routes to the editor or the welcome screen.
-   * 3. Any 5xx is 'broken', not static. Cloudflare answers 524 when the
-   *    origin outlives its 100 s limit; reading that as "no backend" would
+   * 3. Every other 4xx and every 5xx is 'broken', not static. This app never
+   *    sends a 4xx from `GET /api/session`, so a 403, 408 or 429 can only
+   *    come from what sits in front of it — a CDN or proxy blocking or
+   *    throttling a *live* backend — and Cloudflare answers 524 when the
+   *    origin outlives its 100 s limit. Reading those as "no backend" would
    *    put the viewer in front of an author whose backend is merely
-   *    failing. Nothing is revealed and nothing navigates.
+   *    failing. Nothing is revealed and nothing navigates. (An unmarked
+   *    bundle on S3 answers 403 for a missing key and so shows "broken
+   *    (403)": out of contract, visible, accepted.)
    */
   private async probe(): Promise<void> {
     let answer: unknown;
@@ -134,7 +140,7 @@ export class EntryPage {
     // them to '/edit' out of wherever they actually went.
     if (this.gone) return;
 
-    if (failure instanceof HttpErrorResponse && failure.status >= 500) {
+    if (failure instanceof HttpErrorResponse && failure.status >= 400 && failure.status !== 404) {
       this.brokenStatus.set(failure.status);
       this.decision.set('broken');
       return;
