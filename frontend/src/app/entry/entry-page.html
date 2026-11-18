@@ -6,6 +6,17 @@
   <div class="viewer-slot" data-viewer [hidden]="decision() === 'probing'">
     <app-viewer-page />
   </div>
+  @if (waiting()) {
+    <!-- Information only: the probe is still outstanding and nothing has
+         been decided. Outside the hidden slot, which is invisible. -->
+    <p class="waiting" data-waiting>Waiting for the tour service…</p>
+  }
+} @else if (decision() === 'broken') {
+  <!-- The backend exists and answered with an error; the viewer would sit in
+       front of a dead backend, so it is not shown. -->
+  <p class="pending" data-broken>
+    The tour service answered with an error ({{ brokenStatus() }}). Reload to try again.
+  </p>
 } @else {
   <!-- The front door, and the only branch an author with nothing open
        reaches. Deferred, so it is its own chunk: a published site's visitor

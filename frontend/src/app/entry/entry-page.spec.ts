@@ -5,7 +5,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Router, provideRouter } from '@angular/router';
-import { EntryPage, AUTHORING_HOST_FALLBACK_MS } from './entry-page';
+import { EntryPage, WAITING_NOTICE_MS } from './entry-page';
 import { PANORAMA_VIEWER } from '../panorama/panorama-pane';
 import { FakeViewer } from '../panorama/fake-viewer';
 
@@ -126,16 +126,25 @@ describe('EntryPage', () => {
     http.expectNone((r) => r.url.includes('/api'));
   });
 
-  it('awaits a slow backend on the authoring host', async () => {
+  function waitingLine(fixture: ComponentFixture<EntryPage>): HTMLElement | null {
+    return (fixture.nativeElement as HTMLElement).querySelector('[data-waiting]');
+  }
+
+  it('awaits a slow backend on the authoring host with no deadline', async () => {
     vi.useFakeTimers();
     const fixture = mount();
     const probe = http.expectOne('/api/session');
 
-    // Well past the old 2 s deadline; the authoring host really answers
-    // this slowly.
-    await vi.advanceTimersByTimeAsync(5_000);
+    // Far past the measured worst case (73.2 s) and past any deadline this
+    // page ever had: the authoring host really answers this slowly, and an
+    // unmarked page is the authoring host by contract.
+    await vi.advanceTimersByTimeAsync(60_000);
+    fixture.detectChanges();
     expect(decisionOf(fixture)).toBe('probing');
+    expect(viewerWrapper(fixture)?.hidden).toBe(true);
     expect(probe.cancelled).toBe(false);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(waitingLine(fixture)).toBeTruthy();
 
     probe.flush({ open: true, title: 'Old Town Fairfax' });
     await vi.advanceTimersByTimeAsync(0);
@@ -145,21 +154,59 @@ describe('EntryPage', () => {
     expect(navigate).toHaveBeenCalledWith(['/edit']);
   });
 
-  it('falls back to the viewer only after AUTHORING_HOST_FALLBACK_MS', async () => {
+  it('shows the waiting line only after WAITING_NOTICE_MS, and drops it on an answer', async () => {
     vi.useFakeTimers();
     const fixture = mount();
     const probe = http.expectOne('/api/session');
 
-    await vi.advanceTimersByTimeAsync(AUTHORING_HOST_FALLBACK_MS - 1);
-    expect(decisionOf(fixture)).toBe('probing');
+    await vi.advanceTimersByTimeAsync(WAITING_NOTICE_MS - 1);
+    fixture.detectChanges();
+    expect(waitingLine(fixture)).toBeNull();
 
     await vi.advanceTimersByTimeAsync(1);
     fixture.detectChanges();
+    expect(waitingLine(fixture)?.textContent).toContain('Waiting for the tour service');
+    // Information, not a decision.
+    expect(decisionOf(fixture)).toBe('probing');
+    expect(viewerWrapper(fixture)?.hidden).toBe(true);
+
+    probe.flush({ open: false });
+    await vi.advanceTimersByTimeAsync(0);
+    fixture.detectChanges();
+    expect(waitingLine(fixture)).toBeNull();
+  });
+
+  it('never shows the waiting line when the answer beats the notice', async () => {
+    vi.useFakeTimers();
+    const fixture = mount();
+    http.expectOne('/api/session').error(new ProgressEvent('error'), { status: 0 });
+    await vi.advanceTimersByTimeAsync(WAITING_NOTICE_MS * 2);
+    fixture.detectChanges();
+    expect(waitingLine(fixture)).toBeNull();
+  });
+
+  it('says so, and decides nothing, when the service answers with a 5xx', async () => {
+    const fixture = mount();
+    http.expectOne('/api/session').flush(null, { status: 524, statusText: 'A Timeout Occurred' });
+    await settle(fixture);
+
+    // Not "no backend": a Cloudflare 524 means the origin exists and was too
+    // slow, and the viewer would sit in front of a dead backend.
+    expect(decisionOf(fixture)).toBe('broken');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('524');
+    expect(viewerWrapper(fixture)).toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
+    http.expectNone((r) => r.url.startsWith('/api'));
+  });
+
+  it('reveals the viewer at once on a 404 (a static host with no SPA rewrite)', async () => {
+    const fixture = mount();
+    http.expectOne('/api/session').flush(null, { status: 404, statusText: 'Not Found' });
+    await settle(fixture);
 
     expect(decisionOf(fixture)).toBe('published');
     expect(viewerWrapper(fixture)?.hidden).toBe(false);
-    // Abandoned, so a late answer cannot yank the page from under a reader.
-    expect(probe.cancelled).toBe(true);
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('navigates to /edit when a tour is open', async () => {

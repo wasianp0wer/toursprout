@@ -1,4 +1,5 @@
 import { DOCUMENT } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { SessionApi, type SessionSummary } from '../core/session-api';
@@ -6,22 +7,16 @@ import { ViewerPage } from '../viewer/viewer-page';
 import { WelcomePage } from '../welcome/welcome-page';
 
 /**
- * How long an *unmarked* page waits for `/api/session` before giving up and
- * showing the viewer.
- *
- * This is not how a published site is told apart from the authoring host:
- * `publish.py` marks the zip's `index.html` (`data-published` on `<html>`),
- * and a marked page never probes. The deadline exists only so that an
- * unpublished bundle hand-copied onto a host with no backend — one that
- * black-holes `/api` instead of refusing it — degrades to the viewer rather
- * than hanging hidden until the browser's own connection timeout.
- *
- * It is long on purpose. The deployed authoring host has been measured
- * answering in 12–73 s, and a short deadline revealed the viewer to an
- * author who should have reached the editor. A refused connection or a 200
- * of HTML still reveals the viewer at once; only the *deadline* is slow.
+ * How long an unmarked page waits before it says so. The line is
+ * information, not a decision: the viewer stays hidden, nothing navigates,
+ * and the line goes when the answer comes. There is deliberately no deadline
+ * anywhere on this page — the deployed authoring host has been measured
+ * answering `/api/session` in 12–14 s usually and once in 73.2 s, so any
+ * deadline misroutes an author eventually, and an unmarked page *is* the
+ * authoring host by contract, where falling back to the viewer helps nobody
+ * (the viewer loads `tour-data/` from the same backend).
  */
-export const AUTHORING_HOST_FALLBACK_MS = 30_000;
+export const WAITING_NOTICE_MS = 5_000;
 
 /**
  * Whether `publish.py` marked this page as a published site's `index.html`.
@@ -73,37 +68,65 @@ export class EntryPage {
   private readonly router = inject(Router);
 
   /**
-   * 'probing' until the probe settles; then 'published' (show the viewer) or
-   * 'welcome' (show the front door). A tour being open has no state of its
+   * 'probing' until the probe settles; then 'published' (show the viewer),
+   * 'welcome' (show the front door) or 'broken' (the backend answered with a
+   * 5xx: say so, show nothing else). A tour being open has no state of its
    * own: the navigation to '/edit' destroys this component, so 'probing' is
    * what it was last, and the viewer stays hidden on the way out — unless
    * that navigation fails, which falls back to 'published'.
    */
-  protected readonly decision = signal<'probing' | 'published' | 'welcome'>('probing');
+  protected readonly decision = signal<'probing' | 'published' | 'welcome' | 'broken'>('probing');
+
+  /** The status of the 5xx behind 'broken', for the message. */
+  protected readonly brokenStatus = signal(0);
+
+  /** Whether the probe has been outstanding for `WAITING_NOTICE_MS`. Shown
+   * as a line of text and read by nothing else: it decides nothing. */
+  protected readonly waiting = signal(false);
 
   /** Whether this component is still the page. See `probe()`. */
   private gone = false;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => { this.gone = true; });
+    let notice: ReturnType<typeof setTimeout> | undefined;
+    this.stopNotice = () => { clearTimeout(notice); notice = undefined; this.waiting.set(false); };
+    inject(DestroyRef).onDestroy(() => { this.gone = true; this.stopNotice(); });
     if (isPublishedPage(inject(DOCUMENT))) {
       this.decision.set('published');
       return;
     }
+    notice = setTimeout(() => this.waiting.set(true), WAITING_NOTICE_MS);
     void this.probe();
   }
 
+  /** Clears the waiting-line timer and hides the line; safe to call twice. */
+  private readonly stopNotice: () => void;
+
   /**
-   * Only reached on an unmarked page, i.e. the authoring host. The backend
-   * may be slow, so the deadline is `AUTHORING_HOST_FALLBACK_MS`; it exists
-   * only so an unpublished bundle copied onto a dead host degrades to the
-   * viewer instead of hanging.
+   * Only reached on an unmarked page, i.e. the authoring host, which has a
+   * backend by definition and may be slow to answer. So there is no deadline:
+   * `get()` is called without one and the answer is read three ways.
+   *
+   * 1. Static-host signatures reveal the viewer at once: a refused or dead
+   *    connection (status 0), any 4xx (a plain static host with no SPA
+   *    rewrite answers `/api/session` with a 404, and that is exactly the
+   *    published case the viewer exists for), or a 200 that is not a
+   *    session summary.
+   * 2. A session summary routes to the editor or the welcome screen.
+   * 3. Any 5xx is 'broken', not static. Cloudflare answers 524 when the
+   *    origin outlives its 100 s limit; reading that as "no backend" would
+   *    put the viewer in front of an author whose backend is merely
+   *    failing. Nothing is revealed and nothing navigates.
    */
   private async probe(): Promise<void> {
-    // A refusal, a dead connection, a body that would not parse, a
-    // deadline: every one of them means no backend answered, so they all
-    // collapse into one answer that fails the shape check below.
-    const answer = await this.session.get(AUTHORING_HOST_FALLBACK_MS).catch(() => null);
+    let answer: unknown;
+    let failure: unknown;
+    try {
+      answer = await this.session.get();
+    } catch (err) {
+      failure = err;
+    }
+    this.stopNotice();
 
     // The visitor may have left '' inside the probe window — straight to
     // '/view', say. Deciding on behalf of a component that is no longer the
@@ -111,7 +134,12 @@ export class EntryPage {
     // them to '/edit' out of wherever they actually went.
     if (this.gone) return;
 
-    if (!isSessionSummary(answer)) {
+    if (failure instanceof HttpErrorResponse && failure.status >= 500) {
+      this.brokenStatus.set(failure.status);
+      this.decision.set('broken');
+      return;
+    }
+    if (failure !== undefined || !isSessionSummary(answer)) {
       this.decision.set('published');
       return;
     }

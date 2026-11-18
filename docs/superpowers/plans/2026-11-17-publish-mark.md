@@ -9,9 +9,9 @@ the authoring host awaits `/api/session` without a 2-second race.
 the `<html>` element of the `index.html` it copies into the zip — the on-disk
 `dist/index.html` is untouched, so the authoring host is unmarked. `EntryPage`
 reads `document.documentElement.dataset` synchronously at boot: marked → reveal
-the viewer at once, no probe; unmarked → await `/api/session` and route on the
-answer, with a generous fallback to the viewer only so an unpublished bundle on
-a dead host degrades rather than hangs.
+the viewer at once, no probe; unmarked → await `/api/session` with no deadline and
+route on the answer (revised after the 73.2 s measurement; see Task 2 and the
+Global Constraints).
 
 **Tech Stack:** FastAPI/pydantic backend, Angular 22 frontend, pytest, Vitest.
 
@@ -37,9 +37,17 @@ locally; the latency is the host's.
 - **The contract between the two tasks is exactly:** attribute name
   `data-published`, present with no value, on the `<html>` element. Presence
   is the signal (`'published' in document.documentElement.dataset`).
-- **Fallback for the unmarked path:** `AUTHORING_HOST_FALLBACK_MS = 30_000`,
-  after which the viewer is revealed. A refused connection or a 200-of-HTML
-  still reveals the viewer immediately, as today — only the *deadline* goes.
+- **The unmarked path has no deadline (revised).** A 30 s fallback
+  (`AUTHORING_HOST_FALLBACK_MS = 30_000`) was built first and then replaced:
+  the deployed host was measured answering in 12–14 s usually and once in
+  **73.2 s**, so any deadline still misroutes an author to the viewer, and an
+  unmarked page is the authoring host by contract, where the viewer helps
+  nobody (it loads `tour-data/` from the same backend). The answer is read
+  three ways: a refused connection (status 0), any 4xx, or a 200 that is not a
+  session summary reveals the viewer immediately; a session summary routes;
+  any 5xx is `'broken'` (a plain message with the status, viewer hidden, no
+  navigation). A waiting line appears after `WAITING_NOTICE_MS = 5_000`; it
+  decides nothing.
 - **`make check` green at the end of every task.** Commits end with
   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 
@@ -47,8 +55,11 @@ locally; the latency is the host's.
 
 1. A marked page must make **zero** `/api` requests — not a fast one, none.
    → Task 2 asserts no request was issued at all.
-2. An unmarked page whose backend answers in, say, 5 s (past the old 2 s)
-   must still reach `/edit`. → Task 2.
+2. An unmarked page whose backend answers arbitrarily late (the spec waits
+   60 s; measured worst case 73.2 s) must still reach `/edit`, with the
+   viewer hidden and the request not cancelled. A 5xx must be `'broken'`,
+   never the viewer. (Originally "falls back after 30 s"; replaced after the
+   73.2 s measurement.) → Task 2.
 3. The substitution must be anchored to the `<html` tag and applied once; a
    bundle whose `index.html` already carries the mark must not get it twice.
    → Task 1.
@@ -105,6 +116,66 @@ Expected: FAIL — `mark_published` not defined; no `data-published` in the zip.
 In the `dist` loop, when `path.name == "index.html"` at the dist root, write
 `mark_published(text)` via `zf.writestr` instead of `zf.write`. A single
 regex on the first `<html` tag; no-op if already marked or if no tag.
+
+- [ ] **Step 4: Verify**
+
+Run: `cd backend && uv run ruff check app tests ../content/scripts && uv run pytest -q`
+Expected: PASS, ruff clean.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/app/publish.py backend/tests/test_publish.py
+git commit -m "Mark a published index.html so it never probes /api"
+```
+
+---
+
+### Task 2: `EntryPage` reads the mark; the host awaits
+
+**Files:**
+- Modify: `frontend/src/app/entry/entry-page.ts`
+- Test: `frontend/src/app/entry/entry-page.spec.ts`
+
+**Interfaces:**
+- Consumes: the contract above.
+- Produces: `WAITING_NOTICE_MS = 5_000`; `isPublishedPage(doc: Document):
+  boolean` exported for the test; a `'broken'` decision state.
+
+> **Revised.** This task was first built with a 30 s fallback
+> (`AUTHORING_HOST_FALLBACK_MS`) after which the viewer was revealed. The
+> 73.2 s measurement showed any deadline still misroutes a slow author, so the
+> fallback was deleted and the design below replaced it.
+
+- [ ] **Step 1: Write the failing tests** in `entry-page.spec.ts`
+
+- Marked page: viewer revealed synchronously, `expectNone(/api/)`.
+- Unmarked, 60 s of fake time with the request pending: `'probing'`, viewer
+  hidden, request not cancelled, no navigation, waiting line visible; then
+  `flush({open: true})` navigates to `/edit`.
+- Waiting line absent at `WAITING_NOTICE_MS - 1`, present at it, gone after
+  an answer, never shown if the answer beats it.
+- `flush(null, {status: 524, ...})` → `'broken'`, message contains `524`,
+  viewer gone, no navigation, no `/api` retry.
+- `flush(null, {status: 404, ...})` → `'published'` at once (static host with
+  no SPA rewrite). Refused (status 0) and 200-of-HTML stay immediate.
+- Remove the 30 s boundary test; its premise is gone. Clear `data-published`
+  in `afterEach`.
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `cd frontend && npx ng test --watch=false`
+Expected: FAIL — the unmarked page still reveals the viewer on a 5xx; no
+`'broken'` state; no waiting line.
+
+- [ ] **Step 3: Implement**
+
+`isPublishedPage(doc)` → `'published' in doc.documentElement.dataset`. In the
+constructor: if published, `decision.set('published')` and return without
+probing. Otherwise start the waiting timer (cleared on answer and on destroy)
+and `probe()`: `SessionApi.get()` with no timeout; classify the failure by its
+`HttpErrorResponse.status` (5xx → `'broken'`, everything else → viewer).
+Keep the `gone` guard and the lazy-chunk fallback exactly as they are.
 
 - [ ] **Step 4: Verify**
 

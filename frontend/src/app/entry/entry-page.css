@@ -20,3 +20,5 @@
   pointer-events: none;
 }
 .pending { padding: 2rem; color: #c9ccd3; }
+/* Over the invisible viewer, not beside it: it must not move the viewer's box. */
+.waiting { position: fixed; top: 0; left: 0; right: 0; padding: 2rem; color: #c9ccd3; }
