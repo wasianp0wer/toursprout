@@ -494,6 +494,22 @@ export function addMediaOverlay(
   return mapStop(base, stopId, (s) => ({ ...s, overlays: [...s.overlays, overlay] }));
 }
 
+/**
+ * Point an image or audio overlay at a different, already-uploaded file.
+ * Only `mediaId` changes: the title and credit are deliberately kept (that
+ * is the author's decision, and they can edit either afterwards), as are the
+ * body, anchor and display. The old file is left on the server as an orphan.
+ *
+ * Refused (same reference) for a missing overlay, a text overlay, media of
+ * the other kind, or the file it already has.
+ */
+export function replaceOverlayMedia(tour: Tour, overlayId: string, mediaId: string): Tour {
+  const found = tour.stops.flatMap((s) => s.overlays).find((o) => o.id === overlayId);
+  if (!found || found.kind === 'text') return tour;
+  if (mediaKindOf(mediaId) !== found.kind || found.mediaId === mediaId) return tour;
+  return updateOverlay(tour, overlayId, { mediaId });
+}
+
 /** The credit's human-facing text: creator for original, source for sourced. */
 export function creditText(credit: Credit): string {
   return credit.type === 'original' ? credit.creator : credit.source;

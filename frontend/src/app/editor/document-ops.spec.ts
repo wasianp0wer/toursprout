@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LastStopError, addMediaOverlay, defaultsAnswerValid, hasDefaults, mediaKindOf, setTourDefaults, addStop, addTextOverlay, defaultCreditFor, deleteOverlay,
+  LastStopError, addMediaOverlay, replaceOverlayMedia, defaultsAnswerValid, hasDefaults, mediaKindOf, setTourDefaults, addStop, addTextOverlay, defaultCreditFor, deleteOverlay,
   deleteStop, deriveHeading, legalModesFor, moveStop, renumberStops,
   setOverlayKind, slugify, uniqueId, updateOverlay,
   creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
@@ -784,5 +784,46 @@ describe('theme ops', () => {
     expect(setTypePairing(t, 'comic' as never)).toBe(t);
     expect(setTypeScale(t, 'huge' as never)).toBe(t);
     expect(setTourLayout(t, 'sideways' as never)).toBe(t);
+  });
+});
+
+describe('replaceOverlayMedia', () => {
+  const image = overlay('o1', {
+    kind: 'image', mediaId: 'a-1111.jpg', title: 'Custom title', body: null,
+    credit: { type: 'original', creator: 'Someone Else', license: 'CC0-1.0' },
+    anchor: { type: 'geo', lng: -77.31, lat: 38.85, altitudeM: 4 },
+    display: { mode: 'inWorld', opacity: 0.7, headingDeg: 284.4, widthM: 18, heightM: 12 },
+  });
+  const withOverlay = (o: ReturnType<typeof overlay>) => tour([stop('s1', 1, [o])]);
+
+  it('sets mediaId and nothing else', () => {
+    const out = replaceOverlayMedia(withOverlay(image), 'o1', 'b-2222.png');
+    expect(out.stops[0].overlays[0]).toEqual({ ...image, mediaId: 'b-2222.png' });
+  });
+
+  it('refuses a kind mismatch', () => {
+    const t = withOverlay(image);
+    expect(replaceOverlayMedia(t, 'o1', 'clip-3333.webm')).toBe(t);
+  });
+
+  it('refuses a text overlay', () => {
+    const t = withOverlay(overlay('o1', { kind: 'text', mediaId: null }));
+    expect(replaceOverlayMedia(t, 'o1', 'b.jpg')).toBe(t);
+  });
+
+  it('refuses a missing overlay', () => {
+    const t = withOverlay(image);
+    expect(replaceOverlayMedia(t, 'nope', 'b-2222.png')).toBe(t);
+  });
+
+  it('returns the same tour when the id is unchanged', () => {
+    const t = withOverlay(image);
+    expect(replaceOverlayMedia(t, 'o1', 'a-1111.jpg')).toBe(t);
+  });
+
+  it('replaces audio with audio', () => {
+    const t = withOverlay(overlay('o1', { kind: 'audio', mediaId: 'a.m4a' }));
+    const out = replaceOverlayMedia(t, 'o1', 'b.webm');
+    expect(out.stops[0].overlays[0].mediaId).toBe('b.webm');
   });
 });
