@@ -5,7 +5,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Router, provideRouter } from '@angular/router';
-import { EntryPage, SESSION_PROBE_TIMEOUT_MS } from './entry-page';
+import { EntryPage, AUTHORING_HOST_FALLBACK_MS } from './entry-page';
 import { PANORAMA_VIEWER } from '../panorama/panorama-pane';
 import { FakeViewer } from '../panorama/fake-viewer';
 
@@ -45,6 +45,9 @@ describe('EntryPage', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    // jsdom's document outlives each test; a leftover mark would make every
+    // later test a published page.
+    document.documentElement.removeAttribute('data-published');
   });
 
   function mount(): ComponentFixture<EntryPage> {
@@ -112,19 +115,50 @@ describe('EntryPage', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it('treats a probe timeout as no backend', async () => {
+  it('reveals the viewer at once on a published page and never calls /api', () => {
+    document.documentElement.setAttribute('data-published', '');
+    const fixture = mount();
+
+    // Synchronously: no probe, so nothing to wait for.
+    expect(decisionOf(fixture)).toBe('published');
+    expect(viewerWrapper(fixture)?.hidden).toBe(false);
+    // None, not a fast one: a published host may black-hole /api.
+    http.expectNone((r) => r.url.includes('/api'));
+  });
+
+  it('awaits a slow backend on the authoring host', async () => {
     vi.useFakeTimers();
     const fixture = mount();
     const probe = http.expectOne('/api/session');
 
-    await vi.advanceTimersByTimeAsync(SESSION_PROBE_TIMEOUT_MS);
+    // Well past the old 2 s deadline; the authoring host really answers
+    // this slowly.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(decisionOf(fixture)).toBe('probing');
+    expect(probe.cancelled).toBe(false);
+
+    probe.flush({ open: true, title: 'Old Town Fairfax' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // (`probe.cancelled` is true after any answer — the subscription is torn
+    // down on completion — so it is only meaningful above, before one.)
+    expect(navigate).toHaveBeenCalledWith(['/edit']);
+  });
+
+  it('falls back to the viewer only after AUTHORING_HOST_FALLBACK_MS', async () => {
+    vi.useFakeTimers();
+    const fixture = mount();
+    const probe = http.expectOne('/api/session');
+
+    await vi.advanceTimersByTimeAsync(AUTHORING_HOST_FALLBACK_MS - 1);
+    expect(decisionOf(fixture)).toBe('probing');
+
+    await vi.advanceTimersByTimeAsync(1);
     fixture.detectChanges();
 
     expect(decisionOf(fixture)).toBe('published');
     expect(viewerWrapper(fixture)?.hidden).toBe(false);
-    // The deadline abandons the request rather than leaving it dangling, so
-    // a host that black-holes /api/session cannot answer late and yank the
-    // page out from under a reader.
+    // Abandoned, so a late answer cannot yank the page from under a reader.
     expect(probe.cancelled).toBe(true);
   });
 

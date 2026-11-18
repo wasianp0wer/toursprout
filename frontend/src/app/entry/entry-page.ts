@@ -1,3 +1,4 @@
+import { DOCUMENT } from '@angular/common';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { SessionApi, type SessionSummary } from '../core/session-api';
@@ -5,17 +6,31 @@ import { ViewerPage } from '../viewer/viewer-page';
 import { WelcomePage } from '../welcome/welcome-page';
 
 /**
- * How long the entry page waits for `/api/session` before deciding there is
- * no backend. A published tour is the built app plus `tour-data/` on a static
- * host, and a static host is free to black-hole an unknown path rather than
- * refuse it. Without a deadline that visitor would stare at a hidden viewer
- * until the browser's own connection timeout — minutes, on some networks.
+ * How long an *unmarked* page waits for `/api/session` before giving up and
+ * showing the viewer.
  *
- * Two seconds is long enough that a backend on localhost, or one still
- * starting up, always wins the race, and short enough that a visitor who
- * loses it does not read the page as broken.
+ * This is not how a published site is told apart from the authoring host:
+ * `publish.py` marks the zip's `index.html` (`data-published` on `<html>`),
+ * and a marked page never probes. The deadline exists only so that an
+ * unpublished bundle hand-copied onto a host with no backend — one that
+ * black-holes `/api` instead of refusing it — degrades to the viewer rather
+ * than hanging hidden until the browser's own connection timeout.
+ *
+ * It is long on purpose. The deployed authoring host has been measured
+ * answering in 12–73 s, and a short deadline revealed the viewer to an
+ * author who should have reached the editor. A refused connection or a 200
+ * of HTML still reveals the viewer at once; only the *deadline* is slow.
  */
-export const SESSION_PROBE_TIMEOUT_MS = 2000;
+export const AUTHORING_HOST_FALLBACK_MS = 30_000;
+
+/**
+ * Whether `publish.py` marked this page as a published site's `index.html`.
+ * Presence is the signal (`<html data-published>`, no value). The on-disk
+ * `dist/index.html` that the authoring host serves is deliberately unmarked.
+ */
+export function isPublishedPage(doc: Document): boolean {
+  return 'published' in doc.documentElement.dataset;
+}
 
 /**
  * What '' resolves to: the one route that has to work out who is asking.
@@ -28,10 +43,10 @@ export const SESSION_PROBE_TIMEOUT_MS = 2000;
  * because an author's workbench leaked into a published site is the failure
  * this component exists to prevent.
  *
- * A published site has no backend, so whether `/api/session` answers is the
- * only signal that separates "authoring" from "published". That makes the
- * probe unavoidable, which leaves one problem: the public visitor must not
- * pay for it. So the viewer is mounted immediately, hidden, and starts its
+ * A published site is marked at publish time (see `isPublishedPage`), and a
+ * marked page decides 'published' immediately and makes no `/api` request at
+ * all. Only an unmarked page — the authoring host — probes `/api/session` to
+ * learn whether a tour is open. The viewer is mounted immediately, hidden, and starts its
  * own `tour-data/` fetches concurrently with the probe — the same eager
  * mount '' used to get by being `ViewerPage` itself, for the same reason. A
  * visitor who just navigated here should not wait on a second, sequential
@@ -71,14 +86,24 @@ export class EntryPage {
 
   constructor() {
     inject(DestroyRef).onDestroy(() => { this.gone = true; });
+    if (isPublishedPage(inject(DOCUMENT))) {
+      this.decision.set('published');
+      return;
+    }
     void this.probe();
   }
 
+  /**
+   * Only reached on an unmarked page, i.e. the authoring host. The backend
+   * may be slow, so the deadline is `AUTHORING_HOST_FALLBACK_MS`; it exists
+   * only so an unpublished bundle copied onto a dead host degrades to the
+   * viewer instead of hanging.
+   */
   private async probe(): Promise<void> {
     // A refusal, a dead connection, a body that would not parse, a
     // deadline: every one of them means no backend answered, so they all
     // collapse into one answer that fails the shape check below.
-    const answer = await this.session.get(SESSION_PROBE_TIMEOUT_MS).catch(() => null);
+    const answer = await this.session.get(AUTHORING_HOST_FALLBACK_MS).catch(() => null);
 
     // The visitor may have left '' inside the probe window — straight to
     // '/view', say. Deciding on behalf of a component that is no longer the
