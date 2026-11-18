@@ -529,6 +529,14 @@ components at all.*
 
 ## 20. The probing wrapper's layout on a real published build
 
+> **Partly superseded 2026-11-17 by [entry 45](#45-a-published-page-that-knows-it-is-published)
+> and ADR [0010](decisions/0010-a-published-page-knows-it-is-published.md).**
+> A published `index.html` is now marked and reveals the viewer at once, so
+> the published visitor no longer sits behind a hidden wrapper while a probe
+> runs. The wrapper is still mounted hidden on the unmarked path, and the
+> sizing hazard below is still the thing to check on the reveal itself. The
+> text is kept as written.
+
 *The most likely way the front door breaks a published site, and the hazard
 runs in the direction that is easy to get backwards.*
 
@@ -561,6 +569,14 @@ runs in the direction that is easy to get backwards.*
 
 ## 21. The 2 s probe deadline against a host that black-holes `/api/session`
 
+> **Superseded 2026-11-17.** The 2 s deadline (`SESSION_PROBE_TIMEOUT_MS`) is
+> gone: the deployed authoring host answers `/api/session` in 12-73 s, so it
+> always lost, and a published page no longer probes at all. The constant is
+> now `AUTHORING_HOST_FALLBACK_MS` (30 s) and applies to unmarked pages only.
+> See ADR [0010](decisions/0010-a-published-page-knows-it-is-published.md) and
+> [entry 45](#45-a-published-page-that-knows-it-is-published). Kept as
+> written, because it records what was reasoned before the host was measured.
+
 - **Unproven:** the deadline against a real one. A refused connection resolves
   in single-digit milliseconds, which is the normal published case and the one
   that is easy to try. A static host is equally free to accept the connection
@@ -578,6 +594,11 @@ runs in the direction that is easy to get backwards.*
   slower than that, the constant is the thing to change, not the design.
 
 ## 22. What a black-holed probe costs the published visitor
+
+> **Superseded 2026-11-17.** A marked, published page makes no probe, so the
+> published visitor no longer pays this blank page. The same cost, now up to
+> 30 s, is borne only by an unpublished bundle hand-copied onto a host with no
+> backend: [entry 45](#45-a-published-page-that-knows-it-is-published), part 2.
 
 *Written down because it is a deliberate trade, not a bug, and the next person
 to see it should not have to rediscover that.*
@@ -1493,6 +1514,37 @@ See also **entry 40**, which records that `index.html` on the host loses its
 `no-cache` header under the front controller. That is the same hazard in the
 other direction — a cached shell pinning an old build, rather than a cached
 document pinning an old tour — and the two are worth reading together.
+
+## 45. A published page that knows it is published
+
+*Written 2026-11-17, with ADR
+[0010](decisions/0010-a-published-page-knows-it-is-published.md). It
+supersedes entries 20 to 22 on the probe deadline.*
+
+1. **Unproven: the published path in a browser.** That a published
+   `index.html` carrying `<html data-published>` really reveals the viewer at
+   once and makes no `/api` request on a real static host. `entry-page.spec.ts`
+   pins it in jsdom (`expectNone` on the session request), and a backend test
+   pins that the zip's `index.html` is marked and the on-disk one is not. No
+   browser has loaded a real published zip, and a host that rewrites or
+   re-serves `index.html` could in principle drop the attribute.
+   - **Close it:** publish, unzip onto a static host, open it with the network
+     panel up. Pass: the tour appears with no request to `/api/` at all.
+     Then open the authoring host's own `/`: the attribute must be absent from
+     the served `index.html` and the probe must still run.
+2. **Reasoned, not observed: the hand-copied unpublished bundle.** The 30 s
+   fallback is the accepted price of an unmarked `dist/` copied onto a host
+   that black-holes `/api`: a blank page for up to 30 s, then the viewer. A
+   refused connection or a 200 of HTML reveals it at once. Nobody has seen
+   either.
+3. **Never extracted for real on the host: the 0644 modes.** Verified on a
+   real build after a real `unzip` (31 entries, all 0644), not on the shared
+   host itself.
+4. **For the record, a small gap in Task 1's test.** The mode test chmods
+   `tour.json` and `index.html` to 0600 in the sources but not the other
+   `dist/` files, so a regression that copied source modes for only those
+   would pass. Every entry goes through the one helper `_add`, so the risk is
+   low; the gap is noted, not closed.
 
 ## Not on this list, deliberately
 

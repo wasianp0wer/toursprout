@@ -46,10 +46,10 @@ export function isPublishedPage(doc: Document): boolean {
  * A published site is marked at publish time (see `isPublishedPage`), and a
  * marked page decides 'published' immediately and makes no `/api` request at
  * all. Only an unmarked page — the authoring host — probes `/api/session` to
- * learn whether a tour is open. The viewer is mounted immediately, hidden, and starts its
- * own `tour-data/` fetches concurrently with the probe — the same eager
- * mount '' used to get by being `ViewerPage` itself, for the same reason. A
- * visitor who just navigated here should not wait on a second, sequential
+ * learn whether a tour is open. The viewer is mounted immediately, hidden,
+ * and starts its own `tour-data/` fetches concurrently with the probe — the
+ * same eager mount '' used to get by being `ViewerPage` itself, for the same
+ * reason. A visitor who just navigated here should not wait on a second, sequential
  * round trip before the tour can even begin loading. It is hidden rather
  * than shown because in an authoring checkout with nothing open those
  * fetches 404, and the viewer's "no tour is open" message must not flash up

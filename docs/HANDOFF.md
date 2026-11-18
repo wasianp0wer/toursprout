@@ -22,10 +22,39 @@ non-obvious calls were made, see the records in `docs/decisions/`
 
 ## Current state
 
-**Tests:** 713 backend (pytest), 854 frontend (Vitest, 38 files); lint and
+**Tests:** 719 backend (pytest), 863 frontend (Vitest, 38 files); lint and
 production build clean via `make check`, which exits 0 and prints `All checks
-passed!`. Eager bundle 2.17 MB raw / 375.35 kB transferred (2.15 MB / 372.22 kB
-before per-tour theming). **A cache bug found while the branch was being handed over, and fixed on
+passed!` (run on 2026-11-17, on `docs/publish-mark`). Eager bundle 2.17 MB raw
+/ 374.96 kB transferred (2.15 MB / 372.22 kB before per-tour theming; the
+editor, welcome and unnamed lazy chunks now print 122.47 / 12.56 / 10.15 kB
+raw, so the chunk figures just below are older).
+
+**The deployed authoring host is slow, and published pages now know they are
+published (2026-11-17, ADR [0010](decisions/0010-a-published-page-knows-it-is-published.md)).**
+`area51.reclaimhosting.com` (cPanel/CloudLinux, behind Cloudflare and Reclaim's
+proxy) answers `/api/session` in 12-73 s, measured. A cold CGI request of this
+app is 0.2 s locally, TLS is 0.06 s, and a 15 kB favicon takes 12.2 s on a
+Cloudflare miss against 0.33 s on a hit, so the latency is the host's path to
+its origin, not CGI and not the app. `EntryPage`'s 2 s probe therefore always
+timed out and showed the viewer to the author. The fix, which was the author's
+own proposal: `publish.py` marks the zip's `index.html` with `data-published`
+(the on-disk `dist/index.html` stays unmarked), a marked page never calls
+`/api`, and an unmarked page's probe deadline is now
+`AUTHORING_HOST_FALLBACK_MS` (30 s). Every zip entry is also written at 0644
+now (the session's 0600 used to leak onto `tour-data/*`). None of it has been
+seen in a browser or on the host: `UNVERIFIED.md` entry 45, which supersedes
+20 to 22.
+
+**Where the work is, as of 2026-11-17.** From the author's merge onward the
+work landed directly on `main` rather than on a feature branch: two commits
+were already on `origin/main` (`cebdc9f`, `dc43ad5`) and the five after them
+(`51ee7be` to `234b5d0`, the publish-mark work) were unpushed when this was
+written; this documentation is on `docs/publish-mark`. The City Hall panorama
+swap that `make content` produced (`content/coverage-report.json`,
+`content/media/manifest.json`, `content/tours/fairfax-old-town.json`) is
+parked in `stash@{0}`, taken on `feature/ui-customization`, and **whether to
+apply it is an open decision** for the author, not something to pop to make the
+tree clean. **A cache bug found while the branch was being handed over, and fixed on
 it.** The author's editor kept loading a tour from an earlier session while
 the session on disk held another, so every autosave was refused for the wrong
 schema version. `GET /tour-data/*` advertised `ETag` and `Last-Modified` but
@@ -179,8 +208,10 @@ The checklist for the first browser session, in the order to do it, is
 **What exists:**
 
 - **A front door** (`/`). `''` is no longer the viewer: it is a small eager
-  `EntryPage` that probes `GET /api/session` with a 2 s deadline and resolves
-  three ways. Request failed, a 200 that is not a session summary (what a
+  `EntryPage` that reads the publish-time mark and, if absent, probes
+  `GET /api/session` (30 s fallback deadline; it was 2 s until 2026-11-17, see
+  the note above). A marked page (`<html data-published>`) renders the viewer
+  at once with no request. Unmarked, it resolves three ways. Request failed, a 200 that is not a session summary (what a
   static host with SPA rewriting answers), or the deadline → render the
   **viewer in place**, no navigation, which is the published-site case.
   `{open: true}` → go to `/edit`. `{open: false}` → the welcome screen, a
@@ -833,12 +864,13 @@ Two things worth keeping in mind afterwards:
   before, 2.15 MB / 372.09 kB after — because the welcome screen is its own
   11.62 kB chunk and a published visitor never fetches it. That was the
   constraint the whole routing design was built around.
-- **A published visitor now pays a probe.** It is issued concurrently with
-  the viewer's own `tour-data/` fetches, so a refused connection costs
-  nothing measurable; a host that *black-holes* `/api/session` instead costs
-  the full 2 s deadline, as a blank page. That is a deliberate trade and it is
-  written down in `UNVERIFIED.md` entries 20 to 22 rather than left to be
-  rediscovered.
+- **A published visitor used to pay a probe, and no longer does.** *(Superseded
+  2026-11-17.)* It was issued concurrently with the viewer's own `tour-data/`
+  fetches, and a host that black-holed `/api/session` cost the full 2 s
+  deadline as a blank page, written down in `UNVERIFIED.md` entries 20 to 22.
+  A marked page now makes no probe (ADR 0010); the only visitor who can still
+  wait is one using an unpublished bundle hand-copied onto a host with no
+  backend, for up to 30 s.
 
 One thing this branch broke and the documentation pass caught: **the viewer's
 own 404 message had gone stale in exactly the way the entry above describes.**

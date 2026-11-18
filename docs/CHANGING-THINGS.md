@@ -277,10 +277,15 @@ A bundle is `bundle.json`, `tour.json` and `media/`, as a zip.
    working from files with no server; `app.routes.ts` keeps `**` pointing at
    `ViewerPage` so `https://host/tour/index.html` does not render a blank
    page.
-3. `''` is `EntryPage`, not the viewer: it probes `/api/session`, gets nothing
-   on a published site, and reveals the `ViewerPage` it already mounted. So a
-   published site now makes exactly one request that fails by design, and
-   **everything in `EntryPage` is downloaded and run by the public**. Keep it
+3. `''` is `EntryPage`, not the viewer. `build_site` marks the zip's
+   `index.html` (`mark_published`: valueless `data-published` on `<html>`) and
+   writes every entry at 0644; the on-disk `dist/index.html` is deliberately
+   left unmarked. `isPublishedPage` in `entry/entry-page.ts` is where the
+   decision lives: marked, it reveals the `ViewerPage` it already mounted and
+   makes no `/api` request; unmarked, it probes, with the deadline
+   `AUTHORING_HOST_FALLBACK_MS` (30 s). **Everything in `EntryPage` is
+   downloaded and run by the public**, ADR
+   [0010](decisions/0010-a-published-page-knows-it-is-published.md). Keep it
    small, keep the welcome screen inside its `@defer` block (importing
    `WelcomePage` anywhere outside it silently pulls the chunk into the eager
    bundle), and read "Routing: who is asking" in
@@ -458,10 +463,12 @@ the argument for each route's eagerness; read it before moving anything.
    guard test in `entry-page.spec.ts` stops that stopping being true without
    anyone noticing. If you need the probing state to show something, add it to
    the `probing` branch — do not reveal the viewer earlier.
-4. `SESSION_PROBE_TIMEOUT_MS` if the deadline is what is wrong. It exists for
-   a host that black-holes `/api/session` rather than refusing it; the cost of
-   raising it is a longer blank page for that visitor, and the cost of
-   lowering it is an author with a slow backend being sent to the viewer.
+4. `AUTHORING_HOST_FALLBACK_MS` if the deadline is what is wrong. It applies
+   to an unmarked page only, and exists so that an unpublished bundle
+   hand-copied onto a host that black-holes `/api/session` degrades instead of
+   hanging. The cost of raising it is a longer blank page for that visitor; the
+   cost of lowering it is an author on a slow host being sent to the viewer,
+   which is what the old 2 s did (the host answers in 12-73 s).
 
 **Fails if incomplete:** `frontend/src/app/entry/entry-page.spec.ts` covers
 all three outcomes, the timeout, the HTML-200 case, the concurrent viewer

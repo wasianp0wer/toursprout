@@ -63,7 +63,7 @@ the page, which is why a published tour needs no server.
 | Folder | Owns |
 | --- | --- |
 | `core/` | Shared by viewer and editor. `tour.models.ts` (TypeScript mirror of the schema), `tour-api.ts` (`TourApi`: reads `tour-data/`), `tour-store.ts` (`TourStore`: the viewer's walking state), `arrival.ts`, `geo.ts`, `credit.ts`, `config-store.ts`, `theme.ts` (the pure layer between a tour's stored theme and the colours the app paints with: the preset table, `resolveTheme`, `cssVariablesFor`, `markerColoursFor`, and the one definition of the token set; no DOM, no Angular). Also the **editor-only** clients, which live here but are never used by the viewer: `session-api.ts` and `tools-api.ts` (place search, the one tool still on the server) talk to our backend, and `mapillary-search.ts` (`MapillarySearch`) talks to `graph.mapillary.com` directly. |
-| `entry/` | Route `''`. `entry-page.ts` (`EntryPage`): the three-way decision below, and `SESSION_PROBE_TIMEOUT_MS`. Eager, and deliberately small. Its CSS is load-bearing — read the comment in `entry-page.css` before changing it. |
+| `entry/` | Route `''`. `entry-page.ts` (`EntryPage`): the three-way decision below, `isPublishedPage` (the publish-time mark) and `AUTHORING_HOST_FALLBACK_MS`. Eager, and deliberately small. Its CSS is load-bearing — read the comment in `entry-page.css` before changing it. |
 | `welcome/` | The front door, a lazy chunk reached only from `EntryPage`. `welcome-page.ts` (`WelcomePage`) and `dropped-files.ts`, which is the pure part: `readDroppedFiles` walks a dropped directory with `webkitGetAsEntry`, and `sortDrop` files each part under `media/`, keeps its nesting, and filters what a tour cannot contain. |
 | `viewer/` | `viewer-page.ts` (`ViewerPage`): loads config and tour, composes `map/`, `panorama/`, `stop/`. Routes `view` and `**`, and mounted in place by `EntryPage` at `''`. |
 | `map/`, `stop/` | The viewer's minimap (`map-pane.ts`, `route.ts`) and stop panel (`stop-panel.ts`). |
@@ -112,18 +112,32 @@ screen — a published site that asked its visitors to import a `.zip` would
 have leaked the author's workbench, which is the failure `EntryPage` exists to
 prevent.
 
-A published site has no backend, so whether `/api/session` answers is the only
-signal that separates the two worlds. `EntryPage` therefore probes it once:
+A published site is **told** that it is published. `publish.py` adds the
+valueless attribute `data-published` to the `<html>` tag of the zip's
+`index.html` (`mark_published`), and only there: the `dist/index.html` on disk,
+which the authoring host serves, is never marked. `EntryPage` reads it
+(`isPublishedPage`). A marked page reveals `ViewerPage` at once and makes no
+`/api` request at all. Only an unmarked page — the authoring host, or a bundle
+copied by hand — probes `/api/session` once:
 
-| What the probe says | What happens |
+| What the page says or the probe says | What happens |
 | --- | --- |
-| The request failed, or answered 200 with something that is not a session summary, or did not answer inside `SESSION_PROBE_TIMEOUT_MS` (2 s) | Reveal `ViewerPage` **in place**. No navigation, so the published URL is untouched. |
-| `{"open": true, …}` | Navigate to `/edit`. |
-| `{"open": false}` | Render the welcome screen, its own lazy chunk. |
+| `<html data-published>` | Reveal `ViewerPage` **in place**, immediately, with no probe. No navigation, so the published URL is untouched. |
+| Unmarked, and the request failed, or answered 200 with something that is not a session summary, or did not answer inside `AUTHORING_HOST_FALLBACK_MS` (30 s) | Reveal `ViewerPage` in place, as above. |
+| Unmarked, `{"open": true, …}` | Navigate to `/edit`. |
+| Unmarked, `{"open": false}` | Render the welcome screen, its own lazy chunk. |
 
-Three things about that are deliberate and are easy to undo by accident.
+This reverses an earlier design in which one byte-identical bundle was served
+everywhere and a 2 s probe told the two worlds apart. The deployed authoring
+host answers `/api/session` in 12-73 s (measured; the latency is the host's
+path to its origin, not CGI and not the app), so that probe always timed out
+and showed the viewer to an author. ADR
+[0010](decisions/0010-a-published-page-knows-it-is-published.md) has the
+measurements and the reasoning; the proposal to mark the page was the author's.
 
-- **A 200 is not proof of a backend.** A static host with SPA rewriting
+Three things about the unmarked path are deliberate and are easy to undo by accident. The long deadline exists only so that an *unpublished* bundle hand-copied onto a host that black-holes `/api` degrades after 30 s instead of hanging hidden; that wait is the accepted trade (`UNVERIFIED.md` entry 45).
+
+- **A 200 is not proof of a backend.** This still holds for the unmarked path. A static host with SPA rewriting
   answers every unknown path with `index.html`, so the body's *shape* is
   checked (`isSessionSummary`: an object with a boolean `open`) and not just
   the status. The cost of believing a 200 is showing the workbench to the
@@ -198,8 +212,9 @@ The same code serves two very different hosts:
 
 There is no "am I published?" check anywhere **in the viewer**. One set of URLs
 is the whole reason a published site needs no backend. `EntryPage` does ask
-the question, once, at `''` — see "Routing: who is asking" above — but it asks
-it on the viewer's behalf and the viewer is never told the answer: it loads
+the question at `''` when the page is unmarked — see "Routing: who is asking"
+above — but it asks it on the viewer's behalf and the viewer is never told the
+answer, and a marked page does not ask at all: it loads
 from `tour-data/` either way. `config.json` is written by the
 backend on startup and by every way a tour gets in — `new`, `import`,
 `import-files`, `examples` (`Session.write_config`, from
@@ -290,7 +305,14 @@ Points worth knowing before you touch any of it:
 <the working directory, <sessions_dir>/<sid>/…>              under tour-data/
 ```
 
-That is all it is. Because flow 1 reads `tour-data/…` relative to the page,
+That is nearly all it is. Two things are done to the bytes. `mark_published`
+applies one text substitution to the zip's `index.html` (`data-published` on
+`<html>`, see "Routing: who is asking"), and every entry is written through
+one helper at mode 0644 with its mtime from the source, rather than copying the
+session directory's 0600 onto the public site. Neither is knowledge of the
+document: the substitution looks at one HTML tag and not at `tour.json`, and
+the mode is a property of the destination, so `publish.py` still imports no
+schema. Because flow 1 reads `tour-data/…` relative to the page,
 unzipping onto any static host produces a working tour with no further step.
 The `tour-data/` prefix is not cosmetic: Angular already emits a `media/`
 directory for Leaflet's marker images, and tour media at the root would
