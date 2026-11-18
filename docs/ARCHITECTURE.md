@@ -131,7 +131,7 @@ deadline — before deciding anything:
 | Unmarked, any other 4xx, or any 5xx | **Broken.** Show "The tour service answered with an error (524). Reload to try again." with the status in it. The viewer is not shown, nothing navigates, nothing retries. |
 | Unmarked, no answer yet | Nothing is decided and the viewer stays hidden. After `WAITING_NOTICE_MS` (5 s) a line says "Waiting for the tour service…"; it is information only, and goes when the answer comes or the page is left. |
 
-The design has moved three times, and the earlier stages are worth knowing
+The design has had three forms, and the earlier ones are worth knowing
 because each failed for a reason that is still true. The first was one
 byte-identical bundle served everywhere, with a 2 s probe telling the two
 worlds apart. The deployed authoring host answers `/api/session` in 12-14 s
@@ -163,7 +163,8 @@ accident.
   the request or answers 404 they get the tour at once. That trade was accepted
   by the author; it is reasoned, not observed (`UNVERIFIED.md` entry 45).
 - **404 is the only 4xx that means "no backend".** The backend never returns
-  a 4xx from `GET /api/session`, so on the authoring host a 403, 408 or 429
+  a 4xx from `GET /api/session` (true by reading `main.py`, pinned by no
+  test: `UNVERIFIED.md` entry 45 item 6), so on the authoring host a 403, 408 or 429
   can only come from the CDN or proxy in front of a *live* backend, blocking
   or throttling it. That is "failing, not absent", like Cloudflare's 524 (its
   answer when the origin outlives its 100 s limit), and showing the viewer

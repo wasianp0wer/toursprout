@@ -44,9 +44,9 @@ export function isPublishedPage(doc: Document): boolean {
  * learn whether a tour is open. The viewer is mounted immediately, hidden,
  * and starts its own `tour-data/` fetches concurrently with the probe — the
  * same eager mount '' used to get by being `ViewerPage` itself, for the same
- * reason. A visitor who just navigated here should not wait on a second, sequential
- * round trip before the tour can even begin loading. It is hidden rather
- * than shown because in an authoring checkout with nothing open those
+ * reason. A visitor who just navigated here should not wait on a second,
+ * sequential round trip before the tour can even begin loading. It is hidden
+ * rather than shown because in an authoring checkout with nothing open those
  * fetches 404, and the viewer's "no tour is open" message must not flash up
  * in front of someone we are about to send somewhere else.
  *
@@ -70,14 +70,15 @@ export class EntryPage {
   /**
    * 'probing' until the probe settles; then 'published' (show the viewer),
    * 'welcome' (show the front door) or 'broken' (the backend answered with a
-   * 5xx: say so, show nothing else). A tour being open has no state of its
-   * own: the navigation to '/edit' destroys this component, so 'probing' is
-   * what it was last, and the viewer stays hidden on the way out — unless
-   * that navigation fails, which falls back to 'published'.
+   * 5xx, or a 4xx other than 404: say so, show nothing else). A tour being
+   * open has no state of its own: the navigation to '/edit' destroys this
+   * component, so 'probing' is what it was last, and the viewer stays hidden
+   * on the way out — unless that navigation fails, which falls back to
+   * 'published'.
    */
   protected readonly decision = signal<'probing' | 'published' | 'welcome' | 'broken'>('probing');
 
-  /** The status of the 5xx behind 'broken', for the message. */
+  /** The status behind 'broken' (a 5xx, or a 4xx other than 404), for the message. */
   protected readonly brokenStatus = signal(0);
 
   /** Whether the probe has been outstanding for `WAITING_NOTICE_MS`. Shown

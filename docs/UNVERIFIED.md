@@ -569,18 +569,19 @@ runs in the direction that is easy to get backwards.*
   but however long the backend takes, 12-14 s and once 73.2 s on the deployed
   host. The viewer's own `tour-data/` fetches go through the same slow path, so
   which finishes first is unmeasured, but a longer window can only make
-  `ready()` before the reveal likelier. It matters only when the reveal
-  happens at all: on the authoring host that is the editor chunk failing to
-  load and falling back to the viewer, and on a static host it is the normal
-  unmarked case.
-- **Close it:** on an **unmarked** `dist/` (not a published build, which no
-  longer probes and so never hides the viewer): serve
-  `frontend/dist/frontend/browser/` from a static server whose `/api/session`
-  answers 404 slowly, or hold the request open in a browser proxy for 15 s
-  and then fail it with a 404, and look at the map and the panorama after the
-  reveal. Or, on the authoring
-  host, make the editor chunk fail to load. Pass: both are correctly sized and
-  interactive. Fail:
+  `ready()` before the reveal likelier. This holds on the authoring host
+  only, where the reveal happens at all only if the editor chunk fails to load
+  and falls back to the viewer; on a static host the reveal follows a fast
+  refusal or 404 and the window is short.
+- **Close it:** it needs an unmarked page *with a tour beside it*; the bare
+  `frontend/dist/frontend/browser/` has no `tour-data/`, so the viewer would
+  show only its error and never build the map or panorama. Unzip a published
+  site and delete `data-published` from its `index.html` (or copy a session's
+  files into `tour-data/` beside `dist/`), serve that from a static server
+  whose `/api/session` answers 404 slowly, or hold the request open in a
+  browser proxy for 15 s and then fail it with a 404, and look at the map and
+  the panorama after the reveal. Or, on the authoring host, make the editor
+  chunk fail to load. Pass: both are correctly sized and interactive. Fail:
   a grey or clipped minimap, or a panorama at the wrong aspect, means the
   viewer measured a box it did not end up with — the fix is to add an
   `invalidateSize` on reveal rather than to weaken the CSS. Adding one fails

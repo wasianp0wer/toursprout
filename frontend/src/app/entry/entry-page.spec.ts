@@ -135,10 +135,10 @@ describe('EntryPage', () => {
     const fixture = mount();
     const probe = http.expectOne('/api/session');
 
-    // Far past the measured worst case (73.2 s) and past any deadline this
-    // page ever had: the authoring host really answers this slowly, and an
-    // unmarked page is the authoring host by contract.
-    await vi.advanceTimersByTimeAsync(60_000);
+    // 90 s: genuinely past the measured worst case (73.2 s) and past any
+    // deadline this page ever had. The authoring host really answers this
+    // slowly, and an unmarked page is the authoring host by contract.
+    await vi.advanceTimersByTimeAsync(90_000);
     fixture.detectChanges();
     expect(decisionOf(fixture)).toBe('probing');
     expect(viewerWrapper(fixture)?.hidden).toBe(true);

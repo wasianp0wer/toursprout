@@ -1,7 +1,8 @@
 # 0010 — A published page knows it is published
 
-Status: accepted, 2026-11-17. The decision was reached in three steps on the
-same day, each correcting the last; they are told in order below, because the
+Status: accepted, 2026-11-17, and revised the same day before it was merged,
+which is why this record is rewritten rather than superseded. The decision was
+reached in three steps after the 2 s probe, on the same day, each correcting the last; they are told in order below, because the
 earlier ones are the reasons for the later ones.
 
 Reverses one decision recorded in `docs/ARCHITECTURE.md`, "Routing: who is
@@ -88,7 +89,8 @@ service…", appears. It is information and decides nothing, and its timer is
 cleared on an answer and on destroy.
 
 Why 404 is the only 4xx counted as static: the backend never returns a 4xx on
-`GET /api/session`. On the authoring host, then, a 403, 408 or 429 can only be
+`GET /api/session` (by reading `main.py`; no test pins it, and `UNVERIFIED.md`
+entry 45 item 6 carries the label). On the authoring host, then, a 403, 408 or 429 can only be
 the CDN or proxy in front of a *live* backend blocking or throttling it, which
 is "failing, not absent", like a 524 (Cloudflare's answer when the origin
 outlives its 100 s limit). Revealing the viewer there would hide a failing

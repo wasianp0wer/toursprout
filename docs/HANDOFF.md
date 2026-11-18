@@ -38,7 +38,7 @@ took 73.2 s to first byte, measured. A cold CGI request of this app is
 Cloudflare miss against 0.33 s on a hit, so the latency is the host's path to
 its origin, not CGI and not the app. `EntryPage`'s 2 s probe therefore always
 timed out and showed the viewer to the author. The fix went through three
-stages, all the same day. The author proposed the first: `publish.py` marks
+stages after the 2 s probe, all the same day. The author proposed the first: `publish.py` marks
 the zip's `index.html` with `data-published` (the on-disk `dist/index.html`
 stays unmarked) and a marked page never calls `/api`. The second gave the
 unmarked page a 30 s fallback; it was found to be shorter than the 73.2 s
@@ -65,13 +65,13 @@ which is **not** publish-mark work) and the four publish-mark commits after
 it, `b618229` (the plan), `f504730`, `17cff28` and `234b5d0`.
 `feature/ui-customization` points at the same commit as `main` and is now
 meaningless. `docs/publish-mark` carries `87e22fa`, `240fe87`, `08270dd` and
-the documentation commit that rewrote this note. `stash@{0}` holds exactly the City
-Hall panorama swap (`1047663651213936`, 200.9 changed to `1412217390816350`,
-193.9, across `content/coverage-report.json`, `content/media/manifest.json`
+the documentation commit that rewrote this note. `stash@{0}` holds exactly
+the City Hall panorama swap (`1047663651213936`, 200.9 changed to
+`1412217390816350`, 193.9, across `content/coverage-report.json`, `content/media/manifest.json`
 and `content/tours/fairfax-old-town.json`); the author reported that it came
 from re-running `make content`. **Whether to apply it is an open decision**
 for the author, not something to pop to make the tree clean. (`stash@{1}` is
-older and unrelated.)
+a WIP on `main` at `dc42bae`, contents not inspected.)
 
 **A cache bug found while the branch was being handed over, and fixed on
 it.** The author's editor kept loading a tour from an earlier session while
