@@ -48,8 +48,8 @@ locally; the latency is the host's.
   nobody (it loads `tour-data/` from the same backend). The answer is read
   three ways: a refused connection (status 0), a 404, or a 200 that is not a
   session summary reveals the viewer immediately; a session summary routes;
-  every other 4xx and every 5xx is `'broken'` (a plain message with the status, viewer hidden, no
-  navigation). A waiting line appears after `WAITING_NOTICE_MS = 5_000`; it
+  every other 4xx and every 5xx is `'broken'` (a plain message with the
+  status, viewer hidden, no navigation). A waiting line appears after `WAITING_NOTICE_MS = 5_000`; it
   decides nothing.
 - **`make check` green at the end of every task.** Commits end with
   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
@@ -60,8 +60,8 @@ locally; the latency is the host's.
    → Task 2 asserts no request was issued at all.
 2. An unmarked page whose backend answers arbitrarily late (the spec waits
    60 s; measured worst case 73.2 s) must still reach `/edit`, with the
-   viewer hidden and the request not cancelled. A 5xx or a non-404 4xx must be `'broken'`,
-   never the viewer. (Originally "falls back after 30 s"; replaced after the
+   viewer hidden and the request not cancelled. A 5xx or a non-404 4xx must
+   be `'broken'`, never the viewer. (Originally "falls back after 30 s"; replaced after the
    73.2 s measurement.) → Task 2.
 3. The substitution must be anchored to the `<html` tag and applied once; a
    bundle whose `index.html` already carries the mark must not get it twice.
@@ -162,7 +162,8 @@ git commit -m "Mark a published index.html so it never probes /api"
   viewer gone, no navigation, no `/api` retry.
 - `flush(null, {status: 404, ...})` → `'published'` at once (static host with
   no SPA rewrite); `{status: 403}` → `'broken'`, message contains `403`.
-- Destroying before `WAITING_NOTICE_MS` leaves no timer behind. Refused (status 0) and 200-of-HTML stay immediate.
+- Destroying before `WAITING_NOTICE_MS` leaves no timer behind.
+- Refused (status 0) and 200-of-HTML stay immediate.
 - Remove the 30 s boundary test; its premise is gone. Clear `data-published`
   in `afterEach`.
 
@@ -178,8 +179,9 @@ Expected: FAIL — the unmarked page still reveals the viewer on a 5xx; no
 constructor: if published, `decision.set('published')` and return without
 probing. Otherwise start the waiting timer (cleared on answer and on destroy)
 and `probe()`: `SessionApi.get()` with no timeout; classify the failure by its
-`HttpErrorResponse.status` (404 and status 0 → viewer; every other 4xx and every 5xx → `'broken'`; the
-backend sends no 4xx itself, so those come from a proxy in front of it).
+`HttpErrorResponse.status` (404 and status 0 → viewer; every other 4xx and
+every 5xx → `'broken'`; the backend sends no 4xx itself, so those come from a
+proxy in front of it).
 Keep the `gone` guard and the lazy-chunk fallback exactly as they are.
 
 - [ ] **Step 4: Verify**
@@ -190,7 +192,8 @@ Expected: `All checks passed!`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src/app/entry frontend/src/app/core/session-api.ts
+git add frontend/src/app/entry frontend/src/app/core/session-api.ts \
+  frontend/src/app/core/session-api.spec.ts
 git commit -m "Await the backend with no deadline; read its answer three ways"
 ```
 

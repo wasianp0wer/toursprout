@@ -177,8 +177,8 @@ async function readBlobError(err: unknown): Promise<unknown> {
  *
  * `get()` and `putTour()` deliberately do not use it: the entry page has to
  * tell a dead connection, a 404 or non-JSON 200 from a static host and a
- * 5xx or 403 from a failing backend apart by the status of the failure, which a flattened string would destroy,
- * and autosave has its own `messageFrom` for putTour. */
+ * 5xx or 403 from a failing backend apart by the status of the failure,
+ * which a flattened string would destroy, and autosave has its own `messageFrom` for putTour. */
 function sessionMessage(err: unknown): string {
   if (err instanceof HttpErrorResponse) {
     if (err.status === 0) return 'could not reach the server';

@@ -215,12 +215,14 @@ describe('EntryPage', () => {
     const fixture = mount();
     http.expectOne('/api/session');
     fixture.destroy();
+    // Before any advance: after one, a leaked timer would already have
+    // fired and left the queue, so a count taken then proves nothing.
+    expect(vi.getTimerCount()).toBe(0);
 
     await vi.advanceTimersByTimeAsync(WAITING_NOTICE_MS * 2);
 
     expect((fixture.componentInstance as unknown as { waiting: () => boolean }).waiting())
       .toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('reveals the viewer at once on a 404 (a static host with no SPA rewrite)', async () => {
