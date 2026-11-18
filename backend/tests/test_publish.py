@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import re
 import zipfile
 from pathlib import Path
 
 import pytest
 
-from app.publish import PublishError, build_site
+from app.publish import PublishError, build_site, mark_published
 from app.session import Session
 
 
@@ -72,3 +73,43 @@ def test_the_published_tour_document_is_the_working_one(ready):
     with zipfile.ZipFile(out) as zf:
         doc = json.loads(zf.read("tour-data/tour.json"))
     assert doc["title"] == "Publishable"
+
+
+def test_the_published_index_is_marked_and_the_built_one_is_not(ready):
+    """The mark is how a published page knows not to probe /api. It lives
+    only in the zip: the on-disk dist/index.html serves the authoring host,
+    which must stay unmarked so it awaits the backend."""
+    session, dist, out = ready
+    before = (dist / "index.html").read_bytes()
+    build_site(session.path, dist, out)
+    with zipfile.ZipFile(out) as zf:
+        html = zf.read("index.html").decode()
+    assert re.search(r"<html[^>]*\bdata-published\b", html)
+    assert (dist / "index.html").read_bytes() == before
+
+
+def test_only_the_root_index_is_marked(ready):
+    session, dist, out = ready
+    (dist / "media" / "index.html").write_text("<html></html>")
+    build_site(session.path, dist, out)
+    with zipfile.ZipFile(out) as zf:
+        assert zf.read("media/index.html") == b"<html></html>"
+
+
+def test_mark_published_is_anchored_and_idempotent():
+    assert mark_published('<html lang="en">x') == '<html lang="en" data-published>x'
+    once = mark_published('<html lang="en">x')
+    assert mark_published(once) == once
+    assert mark_published("<p>no html tag</p>") == "<p>no html tag</p>"
+
+
+def test_mark_published_follows_existing_attributes():
+    built = '<!doctype html><html lang="en" data-beasties-container><head>'
+    marked = mark_published(built)
+    assert marked == (
+        '<!doctype html><html lang="en" data-beasties-container data-published>'
+        "<head>"
+    )
+    assert mark_published(marked) == marked
+    assert mark_published("<html>x") == "<html data-published>x"
+    assert mark_published("<html><body><html>") == "<html data-published><body><html>"
