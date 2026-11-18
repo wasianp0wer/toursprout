@@ -13,6 +13,8 @@ other. Keeping tour media under `tour-data/media/` keeps them apart.
 from __future__ import annotations
 
 import re
+import stat
+import time
 import zipfile
 from pathlib import Path
 
@@ -25,12 +27,28 @@ def mark_published(html: str) -> str:
     A published page reads this to know it is published and never probes
     `/api`. Inserted after whatever attributes the tag already carries; a no-op
     if the tag already has the mark or there is no `<html` tag at all.
+
+    Not hardened against a literal `>` inside an attribute value or a
+    self-closing `<html/>`: both are unreachable for a file this project
+    builds itself, so do not "fix" them.
     """
     match = _HTML_TAG.search(html)
     if match is None or re.search(r"(?<![\w-])data-published\b", match.group(1)):
         return html
     at = match.end(1)
     return html[:at] + " data-published" + html[at:]
+
+
+def _add(zf: zipfile.ZipFile, path: Path, arc: str, data: bytes) -> None:
+    """Write `data` as `arc`, mtime from `path`, mode always 0o644.
+
+    The session directory is private (0o600) by design, but a published zip is
+    public web content, so the source's mode is deliberately not copied.
+    """
+    info = zipfile.ZipInfo(arc, time.localtime(max(path.stat().st_mtime, 315532800))[:6])
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = (0o644 | stat.S_IFREG) << 16
+    zf.writestr(info, data)
 
 
 class PublishError(Exception):
@@ -55,14 +73,13 @@ def build_site(session_path: Path, dist: Path, out_zip: Path) -> None:
         for path in sorted(dist.rglob("*")):
             if path.is_file() and not path.name.startswith("."):
                 arc = path.relative_to(dist).as_posix()
+                data = path.read_bytes()
                 if arc == "index.html":
                     # Marked in the zip only; the file on disk serves the
                     # authoring host and must stay unmarked.
-                    text = path.read_text(encoding="utf-8")
-                    zf.writestr(arc, mark_published(text))
-                else:
-                    zf.write(path, arc)
+                    data = mark_published(data.decode("utf-8")).encode("utf-8")
+                _add(zf, path, arc, data)
         for path in sorted(session_path.rglob("*")):
             if path.is_file() and not path.name.startswith("."):
                 arc = Path("tour-data") / path.relative_to(session_path)
-                zf.write(path, arc.as_posix())
+                _add(zf, path, arc.as_posix(), path.read_bytes())

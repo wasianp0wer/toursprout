@@ -113,3 +113,17 @@ def test_mark_published_follows_existing_attributes():
     assert mark_published(marked) == marked
     assert mark_published("<html>x") == "<html data-published>x"
     assert mark_published("<html><body><html>") == "<html data-published><body><html>"
+
+
+def test_every_published_file_is_world_readable(ready):
+    """The session directory is private (0o600) by design; a published zip is
+    public web content, so no entry may keep an owner-only mode."""
+    session, dist, out = ready
+    for p in (session.path / "tour.json", dist / "index.html"):
+        p.chmod(0o600)
+    build_site(session.path, dist, out)
+    with zipfile.ZipFile(out) as zf:
+        infos = zf.infolist()
+        assert infos
+        for info in infos:
+            assert (info.external_attr >> 16) & 0o7777 == 0o644, info.filename
