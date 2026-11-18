@@ -461,8 +461,19 @@ def test_tour_data_tells_the_browser_it_must_revalidate(client, cfg):
         r = client.get(f"/tour-data/{path}")
         assert r.status_code == 200, path
         cc = r.headers.get("cache-control", "")
-        assert "no-cache" not in cc, f"{path} must not revalidate: {cc!r}"
-        assert "immutable" in cc, f"{path} should be immutable: {cc!r}"
+        assert "no-cache" not in cc, f"{path} must not revalidate on every load: {cc!r}"
+        # NOT immutable, which the second version of this got wrong. Only
+        # UPLOADED media is content-hashed (`store_media` names it
+        # `<slug>-<sha256>`); IMPORTED media keeps its original filename, and
+        # the shipped tour is entirely imports (`court-1863.jpg`,
+        # `pano/pano-fairfax-city-hall.jpg`). So the same url CAN come to mean
+        # different bytes -- `make content` regenerated that panorama under
+        # the same name -- and `immutable` would have told the browser not to
+        # ask for up to a year, even on reload. An hour keeps repeat loads
+        # free of requests (so the CGI slowdown cannot return) while a
+        # replaced file self-corrects on the next reload after that.
+        assert "immutable" not in cc, f"{path} must stay revalidatable on reload: {cc!r}"
+        assert "max-age=3600" in cc, f"{path} should cache for an hour: {cc!r}"
 
     # And on the 304 itself, or a browser could cache the bodyless response
     # and stop revalidating from then on.

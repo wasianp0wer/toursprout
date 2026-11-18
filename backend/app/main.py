@@ -878,12 +878,20 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         # 4.5 MB of panoramas, photographs and narration, and the first
         # version of this put `no-cache` on all of them — which made the
         # editor visibly slow to load and was reported by the author rather
-        # than caught here. `immutable` is simply the truth about a
-        # content-hashed name. Everything else under this route (`tour.json`,
+        # than caught here. Not `immutable`, though, and the second version
+        # of this got that wrong: only UPLOADED media is content-hashed
+        # (`store_media` names it `<slug>-<sha256>`), while IMPORTED media
+        # keeps its original filename -- and the shipped tour is entirely
+        # imports. So `media/pano/pano-fairfax-city-hall.jpg` really can come
+        # to mean different bytes (`make content` regenerated it under the
+        # same name), and `immutable` would have told the browser not to ask
+        # for a year, reload or not. An hour is the trade: repeat loads make
+        # no requests at all, and a replaced file corrects itself on the
+        # first reload after that. Everything else under this route (`tour.json`,
         # `config.json`, `bundle.json`) is mutable at a fixed url and gets
         # the revalidation below.
         if path.startswith("media/"):
-            cache_header = "public, max-age=31536000, immutable"
+            cache_header = "public, max-age=3600"
         else:
             cache_header = "no-cache"
         # `no-cache` means "you may keep a copy, but ask before using it",
