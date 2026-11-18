@@ -162,18 +162,18 @@ accident.
   waiting line indefinitely and never the tour. On a static host that refuses
   the request or answers 404 they get the tour at once. That trade was accepted
   by the author; it is reasoned, not observed (`UNVERIFIED.md` entry 45).
-- **404 is the only 4xx that means "no backend".** The backend never returns
-  a 4xx from `GET /api/session` (true by reading `main.py`, pinned by no
-  test: `UNVERIFIED.md` entry 45 item 6), so on the authoring host a 403, 408 or 429
-  can only come from the CDN or proxy in front of a *live* backend, blocking
-  or throttling it. That is "failing, not absent", like Cloudflare's 524 (its
+- **404 is the only 4xx that means "no backend".** The backend never returns a
+  4xx from `GET /api/session` (true by reading `main.py`, pinned by no test:
+  `UNVERIFIED.md` entry 45 item 6), so on the authoring host a 403, 408 or 429
+  can only come from the CDN or proxy in front of a *live* backend, blocking or
+  throttling it. That is "failing, not absent", like Cloudflare's 524 (its
   answer when the origin outlives its 100 s limit), and showing the viewer
   there would put the tour in front of an author whose backend is merely
   failing. An unmarked bundle on S3, which answers 403 for a missing key,
   therefore shows "broken (403)": out of contract, visible, accepted. One
   residual goes the other way: status 0 is read as "no backend", so a proxy
-  that *drops* a long-held connection without answering would reveal the
-  viewer to an author. Cloudflare answers 524 rather than dropping, so this is
+  that *drops* a long-held connection without answering would reveal the viewer
+  to an author. Cloudflare answers 524 rather than dropping, so this is
   probably rare behind Reclaim's chain; nobody has checked (`UNVERIFIED.md`
   entry 45).
 - **A 200 is not proof of a backend.** This still holds for the unmarked

@@ -37,24 +37,24 @@ took 73.2 s to first byte, measured. A cold CGI request of this app is
 0.20-0.32 s locally, TLS is 0.06 s, and a 15 kB favicon takes 12.2 s on a
 Cloudflare miss against 0.33 s on a hit, so the latency is the host's path to
 its origin, not CGI and not the app. `EntryPage`'s 2 s probe therefore always
-timed out and showed the viewer to the author. The fix went through three
-stages after the 2 s probe, all the same day. The author proposed the first: `publish.py` marks
-the zip's `index.html` with `data-published` (the on-disk `dist/index.html`
-stays unmarked) and a marked page never calls `/api`. The second gave the
-unmarked page a 30 s fallback; it was found to be shorter than the 73.2 s
-answer and was withdrawn. The third, by the author's ruling that an unmarked
-page *is* the authoring host by contract, is what the code does now: an
-unmarked page awaits `/api/session` with **no deadline**, shows "Waiting for
-the tour service…" after 5 s as information only, and reads the answer three
-ways: status 0, a 404 or a 200 that is not a session summary reveals the
-viewer at once (static-host signatures); a session summary goes to `/edit` or
-the welcome screen; every other 4xx and every 5xx is a visible "broken"
-message with the status, with no navigation. The accepted trade: a
+timed out and showed the viewer to the author. The fix went through two changes
+after the 2 s probe, all the same day. The author proposed the mark:
+`publish.py` marks the zip's `index.html` with `data-published` (the on-disk
+`dist/index.html` stays unmarked) and a marked page never calls `/api`. The
+same commit gave the unmarked page a 30 s fallback; it was found to be shorter
+than the 73.2 s answer and was withdrawn. The second change, by the author's
+ruling that an unmarked page *is* the authoring host by contract, is what the
+code does now: an unmarked page awaits `/api/session` with **no deadline**,
+shows "Waiting for the tour service…" after 5 s as information only, and reads
+the answer three ways: status 0, a 404 or a 200 that is not a session summary
+reveals the viewer at once (static-host signatures); a session summary goes to
+`/edit` or the welcome screen; every other 4xx and every 5xx is a visible
+"broken" message with the status, with no navigation. The accepted trade: a
 hand-copied, *unpublished* `dist/` on a static host that *black-holes* `/api`
 shows the waiting line for good (reasoned, not observed). Every zip entry is
 also written at 0644 now (the session's 0600 used to leak onto `tour-data/*`).
-None of it has been seen in a browser or on the host: `UNVERIFIED.md` entry
-45, which supersedes 20 to 22.
+None of it has been seen in a browser or on the host: `UNVERIFIED.md` entry 45,
+which supersedes 20 to 22.
 
 **Where the work is, as of 2026-11-17.** From the author's merge (2026-11-16,
 when HEAD moved to `main`) the work landed directly on `main` rather than on a
@@ -65,11 +65,11 @@ which is **not** publish-mark work) and the four publish-mark commits after
 it, `b618229` (the plan), `f504730`, `17cff28` and `234b5d0`.
 `feature/ui-customization` points at the same commit as `main` and is now
 meaningless. `docs/publish-mark` carries `87e22fa`, `240fe87`, `08270dd` and
-the documentation commit that rewrote this note. `stash@{0}` holds exactly
-the City Hall panorama swap (`1047663651213936`, 200.9 changed to
-`1412217390816350`, 193.9, across `content/coverage-report.json`, `content/media/manifest.json`
-and `content/tours/fairfax-old-town.json`); the author reported that it came
-from re-running `make content`. **Whether to apply it is an open decision**
+the documentation commit that rewrote this note. `stash@{0}` holds exactly the
+City Hall panorama swap (`1047663651213936`, 200.9 changed to
+`1412217390816350`, 193.9, across `content/coverage-report.json`,
+`content/media/manifest.json` and `content/tours/fairfax-old-town.json`); the
+author reported that it came from re-running `make content`. **Whether to apply it is an open decision**
 for the author, not something to pop to make the tree clean. (`stash@{1}` is
 a WIP on `main` at `dc42bae`, contents not inspected.)
 

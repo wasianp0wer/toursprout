@@ -458,13 +458,13 @@ the argument for each route's eagerness; read it before moving anything.
 2. `frontend/src/app/entry/entry-page.ts` for the decision itself. What each
    outcome is and why is in "Routing: who is asking"
    ([`ARCHITECTURE.md`](ARCHITECTURE.md)). Rules that are not obvious from the
-   code: a non-JSON 200 must be treated as "no backend", because that is what
-   a static host with SPA rewriting answers and the cost of believing it is
+   code: a non-JSON 200 must be treated as "no backend", because that is what a
+   static host with SPA rewriting answers and the cost of believing it is
    showing the workbench to the public; **404 is the only 4xx that means "no
-   backend"** (the backend never sends a 4xx from `GET /api/session`, by reading the
-   code and no test: `UNVERIFIED.md` entry 45 item 6; so any
-   other 4xx is a CDN or proxy failing in front of a live one, and revealing
-   the viewer there would hide it), while every other 4xx and every 5xx is
+   backend"** (the backend never sends a 4xx from `GET /api/session`, by
+   reading the code and no test: `UNVERIFIED.md` entry 45 item 6; so any other
+   4xx is a CDN or proxy failing in front of a live one, and revealing the
+   viewer there would hide it), while every other 4xx and every 5xx is
    `'broken'`; **there is no deadline**, and the `timeoutMs` parameter on
    `SessionApi.get()` is gone on purpose; and anything that resolves the probe
    must also check `gone`, because the visitor may have navigated away inside

@@ -2,7 +2,9 @@
 
 Status: accepted, 2026-11-17, and revised the same day before it was merged,
 which is why this record is rewritten rather than superseded. The decision was
-reached in three steps after the 2 s probe, on the same day, each correcting the last; they are told in order below, because the
+reached in two changes after the 2 s probe (the mark with a 30 s fallback, then
+the mark with no deadline, later narrowing what counts as static), all on the
+same day, each correcting the last; they are told in order below, because the
 earlier ones are the reasons for the later ones.
 
 Reverses one decision recorded in `docs/ARCHITECTURE.md`, "Routing: who is
@@ -40,7 +42,7 @@ authoring host and that only a *static* host could be slow. What was actually
 measured was the authoring host being slow. Nothing was measured on a published
 site's host, and nothing about its speed is claimed here.
 
-## Decision, in three steps
+## Decision, in three parts
 
 **1. A published page is told that it is published, at publish time, and does
 not infer it.** The proposal was the author's, made when the measurements came
@@ -90,14 +92,15 @@ cleared on an answer and on destroy.
 
 Why 404 is the only 4xx counted as static: the backend never returns a 4xx on
 `GET /api/session` (by reading `main.py`; no test pins it, and `UNVERIFIED.md`
-entry 45 item 6 carries the label). On the authoring host, then, a 403, 408 or 429 can only be
-the CDN or proxy in front of a *live* backend blocking or throttling it, which
-is "failing, not absent", like a 524 (Cloudflare's answer when the origin
-outlives its 100 s limit). Revealing the viewer there would hide a failing
-backend behind a tour that cannot load. The consequence is that an unmarked
-bundle on S3, which answers 403 for a missing key, shows "broken (403)": that
-is out of contract, visible, and accepted. This narrowing is the last commit
-in the sequence; the first version of step 3 treated every 4xx as static.
+entry 45 item 6 carries the label). On the authoring host, then, a 403, 408 or
+429 can only be the CDN or proxy in front of a *live* backend blocking or
+throttling it, which is "failing, not absent", like a 524 (Cloudflare's answer
+when the origin outlives its 100 s limit). Revealing the viewer there would
+hide a failing backend behind a tour that cannot load. The consequence is that
+an unmarked bundle on S3, which answers 403 for a missing key, shows "broken
+(403)": that is out of contract, visible, and accepted. This narrowing is the
+last commit in the sequence; the first version of part 3 treated every 4xx as
+static.
 
 ## The viewer still never calls `/api`
 

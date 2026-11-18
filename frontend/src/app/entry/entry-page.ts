@@ -69,7 +69,7 @@ export class EntryPage {
 
   /**
    * 'probing' until the probe settles; then 'published' (show the viewer),
-   * 'welcome' (show the front door) or 'broken' (the backend answered with a
+   * 'welcome' (show the front door) or 'broken' (the service answered with a
    * 5xx, or a 4xx other than 404: say so, show nothing else). A tour being
    * open has no state of its own: the navigation to '/edit' destroys this
    * component, so 'probing' is what it was last, and the viewer stays hidden
