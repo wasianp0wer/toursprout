@@ -7,6 +7,7 @@ import {
   type DisplayMode,
 } from './document-ops';
 import type { InWorldDisplay, OverlayKind } from '../core/tour.models';
+import { MediaField } from './media-field';
 import { MapillarySearch, type PanoramaCandidate } from '../core/mapillary-search';
 import { ToolsApi, type GeocodeResult } from '../core/tools-api';
 
@@ -42,7 +43,7 @@ function parseCoordinate(text: string): number | null {
  */
 @Component({
   selector: 'app-inspector-pane',
-  imports: [FormsModule],
+  imports: [FormsModule, MediaField],
   templateUrl: './inspector-pane.html',
   styleUrl: './inspector-pane.css',
 })

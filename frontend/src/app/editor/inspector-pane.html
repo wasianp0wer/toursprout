@@ -1,5 +1,6 @@
 @if (overlay(); as o) {
   <form class="inspector" (submit)="$event.preventDefault()">
+    @if (o.kind !== 'text' && o.mediaId) { <app-media-field [overlay]="o" /> }
     <label>Title <input type="text" data-field="title" name="title" [ngModel]="o.title" (ngModelChange)="setText('title', $event)" /></label>
     <label>Body <textarea data-field="body" name="body" [ngModel]="o.body ?? ''" (ngModelChange)="setText('body', $event)"></textarea></label>
     <label>Credit <input type="text" data-field="credit" name="credit" [ngModel]="credit()" (ngModelChange)="setCredit($event)" /></label>

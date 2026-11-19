@@ -1,0 +1,17 @@
+<div class="media-field">
+  @if (kind === 'image') {
+    <img data-media-preview class="preview" [src]="api.mediaUrl(overlay().mediaId!)" [alt]="overlay().title" (error)="missing.set('File not found.')" />
+  } @else {
+    <audio data-media-preview class="preview audio" controls preload="none">
+      <source [src]="api.mediaUrl(overlay().mediaId!)" [type]="audioType(overlay().mediaId!)" (error)="missing.set('File not found.')" />
+    </audio>
+  }
+  <span class="name" data-media-name>{{ overlay().mediaId }}</span>
+  @if (missing(); as note) { <span class="error" data-media-missing>{{ note }}</span> }
+  <button type="button" data-replace-file [disabled]="busy()" (click)="choose()">Replace file</button>
+  <input #fileInput type="file" hidden data-media-file
+    [accept]="kind === 'image' ? 'image/jpeg,image/png,image/webp' : 'audio/*,.webm,.m4a,.mp3,.ogg,.wav'"
+    (change)="onFile($event)" />
+  @if (busy()) { <span class="note" data-media-busy>Uploading...</span> }
+  @if (error(); as message) { <span class="error" role="alert" data-media-error>{{ message }}</span> }
+</div>

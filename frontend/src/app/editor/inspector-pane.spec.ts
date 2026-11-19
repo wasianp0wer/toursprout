@@ -4,6 +4,7 @@ import { InspectorPane } from './inspector-pane';
 import { EditorStore } from './editor-store';
 import { controlsWithoutLabelAbove, overlay, stop, tour } from './test-builders';
 import { MapillarySearch, type PanoramaCandidate } from '../core/mapillary-search';
+import { SessionApi } from '../core/session-api';
 import { ToolsApi, type GeocodeResult } from '../core/tools-api';
 import { vi } from 'vitest';
 import { deriveHeading, setOverlayAnchor, setStopLocation } from './document-ops';
@@ -51,8 +52,23 @@ describe('InspectorPane', () => {
   };
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ imports: [InspectorPane] });
+    TestBed.configureTestingModule({
+      imports: [InspectorPane],
+      providers: [{ provide: SessionApi, useValue: { uploadMedia: vi.fn() } }],
+    });
     store = TestBed.inject(EditorStore);
+  });
+
+  it('shows the media field for image and audio overlays, not text', async () => {
+    await start(overlay('o1', { kind: 'image', mediaId: 'p.jpg' }));
+    expect(q('app-media-field [data-media-preview]')).toBeTruthy();
+    expect(controlsWithoutLabelAbove(el)).toEqual([]);
+    fixture.destroy();
+    await start(overlay('o1', { kind: 'audio', mediaId: 'a.webm' }));
+    expect(q('app-media-field audio')).toBeTruthy();
+    fixture.destroy();
+    await start(overlay('o1'));
+    expect(q('app-media-field')).toBeNull();
   });
 
   it('shows a hint when nothing is selected', async () => {
@@ -315,6 +331,7 @@ describe('InspectorPane: placing a stop', () => {
     TestBed.configureTestingModule({
       imports: [InspectorPane],
       providers: [
+        { provide: SessionApi, useValue: { uploadMedia: vi.fn() } },
         { provide: ToolsApi, useValue: { geocode } },
         { provide: MapillarySearch, useValue: { panoramas } },
       ],
@@ -737,6 +754,7 @@ describe('InspectorPane: coordinate fields', () => {
     TestBed.configureTestingModule({
       imports: [InspectorPane],
       providers: [
+        { provide: SessionApi, useValue: { uploadMedia: vi.fn() } },
         { provide: ToolsApi, useValue: {} },
         { provide: MapillarySearch, useValue: {} },
       ],

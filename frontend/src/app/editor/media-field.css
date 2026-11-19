@@ -1,0 +1,7 @@
+:host { display: block; }
+.media-field { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+.preview { max-width: 240px; }
+.audio { width: 100%; max-width: none; }
+.name { font-size: 0.75rem; color: #9aa0ab; overflow-wrap: anywhere; }
+.note { font-size: 0.75rem; color: #9aa0ab; }
+.error { font-size: 0.8rem; color: #e8825b; }
