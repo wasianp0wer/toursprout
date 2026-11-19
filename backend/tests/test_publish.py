@@ -172,3 +172,21 @@ def test_without_an_icon_the_published_index_is_unchanged_but_marked(ready):
     build_site(session.path, dist, out)
     with zipfile.ZipFile(out) as zf:
         assert zf.read("index.html").decode() == mark_published(html)
+
+
+def test_the_real_index_html_has_an_icon_link_set_icon_replaces():
+    """set_icon is a silent no-op without a matching link, so pin the real
+    source page: if its icon link is reworded, a tour icon would stop
+    publishing with no error."""
+    src = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "index.html").read_text()
+    out = set_icon(src, "x.png")
+    assert out != src
+    assert "tour-data/media/x.png" in out
+
+
+def test_an_unreadable_open_tour_is_a_publish_error(ready):
+    session, dist, out = ready
+    (session.path / "tour.json").write_text("{")
+    with pytest.raises(PublishError, match="could not be read"):
+        build_site(session.path, dist, out)
+    assert not out.exists()

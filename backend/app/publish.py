@@ -23,6 +23,8 @@ import time
 import zipfile
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from .migration import migrate
 from .models import Tour
 
@@ -89,9 +91,12 @@ def build_site(session_path: Path, dist: Path, out_zip: Path) -> None:
             f"no built application at {dist}: run `make build` first"
         )
 
-    icon = Tour.model_validate(
-        migrate(json.loads((session_path / "tour.json").read_text("utf-8")))
-    ).icon
+    try:
+        icon = Tour.model_validate(
+            migrate(json.loads((session_path / "tour.json").read_text("utf-8")))
+        ).icon
+    except (ValueError, ValidationError) as exc:
+        raise PublishError(f"the open tour could not be read: {exc}") from exc
 
     out_zip.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:

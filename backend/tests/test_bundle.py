@@ -619,7 +619,7 @@ def test_a_staged_root_round_trips_through_read_bundle(tmp_path):
     }
     assert (dest / "media" / "photo.jpg").read_bytes() == JPEG
     assert (dest / "media" / "pano" / "voice.m4a").read_bytes() == M4A
-    assert warnings == ["media/pano/voice.m4a is not referenced by any overlay"]
+    assert warnings == ["media/pano/voice.m4a is not referenced by the tour"]
 
 
 @pytest.mark.parametrize("name", [
