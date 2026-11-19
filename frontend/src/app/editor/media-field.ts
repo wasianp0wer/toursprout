@@ -10,8 +10,8 @@ type MediaKind = 'image' | 'audio';
 
 /**
  * An image or audio overlay's file, shown in the inspector, with a way to
- * replace it by upload, or for audio by recording a new clip. Replacing changes only the overlay's mediaId: title,
- * credit and everything else stay.
+ * replace it by upload, or for audio by recording a new clip. Replacing
+ * changes only the overlay's mediaId: title, credit and everything else stay.
  *
  * The upload comes first and the document second, so a refused upload leaves
  * the draft, the undo stack and the dirty flag as they were. Busy and error
@@ -108,6 +108,11 @@ export class MediaField implements OnDestroy {
     void this.beginRecording();
   }
 
+  /**
+   * Ask for the microphone. The permission prompt can outlive the overlay or
+   * the component: discard, selection change and destroy bump startToken, so a
+   * start that resolves late releases its microphone instead of recording.
+   */
   private async beginRecording(): Promise<void> {
     this.recState.set('starting');
     this.recFormatNote.set(null);

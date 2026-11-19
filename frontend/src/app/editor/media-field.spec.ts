@@ -317,8 +317,38 @@ describe('MediaField', () => {
       fixture.detectChanges(); await settle();
       for (const t of tracks) expect(t.stop).toHaveBeenCalled();
       expect(q('[data-media-recording]')).toBeNull();
+      expect(q('[data-media-record-format]')).toBeNull();
       expect(q('[data-record-replace]')).toBeTruthy();
       expect(store.draft()).toBe(before);
+    });
+
+    /** getUserMedia that stays pending until `grant()`, standing in for the permission prompt. */
+    const pendingPrompt = () => {
+      let grant!: () => void;
+      const stream = installRecording({ getUserMedia: () => new Promise((r) => { grant = () => r(stream.stream); }) });
+      return { tracks: stream.tracks, grant: () => grant() };
+    };
+
+    it('releases a late start when another overlay was selected while starting', async () => {
+      const { tracks, grant } = pendingPrompt();
+      open([audio('o1'), audio('o2', 'other-3333.webm')]);
+      click('[data-record-replace]'); await settle();
+      fixture.componentRef.setInput('overlay', ov('o2'));
+      fixture.detectChanges(); await settle();
+      grant(); await settle();
+      for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+      expect(q('[data-media-recording]')).toBeNull();
+      expect(q('[data-record-replace-stop]')).toBeNull();
+      expect(q('[data-record-replace]')).toBeTruthy();
+    });
+
+    it('releases a late start when destroyed while starting', async () => {
+      const { tracks, grant } = pendingPrompt();
+      open([audio('o1')]);
+      click('[data-record-replace]'); await settle();
+      fixture.destroy();
+      grant(); await settle();
+      for (const t of tracks) expect(t.stop).toHaveBeenCalled();
     });
   });
 });
