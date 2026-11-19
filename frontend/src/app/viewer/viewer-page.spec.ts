@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -16,8 +16,14 @@ const TOUR: Tour = JSON.parse(
 
 describe('ViewerPage', () => {
   let http: HttpTestingController;
+  let favicon: HTMLLinkElement;
 
   beforeEach(() => {
+    favicon = document.createElement('link');
+    favicon.rel = 'icon';
+    favicon.type = 'image/x-icon';
+    favicon.setAttribute('href', 'favicon.ico');
+    document.head.appendChild(favicon);
     TestBed.configureTestingModule({
       imports: [ViewerPage],
       providers: [
@@ -28,6 +34,8 @@ describe('ViewerPage', () => {
     });
     http = TestBed.inject(HttpTestingController);
   });
+
+  afterEach(() => favicon.remove());
 
   it('shows an actionable message when the backend is unreachable', async () => {
     const fixture = TestBed.createComponent(ViewerPage);
@@ -101,7 +109,7 @@ describe('ViewerPage', () => {
     const footer = (fixture.nativeElement as HTMLElement).querySelector('.attribution')!;
     expect(footer.textContent).toContain('Photographs by the author');
     const links = [...footer.querySelectorAll('a')].map((a) => a.textContent?.trim());
-    expect(links).toEqual(['Map data (c) OpenStreetMap contributors']);
+    expect(links).toEqual(['Map data (c) OpenStreetMap contributors', 'Powered by TourSprout']);
   });
 
   async function mountWith(tour: Tour): Promise<{ fixture: ReturnType<typeof TestBed.createComponent<ViewerPage>>; host: HTMLElement }> {
@@ -118,6 +126,35 @@ describe('ViewerPage', () => {
     fixture.detectChanges();
     return { fixture, host: fixture.nativeElement as HTMLElement };
   }
+
+  describe('favicon and credit', () => {
+    it('points the favicon at the tour icon', async () => {
+      await mountWith({ ...TOUR, icon: 'logo.png' });
+      expect(favicon.getAttribute('href')).toMatch(/tour-data\/media\/logo\.png$/);
+      expect(favicon.type).toBe('image/png');
+    });
+
+    it('leaves the favicon alone when the tour has no icon', async () => {
+      await mountWith({ ...TOUR, icon: null });
+      expect(favicon.getAttribute('href')).toMatch(/favicon\.ico$/);
+    });
+
+    it('restores the original favicon when destroyed', async () => {
+      const { fixture } = await mountWith({ ...TOUR, icon: 'logo.png' });
+      fixture.destroy();
+      expect(favicon.getAttribute('href')).toMatch(/favicon\.ico$/);
+      expect(favicon.type).toBe('image/x-icon');
+    });
+
+    it('credits TourSprout after the data credits', async () => {
+      const { host } = await mountWith(TOUR);
+      const last = [...host.querySelectorAll('.attribution a')].pop()!;
+      expect(last.textContent?.trim()).toBe('Powered by TourSprout');
+      expect(last.getAttribute('href')).toBe('https://github.com/wasianp0wer/toursprout');
+      expect(last.getAttribute('target')).toBe('_blank');
+      expect(last.getAttribute('rel')).toBe('noopener');
+    });
+  });
 
   const ARCHIVAL: Tour = {
     ...TOUR,
