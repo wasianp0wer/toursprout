@@ -1611,6 +1611,52 @@ host, or a proxy in front of one, rather than a browser alone.*
    backend (a maintenance page, say), an author would be sent to the viewer.
    Unobserved.
 
+## 46. The tour icon and the footer credit, none of which has been seen in a browser
+
+*Written 2026-11-18, with the amendment to ADR
+[0009](decisions/0009-the-look-is-in-the-document.md). Items 1 and 3 need a
+host or a browser; items 2 and 4 need a browser and nothing else.*
+
+1. **Unseen: what the canvas makes.** `toIconPng` (`editor/icon-image.ts`)
+   draws the chosen image centred, aspect kept, on a transparent 256×256 canvas
+   and exports a PNG. jsdom has no canvas, so the suite pins only `fitSquare`,
+   the arithmetic, and that an image that will not decode is refused. Whether
+   the output is actually 256×256, actually transparent around a non-square
+   image, actually sharp at tab size, and whether an SVG, a very large photograph
+   or an image with an alpha channel survive the trip nobody knows.
+   - **Close it (a browser):** in the theme dialog, upload a landscape photo, a
+     portrait one, a transparent PNG and an SVG; download each stored
+     `media/<id>.png` and open it. Pass: square, centred, no stretching, padding
+     transparent, the thumbnail in the dialog matching.
+2. **Unseen: Preview, and Safari.** The viewer rewrites the page's
+   `link[rel~=icon]` at runtime and restores it on destroy. Whether a tab's icon
+   changes in response to that at all differs between browsers, and Safari is
+   the one most likely to keep the icon it first read. Nobody has watched
+   Preview in any browser, or `/edit` → `/view` → `/edit` to see that the
+   editor's tab gets its own icon back.
+   - **Close it (Chrome, Firefox, Safari):** set an icon, open Preview, look at
+     the tab; come back to the editor and look again. Pass: the tour's icon in
+     Preview and the original one in the editor. A Safari failure is a
+     limitation of Preview only, since the published page does not depend on
+     the runtime change.
+3. **Unseen: the published zip on a real host.** `set_icon` is tested against
+   the zip's `index.html` as text: the rewritten link, the escaped id, the
+   untouched on-disk file. That a browser fetches `tour-data/media/<id>` from
+   an unzipped site, under whatever base path the host serves it from and with
+   whatever content type it gives an extension-less file name, has not been
+   checked. The id ends `.png`, so the type should follow, but it is reasoned.
+   - **Close it (a host):** publish a tour with an icon, unzip it onto a static
+     host in a subdirectory, and load it with the network panel up. Pass: the
+     icon request is a 200 `image/png`, from `tour-data/media/`, and the tab
+     shows it with no script having run (disable JavaScript to be sure).
+4. **Unseen: the footer link.** "Powered by TourSprout" after the data credits,
+   to https://github.com/wasianp0wer/toursprout, in a new tab with
+   `rel="noopener"`. The suite pins the href and the text. How it sits in the
+   attribution bar at narrow widths, under each of the four presets, and
+   whether its contrast holds (`muted` on `attributionBar` is measured for the
+   data credits; this link shares the style and was not measured on its own)
+   is pixels.
+
 ## Not on this list, deliberately
 
 These are open decisions, not unverified facts: the `stops.json` drift and

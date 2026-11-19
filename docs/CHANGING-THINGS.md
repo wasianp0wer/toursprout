@@ -42,8 +42,8 @@ an existing field* (a new `kind`, a new `display` mode) leaves every existing
 document valid and needs no migration. A new optional **field** does not get
 that: `extra="forbid"` rejects it for an older reader, so it is a schema
 change with a version bump even though no existing document changes (ADR 0005;
-`theme` in v4 is the worked example, and its migration step is a version
-stamp and nothing else). Anything that makes a previously valid document
+`theme` in v4 and `icon` in v5 are the worked examples, and their migration
+steps are a version stamp and nothing else). Anything that makes a previously valid document
 invalid, or changes its shape, is a schema change too: see entry 3.
 
 ---
@@ -154,9 +154,13 @@ the editor unmigrated cannot even be saved. Migration is the only door.
 holds `fairfax-old-town-v1.json`, `-v2.json` and `-v3.json`, each a
 snapshot of the repository's real tour at that version, never refreshed. They
 are what makes the chain testable against real content instead of comparing
-an already-current document to itself. The next bump, to v5, needs
-`…-v4.json` frozen first: snapshot the real tour at v4 before you change the
-models.
+an already-current document to itself. **There is no `-v4.json`:** the bump to
+v5 (the tour icon) did not freeze one, and `test_v4_to_v5_is_a_version_bump_and_changes_nothing_else`
+runs on a small hand-built v4 document instead. That is enough for a step that
+only stamps the version, and it is a gap all the same. The next bump, to v6,
+should freeze the real tour at v5 first, before you change the models, and
+may as well freeze v4 from `git show aec65c1:content/tours/fairfax-old-town.json`
+while it is there.
 
 **Fails if incomplete:** `backend/tests/test_migration.py` (add cases for each
 migrated shape; `test_the_real_tour_migrates_and_validates`,
@@ -582,6 +586,43 @@ that resolves at build time and 404s on a published site, or for the preview
 drifting from the viewer in any way a token name does not show: all of those
 are `UNVERIFIED.md` entry 43.
 
+## 12. Change the tour's icon or the footer credit
+
+The icon is `Tour.icon`, a top-level `MediaRef` ending `.png`, and **not** part
+of `theme`: a theme holds enumerated names and `#rrggbb` and nothing that names
+a file the viewer fetches (ADR 0009 §2). It is schema v5 (entry 3 for any
+change to the field itself).
+
+1. `frontend/src/app/editor/icon-image.ts`: what an uploaded image becomes.
+   `ICON_SIZE` (256) and `toIconPng` draw it centred, aspect kept, on a
+   transparent square canvas and export a PNG, so the backend needs no image
+   library. `fitSquare` is the pure arithmetic and the only part of this file
+   that has a real test.
+2. `frontend/src/app/editor/theme-dialog.ts` and `.html`: the field. It
+   uploads first and writes the document second, as `media-field.ts` does, so
+   a refused upload leaves the tour alone; `setTourIcon` in `document-ops.ts`
+   is the op, so it is undoable.
+3. `backend/app/publish.py`: `set_icon` rewrites the zip's first
+   `<link rel="icon">`, and `build_site` decides when. If you change which
+   tag it rewrites, change `frontend/src/index.html` with it, or the
+   substitution finds nothing and silently does nothing.
+4. `frontend/src/app/viewer/viewer-page.ts`: sets `link[rel~=icon]` at runtime
+   so Preview shows the icon, and puts the original `href` and `type` back on
+   destroy. The editor shares the page, so a favicon left behind would sit on
+   the editor's tab after `/edit` → `/view` → `/edit`.
+5. The footer's "Powered by TourSprout" link is fixed text in
+   `viewer/viewer-page.html`, after the data credits. It is deliberately not in
+   `config.json`'s `attribution`: it credits the software, not the data.
+
+**Fails if incomplete:** the `icon` cases in `backend/tests/test_models.py`
+(must end `.png`; counted by `referenced_media`), `test_publish.py` (the
+rewrite, the escaping, and byte-identical output with no icon),
+`test_migration.py`, `theme-dialog.spec.ts`, `icon-image.spec.ts` and
+`viewer-page.spec.ts` (the runtime set and the restore, and the footer link).
+**Nothing fails** for what the canvas actually produces, for the favicon on a
+real host, or for a browser that ignores a runtime change to the link: all of
+those are `UNVERIFIED.md` entry 46.
+
 ---
 
 ## Quick index
@@ -589,6 +630,7 @@ are `UNVERIFIED.md` entry 43.
 | I want to change… | Start at |
 | --- | --- |
 | a field, a validation rule | `backend/app/models.py`, then entry 3 |
+| the tour's icon, or the footer's TourSprout credit | `frontend/src/app/editor/icon-image.ts`, `backend/app/publish.py` (`set_icon`), then entry 12 |
 | what an author can theme: a preset, a colour, a typeface, a layout | `frontend/src/app/core/theme.ts` (the one definition), then entry 11 |
 | what a visitor sees for a stop | `frontend/src/app/stop/stop-panel.ts`, `panorama/panorama-pane.ts` |
 | how an in-world photograph is placed | `panorama/in-world-placement.ts` (pure), `panorama/in-world-renderer.ts` |

@@ -748,7 +748,8 @@ candidate for the next session than anything numbered below.
     `docs/superpowers/specs/2026-11-11-uploaded-base-imagery-design.md`, on
     the evidence in `-findings.md` beside it (1305 lines, gathered by
     reading the code, not estimated). Unlike item A it is **large**: it needs
-    schema v5 and a migration (v4 went to theming, which took it first), a
+    a schema bump and a migration (v4 went to theming and v5 to the tour icon,
+    which took them first, so this is v6 or later), a
     self-hosted viewer so `PanoramaViewer` is
     no longer only mapillary-js, a direct three.js dependency pinned to the
     0.134.0 that arrives transitively today, and `publish.py` taught to read
