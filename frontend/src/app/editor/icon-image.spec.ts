@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fitSquare, toIconPng } from './icon-image';
 
 describe('fitSquare', () => {
@@ -14,8 +14,21 @@ describe('fitSquare', () => {
 });
 
 describe('toIconPng', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it('rejects a file that is not an image', async () => {
+    // Stubbed, so this cannot pass merely because jsdom lacks the function.
+    vi.stubGlobal('createImageBitmap', () => Promise.reject(new Error('decode failed')));
     await expect(toIconPng(new Blob(['not an image'])))
       .rejects.toThrow('That file could not be read as an image.');
+  });
+
+  it('rejects an image that decodes to nothing', async () => {
+    // A zero-sized bitmap would make fitSquare divide by zero (NaN geometry).
+    const close = vi.fn();
+    vi.stubGlobal('createImageBitmap', () => Promise.resolve({ width: 0, height: 0, close }));
+    await expect(toIconPng(new Blob(['x'])))
+      .rejects.toThrow('That file could not be read as an image.');
+    expect(close).toHaveBeenCalled();
   });
 });

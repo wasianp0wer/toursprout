@@ -21,11 +21,14 @@ export async function toIconPng(file: Blob): Promise<File> {
     throw new Error('That file could not be read as an image.');
   }
   try {
+    if (!bitmap.width || !bitmap.height) throw new Error('That file could not be read as an image.');
     const canvas = document.createElement('canvas');
     canvas.width = ICON_SIZE;
     canvas.height = ICON_SIZE;
     const fit = fitSquare(bitmap.width, bitmap.height, ICON_SIZE);
-    canvas.getContext('2d')!.drawImage(bitmap, fit.x, fit.y, fit.w, fit.h);
+    const ctx = canvas.getContext('2d')!;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap, fit.x, fit.y, fit.w, fit.h);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('That file could not be read as an image.');
     const stem = ((file as File).name ?? 'icon').replace(/\.[^.]*$/, '') || 'icon';

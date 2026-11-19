@@ -307,6 +307,20 @@ describe('ThemeDialog', () => {
       expect(q('[data-icon-error]')!.textContent).toContain('too big');
       expect(store.draft()!.icon).toBe('old.png');
     });
+
+    it('drops the icon when a different tour was opened during the upload', async () => {
+      await start();
+      convertWith(async () => png);
+      let finish!: (id: string) => void;
+      uploadMedia.mockReturnValue(new Promise<string>((r) => { finish = r; }));
+      await pick();
+      store.load({ ...tour(), id: 'another-tour' });
+      finish('icon-1234.png');
+      await new Promise((r) => setTimeout(r, 0));
+      await settle();
+      expect(store.draft()!.id).toBe('another-tour');
+      expect(store.draft()!.icon).toBeUndefined();
+    });
   });
 });
 
@@ -469,5 +483,4 @@ describe('ThemeDialog as a dialog', () => {
     expect(pano).toBeGreaterThanOrEqual(9);
     expect(map).toBeGreaterThanOrEqual(6);
   });
-
 });

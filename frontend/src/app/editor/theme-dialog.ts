@@ -243,8 +243,11 @@ export class ThemeDialog implements AfterViewInit {
     if (!file || this.iconBusy()) return;
     this.iconBusy.set(true);
     this.iconError.set(null);
+    const tourId = this.store.draft()?.id;
     try {
       const mediaId = await this.session.uploadMedia(await this.toIcon(file));
+      // Another tour may have been opened while the upload was in flight.
+      if (this.store.draft()?.id !== tourId) return;
       this.store.apply((t) => setTourIcon(t, mediaId));
     } catch (err) {
       this.iconError.set(err instanceof Error ? err.message : 'the upload failed');
