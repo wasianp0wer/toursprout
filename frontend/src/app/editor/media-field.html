@@ -11,10 +11,22 @@
   }
   <span class="name" data-media-name>{{ overlay().mediaId }}</span>
   @if (missing(); as note) { <span class="error" data-media-missing>{{ note }}</span> }
-  <button type="button" data-replace-file [disabled]="busy()" (click)="choose()">Replace file</button>
+  <button type="button" data-replace-file [disabled]="busy() || recState() !== 'idle'" (click)="choose()">Replace file</button>
+  @if (kind === 'audio') {
+    @if (recState() !== 'idle') {
+      @if (recState() === 'recording') {
+        <button type="button" data-record-replace-stop (click)="stopRecording()">Stop and replace</button>
+      }
+      <button type="button" data-record-replace-cancel (click)="cancelRecording()">Discard</button>
+    } @else {
+      <button type="button" data-record-replace [disabled]="busy()" (click)="record()">Record replacement</button>
+    }
+  }
   <input #fileInput type="file" hidden data-media-file
     [accept]="kind === 'image' ? 'image/jpeg,image/png,image/webp' : 'audio/*,.webm,.m4a,.mp3,.ogg,.wav'"
     (change)="onFile($event)" />
+  @if (recState() === 'recording') { <span class="note" role="status" data-media-recording>Recording from your microphone…</span> }
+  @if (recFormatNote(); as fn) { <span class="note" data-media-record-format>{{ fn }}</span> }
   @if (busy()) { <span class="note" data-media-busy>Uploading...</span> }
   @if (error(); as message) { <span class="error" role="alert" data-media-error>{{ message }}</span> }
 </div>

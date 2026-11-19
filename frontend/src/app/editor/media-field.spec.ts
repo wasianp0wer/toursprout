@@ -1,10 +1,11 @@
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { MediaField } from './media-field';
 import { EditorStore } from './editor-store';
 import { SessionApi } from '../core/session-api';
 import { deleteOverlay } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
+import { installRecording, uninstallRecording } from './recording-fakes';
 import type { Overlay } from '../core/tour.models';
 
 describe('MediaField', () => {
@@ -233,5 +234,91 @@ describe('MediaField', () => {
     await flush();
     expect((q('[data-replace-file]') as HTMLButtonElement).disabled).toBe(false);
     expect(q('[data-media-busy]')).toBeNull();
+  });
+
+  describe('recording a replacement', () => {
+    const settle = async () => { await new Promise((r) => setTimeout(r, 5)); fixture.detectChanges(); };
+    const click = (sel: string) => { (q(sel) as HTMLElement).click(); fixture.detectChanges(); };
+    afterEach(() => uninstallRecording());
+
+    it('offers Record only for audio', () => {
+      open([audio('o1')]);
+      expect(q('[data-record-replace]')).toBeTruthy();
+      open([image('o1')]);
+      expect(q('[data-record-replace]')).toBeNull();
+    });
+
+    it('records and replaces the clip', async () => {
+      installRecording();
+      open([audio('o1')]);
+      uploadMedia.mockResolvedValue('take2-aaaa.webm');
+      click('[data-record-replace]'); await settle();
+      expect(q('[data-media-recording]')!.getAttribute('role')).toBe('status');
+      expect(q('[data-media-recording]')!.textContent).toContain('Recording from your microphone…');
+      expect(uploadMedia).not.toHaveBeenCalled();
+      click('[data-record-replace-stop]'); await settle();
+      expect(ov('o1').mediaId).toBe('take2-aaaa.webm');
+      expect(ov('o1').title).toBe('An overlay');
+      expect(q('[data-media-recording]')).toBeNull();
+    });
+
+    it('discard leaves the document untouched and releases the microphone', async () => {
+      const { tracks } = installRecording();
+      open([audio('o1')]);
+      const before = store.draft();
+      click('[data-record-replace]'); await settle();
+      click('[data-record-replace-cancel]'); await settle();
+      for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+      expect(store.draft()).toBe(before);
+      expect(uploadMedia).not.toHaveBeenCalled();
+      expect(q('[data-record-replace]')).toBeTruthy();
+    });
+
+    it('says why when MediaRecorder is missing', async () => {
+      uninstallRecording();
+      open([audio('o1')]);
+      click('[data-record-replace]'); await settle();
+      expect(q('[data-media-error]')!.textContent).toMatch(/cannot record/i);
+      expect(q('[data-record-replace]')).toBeTruthy();
+    });
+
+    it('says why when permission is denied', async () => {
+      installRecording({ getUserMedia: () => Promise.reject(Object.assign(new Error('x'), { name: 'NotAllowedError' })) });
+      open([audio('o1')]);
+      click('[data-record-replace]'); await settle();
+      expect(q('[data-media-error]')!.textContent).toMatch(/refused/i);
+      expect(q('[data-record-replace]')).toBeTruthy();
+      expect(q('[data-media-recording]')).toBeNull();
+    });
+
+    it('releases the microphone when destroyed mid-recording', async () => {
+      const { tracks } = installRecording();
+      open([audio('o1')]);
+      click('[data-record-replace]'); await settle();
+      fixture.destroy();
+      for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+    });
+
+    it('disables Replace and Record while recording', async () => {
+      installRecording();
+      open([audio('o1')]);
+      click('[data-record-replace]'); await settle();
+      expect((q('[data-replace-file]') as HTMLButtonElement).disabled).toBe(true);
+      expect(q('[data-record-replace]')).toBeNull();
+    });
+
+    it('cancels the recording when another overlay is selected', async () => {
+      const { tracks } = installRecording();
+      open([audio('o1'), audio('o2', 'other-3333.webm')]);
+      const before = store.draft();
+      click('[data-record-replace]'); await settle();
+      expect(q('[data-media-recording]')).toBeTruthy();
+      fixture.componentRef.setInput('overlay', ov('o2'));
+      fixture.detectChanges(); await settle();
+      for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+      expect(q('[data-media-recording]')).toBeNull();
+      expect(q('[data-record-replace]')).toBeTruthy();
+      expect(store.draft()).toBe(before);
+    });
   });
 });
