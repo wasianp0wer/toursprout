@@ -1,10 +1,13 @@
 <div class="media-field">
-  @if (kind === 'image') {
-    <img data-media-preview class="preview" [src]="api.mediaUrl(overlay().mediaId!)" [alt]="overlay().title" (error)="missing.set('File not found.')" />
-  } @else {
-    <audio data-media-preview class="preview audio" controls preload="none">
-      <source [src]="api.mediaUrl(overlay().mediaId!)" [type]="audioType(overlay().mediaId!)" (error)="missing.set('File not found.')" />
-    </audio>
+  <!-- One element per file: a <source> changed after insertion is ignored by the browser, so the old file would keep playing. -->
+  @for (id of [overlay().mediaId!]; track id) {
+    @if (kind === 'image') {
+      <img data-media-preview class="preview" [src]="api.mediaUrl(id)" [alt]="overlay().title" (error)="missing.set('File not found.')" />
+    } @else {
+      <audio data-media-preview class="preview audio" controls preload="none">
+        <source [src]="api.mediaUrl(id)" [type]="audioType(id)" (error)="missing.set('File not found.')" />
+      </audio>
+    }
   }
   <span class="name" data-media-name>{{ overlay().mediaId }}</span>
   @if (missing(); as note) { <span class="error" data-media-missing>{{ note }}</span> }

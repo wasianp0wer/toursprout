@@ -193,6 +193,36 @@ describe('MediaField', () => {
     expect(q('[data-media-missing]')).toBeNull();
   });
 
+  it('rebuilds the audio element after a replace, so it plays the new file', async () => {
+    open([audio('o1')]);
+    const before = q('audio');
+    uploadMedia.mockResolvedValue('new-3333.webm');
+    await choose('new.webm');
+    await flush();
+    fixture.componentRef.setInput('overlay', store.selectedOverlay());
+    fixture.detectChanges();
+    expect(q('audio')).not.toBe(before);
+    expect(q('audio source')!.getAttribute('src')).toContain('new-3333.webm');
+  });
+
+  it('rebuilds the audio element when another audio overlay is shown', () => {
+    open([audio('o1'), audio('o2', 'two-4444.webm')]);
+    const before = q('audio');
+    store.select('o2');
+    fixture.componentRef.setInput('overlay', store.selectedOverlay());
+    fixture.detectChanges();
+    expect(q('audio')).not.toBe(before);
+  });
+
+  it('rebuilds the image element when the file changes', () => {
+    open([image('o1'), image('o2', 'two-2222.jpg')]);
+    const before = q('img');
+    store.select('o2');
+    fixture.componentRef.setInput('overlay', store.selectedOverlay());
+    fixture.detectChanges();
+    expect(q('img')).not.toBe(before);
+  });
+
   it('disables Replace while uploading', async () => {
     open([image('o1')]);
     let resolve!: (id: string) => void;
