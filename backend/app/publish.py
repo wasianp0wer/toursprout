@@ -8,17 +8,26 @@ The `tour-data/` prefix is not cosmetic: Angular's build already emits a
 `media/` directory for Leaflet's bundled marker images. If tour media were
 published to `media/` at the root, the two would collide and overwrite each
 other. Keeping tour media under `tour-data/media/` keeps them apart.
+
+Publishing reads one field of the document: the tour's `icon`, which is
+written into the zip's `index.html` as the page's icon link.
 """
 
 from __future__ import annotations
 
+import html as htmllib
+import json
 import re
 import stat
 import time
 import zipfile
 from pathlib import Path
 
+from .migration import migrate
+from .models import Tour
+
 _HTML_TAG = re.compile(r"<html\b([^>]*)>", re.IGNORECASE)
+_ICON_LINK = re.compile(r"""<link\b[^>]*\brel=["']icon["'][^>]*>""", re.IGNORECASE)
 
 
 def mark_published(html: str) -> str:
@@ -37,6 +46,21 @@ def mark_published(html: str) -> str:
         return html
     at = match.end(1)
     return html[:at] + " data-published" + html[at:]
+
+
+def set_icon(html: str, media_id: str) -> str:
+    """Replace the first `<link rel="icon">` with one naming the tour's icon.
+
+    The icon is served from `tour-data/media/`, where the session's media
+    ships. A no-op if the page has no such link. The id is escaped into the
+    attribute.
+
+    Not hardened against a literal `>` inside an attribute value: unreachable
+    for a file this project builds itself, so do not "fix" it.
+    """
+    href = htmllib.escape(f"tour-data/media/{media_id}", quote=True)
+    link = f'<link rel="icon" type="image/png" href="{href}">'
+    return _ICON_LINK.sub(lambda _: link, html, count=1)
 
 
 def _add(zf: zipfile.ZipFile, path: Path, arc: str, data: bytes) -> None:
@@ -65,6 +89,10 @@ def build_site(session_path: Path, dist: Path, out_zip: Path) -> None:
             f"no built application at {dist}: run `make build` first"
         )
 
+    icon = Tour.model_validate(
+        migrate(json.loads((session_path / "tour.json").read_text("utf-8")))
+    ).icon
+
     out_zip.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:
         # Dotfiles are skipped in both trees: in the session directory they
@@ -78,6 +106,8 @@ def build_site(session_path: Path, dist: Path, out_zip: Path) -> None:
                     # Marked in the zip only; the file on disk serves the
                     # authoring host and must stay unmarked.
                     data = mark_published(data.decode("utf-8")).encode("utf-8")
+                    if icon:
+                        data = set_icon(data.decode("utf-8"), icon).encode("utf-8")
                 _add(zf, path, arc, data)
         for path in sorted(session_path.rglob("*")):
             if path.is_file() and not path.name.startswith("."):

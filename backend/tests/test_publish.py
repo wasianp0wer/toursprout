@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import re
 import zipfile
 from pathlib import Path
 
 import pytest
 
-from app.publish import PublishError, build_site, mark_published
+from app.publish import PublishError, build_site, mark_published, set_icon
 from app.session import Session
 
 
@@ -67,7 +68,6 @@ def test_publishing_with_nothing_open_fails(tmp_path):
 
 
 def test_the_published_tour_document_is_the_working_one(ready):
-    import json
     session, dist, out = ready
     build_site(session.path, dist, out)
     with zipfile.ZipFile(out) as zf:
@@ -127,3 +127,48 @@ def test_every_published_file_is_world_readable(ready):
         assert infos
         for info in infos:
             assert (info.external_attr >> 16) & 0o7777 == 0o644, info.filename
+
+
+_ICON_LINK = '<link rel="icon" type="image/x-icon" href="favicon.ico">'
+
+
+def test_set_icon_replaces_the_icon_link():
+    out = set_icon(f"<head>{_ICON_LINK}</head>", "logo-ab.png")
+    assert '<link rel="icon" type="image/png" href="tour-data/media/logo-ab.png">' in out
+    assert "favicon.ico" not in out
+
+
+def test_set_icon_without_a_link_is_a_no_op():
+    html = "<head><title>x</title></head>"
+    assert set_icon(html, "logo.png") == html
+
+
+def test_icon_href_is_escaped():
+    out = set_icon(f"<head>{_ICON_LINK}</head>", 'a"><script>x.png')
+    assert "<script>" not in out
+    assert "&quot;" in out
+
+
+def test_the_published_index_names_the_tour_icon(ready):
+    session, dist, out = ready
+    html = f"<html><head>{_ICON_LINK}</head></html>"
+    (dist / "index.html").write_text(html)
+    (session.path / "media" / "logo.png").write_bytes(b"png")
+    doc = json.loads((session.path / "tour.json").read_text())
+    doc["icon"] = "logo.png"
+    session.write_tour(doc)
+    build_site(session.path, dist, out)
+    with zipfile.ZipFile(out) as zf:
+        published = zf.read("index.html").decode()
+    assert 'href="tour-data/media/logo.png"' in published
+    assert "favicon.ico" not in published
+    assert "favicon.ico" in (dist / "index.html").read_text()
+
+
+def test_without_an_icon_the_published_index_is_unchanged_but_marked(ready):
+    session, dist, out = ready
+    html = f"<html><head>{_ICON_LINK}</head></html>"
+    (dist / "index.html").write_text(html)
+    build_site(session.path, dist, out)
+    with zipfile.ZipFile(out) as zf:
+        assert zf.read("index.html").decode() == mark_published(html)
