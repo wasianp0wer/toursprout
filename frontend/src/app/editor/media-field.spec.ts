@@ -342,6 +342,16 @@ describe('MediaField', () => {
       expect(q('[data-record-replace]')).toBeTruthy();
     });
 
+    it('cancels the recording when the same overlay turns into an image', async () => {
+      const { tracks } = installRecording();
+      open([audio('o1', 'legacy.xyz')]);
+      click('[data-record-replace]'); await settle();
+      fixture.componentRef.setInput('overlay', { ...ov('o1'), kind: 'image' });
+      fixture.detectChanges(); await settle();
+      for (const t of tracks) expect(t.stop).toHaveBeenCalled();
+      expect(q('[data-media-recording]')).toBeNull();
+    });
+
     it('releases a late start when destroyed while starting', async () => {
       const { tracks, grant } = pendingPrompt();
       open([audio('o1')]);
@@ -350,5 +360,24 @@ describe('MediaField', () => {
       grant(); await settle();
       for (const t of tracks) expect(t.stop).toHaveBeenCalled();
     });
+  });
+
+  it('still applies an upload that finishes after the field is destroyed', async () => {
+    open([image('o1')]);
+    let resolve!: (id: string) => void;
+    uploadMedia.mockReturnValue(new Promise<string>((r) => { resolve = r; }));
+    await choose();
+    fixture.destroy();
+    resolve('new-9999.jpg');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ov('o1').mediaId).toBe('new-9999.jpg');
+  });
+
+  it('labels the record button and busy text', async () => {
+    open([audio('o1')]);
+    expect(q('[data-record-replace]')!.textContent).toBe('Record new');
+    uploadMedia.mockReturnValue(new Promise(() => {}));
+    await choose('x.webm');
+    expect(q('[data-media-busy]')!.textContent).toBe('Uploading…');
   });
 });

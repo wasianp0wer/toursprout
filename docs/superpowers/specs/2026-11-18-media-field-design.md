@@ -78,7 +78,10 @@ Uploading… / Recording… / error line
   discard/destroy as the outline pane.
 - **The target overlay id is captured when the button is pressed.** If that
   overlay no longer exists when the upload resolves, the document is not
-  touched and the field says the file was uploaded but not applied.
+  touched and the upload stays as an orphan. The field is normally gone by
+  then (a delete or an undo clears the selection), so the message `The file
+  was uploaded but not applied.` shows only if the field is still on that
+  overlay.
 - A stored kind mismatch says `That file is <kind>, not <kind>.` and leaves
   the document untouched.
 - Both buttons are disabled while an upload or recording is in progress.

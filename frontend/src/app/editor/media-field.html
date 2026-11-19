@@ -1,7 +1,7 @@
 <div class="media-field">
   <!-- One element per file: a <source> changed after insertion is ignored by the browser, so the old file would keep playing. -->
   @for (id of [overlay().mediaId!]; track id) {
-    @if (kind === 'image') {
+    @if (kind() === 'image') {
       <img data-media-preview class="preview" [src]="api.mediaUrl(id)" [alt]="overlay().title" (error)="missing.set('File not found.')" />
     } @else {
       <audio data-media-preview class="preview audio" controls preload="none">
@@ -12,21 +12,21 @@
   <span class="name" data-media-name>{{ overlay().mediaId }}</span>
   @if (missing(); as note) { <span class="error" data-media-missing>{{ note }}</span> }
   <button type="button" data-replace-file [disabled]="busy() || recState() !== 'idle'" (click)="choose()">Replace file</button>
-  @if (kind === 'audio') {
+  @if (kind() === 'audio') {
     @if (recState() !== 'idle') {
       @if (recState() === 'recording') {
         <button type="button" data-record-replace-stop (click)="stopRecording()">Stop and replace</button>
       }
       <button type="button" data-record-replace-cancel (click)="cancelRecording()">Discard</button>
     } @else {
-      <button type="button" data-record-replace [disabled]="busy()" (click)="record()">Record replacement</button>
+      <button type="button" data-record-replace [disabled]="busy()" (click)="record()">Record new</button>
     }
   }
   <input #fileInput type="file" hidden data-media-file
-    [accept]="kind === 'image' ? 'image/jpeg,image/png,image/webp' : 'audio/*,.webm,.m4a,.mp3,.ogg,.wav'"
+    [accept]="kind() === 'image' ? 'image/jpeg,image/png,image/webp' : 'audio/*,.webm,.m4a,.mp3,.ogg,.wav'"
     (change)="onFile($event)" />
   @if (recState() === 'recording') { <span class="note" role="status" data-media-recording>Recording from your microphone…</span> }
   @if (recFormatNote(); as fn) { <span class="note" data-media-record-format>{{ fn }}</span> }
-  @if (busy()) { <span class="note" data-media-busy>Uploading...</span> }
+  @if (busy()) { <span class="note" data-media-busy>Uploading…</span> }
   @if (error(); as message) { <span class="error" role="alert" data-media-error>{{ message }}</span> }
 </div>

@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnDestroy, effect, inject, input, linkedSignal, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, OnDestroy, computed, effect, inject, input, linkedSignal, signal, viewChild } from '@angular/core';
 import { EditorStore } from './editor-store';
 import { mediaKindOf, replaceOverlayMedia } from './document-ops';
 import { SessionApi } from '../core/session-api';
@@ -55,22 +55,22 @@ export class MediaField implements OnDestroy {
   private target: { id: string; kind: MediaKind } | null = null;
 
   constructor() {
-    // The field is reused as the selection moves; a recording must not follow it.
+    // The field is reused as the selection moves, and an overlay's kind can change under the same id
+    // (an unrecognised extension); a recording must follow neither, or its controls would vanish with the microphone live.
     effect(() => {
       const id = this.overlay().id;
-      if (this.recTarget && this.recTarget.id !== id) this.cancelRecording();
+      const kind = this.kind();
+      if (this.recTarget && (this.recTarget.id !== id || this.recTarget.kind !== kind)) this.cancelRecording();
     });
   }
 
-  protected get kind(): MediaKind {
-    return this.overlay().kind === 'audio' ? 'audio' : 'image';
-  }
+  protected readonly kind = computed<MediaKind>(() => (this.overlay().kind === 'audio' ? 'audio' : 'image'));
 
   /** Remember which overlay this replace is for, then open the file chooser. */
   protected choose(): void {
     if (this.busy() || this.recState() !== 'idle') return;
     const o = this.overlay();
-    this.target = { id: o.id, kind: this.kind };
+    this.target = { id: o.id, kind: this.kind() };
     this.fileInput()?.nativeElement.click();
   }
 
@@ -79,7 +79,7 @@ export class MediaField implements OnDestroy {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     try { input.value = ''; } catch { /* a file input may refuse; harmless */ }
-    const target = this.target ?? { id: this.overlay().id, kind: this.kind };
+    const target = this.target ?? { id: this.overlay().id, kind: this.kind() };
     this.target = null;
     if (!file) return;
     await this.replaceWith(file, target);
@@ -101,8 +101,9 @@ export class MediaField implements OnDestroy {
     this.applyMedia(target, mediaId, mine);
   }
 
+  /** Start a recording for the audio overlay shown, remembering which overlay it is for. */
   protected record(): void {
-    if (this.busy() || this.recState() !== 'idle' || this.kind !== 'audio') return;
+    if (this.busy() || this.recState() !== 'idle' || this.kind() !== 'audio') return;
     this.error.set(null);
     this.recTarget = { id: this.overlay().id, kind: 'audio' };
     void this.beginRecording();
@@ -137,6 +138,11 @@ export class MediaField implements OnDestroy {
     this.recState.set('recording');
   }
 
+  /**
+   * Finish the take and replace the clip with it. The target is captured and
+   * cleared, and the state goes idle, before awaiting stop(): the take is
+   * committed, so an overlay switch while the recorder flushes must not cancel it.
+   */
   protected async stopRecording(): Promise<void> {
     const active = this.active;
     const target = this.recTarget;
@@ -155,6 +161,7 @@ export class MediaField implements OnDestroy {
     await this.replaceWith(file, target);
   }
 
+  /** Discard the take, or the pending start, and release the microphone; the document is untouched. */
   protected cancelRecording(): void {
     this.startToken++;
     this.active?.cancel();
