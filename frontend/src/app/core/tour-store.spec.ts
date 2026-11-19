@@ -22,7 +22,7 @@ function stop(id: string, order: number): Stop {
 
 function tour(n = 3): Tour {
   return {
-    id: 'fairfax-old-town', schemaVersion: 4,
+    id: 'fairfax-old-town', schemaVersion: 5,
     title: 'Old Town Fairfax', description: 'desc',
     defaults: null,
     attribution: [],

@@ -267,3 +267,34 @@ panorama canvas — is a mockup value no derivation can move, so it needs an eye
 and a decision. The published-site font check led that list and has been
 downgraded, because a CSS `url()` resolves against the stylesheet's own URL
 rather than against `<base href>`, so the subdirectory half of it cannot fail.
+
+## Amendment, 2026-11-18: `publish.py` now reads the document, and the icon is not in `theme`
+
+Written when the tour icon landed (schema **v5**; design
+`docs/superpowers/specs/2026-11-18-tour-icon-design.md`). The record above is
+left as it was, and two things in it are no longer true of the code.
+
+**§1 said `publish.py` stays free of document knowledge, and it no longer
+does.** A published site's favicon has to be in its `index.html`, not set by a
+script, so `build_site` reads `tour.json` (through `migrate` and
+`Tour.model_validate`, never writing to the session) for one field, `Tour.icon`,
+and `set_icon` rewrites the zip's `<link rel="icon">` to
+`tour-data/media/<id>`. Preview cannot rely on that, because Preview is the
+authoring host's shared, unmarked `dist/index.html`; the viewer sets the same
+link at runtime and gives it back on destroy, for the reason §3 gives for the
+marker colours and the CSS tokens: the editor shares the page. The id is
+HTML-escaped, because it comes from a document and §2's reasoning about an
+imported bundle applies to an attribute as much as to a `style`. Everything
+else §1 says stands: the theme itself is still read only by the viewer.
+
+**The icon is a top-level `Tour.icon`, not a field of `theme`.** §2 keeps a
+theme to enumerated names and validated `#rrggbb` so that nothing in it is a
+file the viewer is asked to fetch, and an icon is exactly that. The line §2
+drew is what the value *names*, and this names a file. It is held to the same
+standard anyway: it is a `MediaRef`, it must end `.png`, and `referenced_media`
+counts it, so it is neither an orphan nor allowed to dangle. `_v4_to_v5` stamps
+the version and nothing else, as `_v3_to_v4` did. This takes v5, the number
+`HANDOFF.md` item 11 had reserved for uploaded base imagery, which now takes
+v6 by the same rule the record gives for v4: ordering by landing.
+
+What nobody has seen is `UNVERIFIED.md` entry 46.

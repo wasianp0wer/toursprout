@@ -39,8 +39,8 @@ describe('the real Fairfax tour', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  it('is schema v4', () => {
-    expect(TOUR.schemaVersion).toBe(4);
+  it('is schema v5', () => {
+    expect(TOUR.schemaVersion).toBe(5);
   });
 
   it('gives every one of the fifteen overlays a display', () => {

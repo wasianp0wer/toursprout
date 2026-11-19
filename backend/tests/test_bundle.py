@@ -70,7 +70,7 @@ def _referenced_media(doc: dict) -> dict[str, bytes]:
 
 def _minimal_doc(media_id="m.jpg", cached=None):
     return {
-        "id": "t", "schemaVersion": 4, "title": "T", "description": "d",
+        "id": "t", "schemaVersion": 5, "title": "T", "description": "d",
         "attribution": [], "stops": [{
             "id": "s1", "order": 1, "title": "S", "summary": "sum",
             "location": {"lng": -77.3, "lat": 38.84}, "osmRef": None,
@@ -619,7 +619,7 @@ def test_a_staged_root_round_trips_through_read_bundle(tmp_path):
     }
     assert (dest / "media" / "photo.jpg").read_bytes() == JPEG
     assert (dest / "media" / "pano" / "voice.m4a").read_bytes() == M4A
-    assert warnings == ["media/pano/voice.m4a is not referenced by any overlay"]
+    assert warnings == ["media/pano/voice.m4a is not referenced by the tour"]
 
 
 @pytest.mark.parametrize("name", [

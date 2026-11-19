@@ -42,7 +42,7 @@ the page, which is why a published tour needs no server.
 
 | Module | Owns |
 | --- | --- |
-| `models.py` | The schema, and the single source of truth for it: `Tour`, `Stop`, `Overlay` and its three axes (`kind`, `anchor`, `display`), the `Credit` union, `DISPLAY_MODES_BY_KIND`, `MediaRef`, `referenced_media`, `SCHEMA_VERSION`. Stop and overlay ids are one namespace, unique tour-wide. See ADR 0001 and ADR 0005. |
+| `models.py` | The schema, and the single source of truth for it: `Tour`, `Stop`, `Overlay` and its three axes (`kind`, `anchor`, `display`), the `Credit` union, `DISPLAY_MODES_BY_KIND`, `MediaRef`, `referenced_media`, `SCHEMA_VERSION` (5). `Tour.icon` is a top-level `MediaRef` that must end `.png`, and `referenced_media` counts it. Stop and overlay ids are one namespace, unique tour-wide. See ADR 0001 and ADR 0005. |
 | `migration.py` | `migrate`: one entry point over a `_MIGRATIONS` registry, one step per version behind. Pure dict-in, dict-out, and total — it refuses rather than dropping data. Stays in the tree because exported bundles in the wild are v1 and v2. ADR 0005. |
 | `sessions.py` | Per-browser session ids and nothing else: `new_sid`, `valid_sid`, `session_dir`, and `sweep`, which reclaims abandoned directories. The sid is 16 lowercase hex characters, names a directory, and doubles as the recovery key a historian writes down — so it is validated before it is ever joined to a path. No FastAPI in this module. ADR 0006. |
 | `session.py` | One open document: a working directory, `<sessions_dir>/<sid>/`. A `Session` is built per request from the cookie, not held on the app. `Session.write_tour` validates then swaps atomically; `Session.new`, `replace_from`, `write_config`, `summary`. |
@@ -50,7 +50,7 @@ the page, which is why a published tour needs no server.
 | `bundle.py` | The `.zip` form of the document: `write_bundle`, `read_bundle`, `stage_bundle_root`, and everything that makes importing an untrusted archive safe. `_check_media_file` is the import allowlist — see "Media comes in by two doors" below. `missing_media` is shared with export. |
 | `loose_import.py` | `stage_loose_bundle`: a loose `tour.json` plus its media parts, zipped into an ordinary bundle. It validates every path and then hands off, so a loose drop gets the same allowlist, migration, orphan warnings and atomic swap as a `.zip`. Nothing here writes to the working directory. |
 | `examples.py` | The tours that ship with the application: `list_examples`, `open_example`. An example is a directory under `content/examples/` holding `example.json` (id from the directory name, plus title, description, `document`, `mediaDir`) and a frozen `tour.json`. Opening one stages a bundle and hands it to `Session.replace_from`, so it is an import; it copies and never mutates the example. |
-| `publish.py` | `build_site`: the built Angular app plus the working directory under `tour-data/`, zipped. |
+| `publish.py` | `build_site`: the built Angular app plus the working directory under `tour-data/`, zipped. Reads one field of the document, `Tour.icon`, to point the zip's favicon at it (`set_icon`). ADR 0009's amendment. |
 | `tools.py` | What is left of the acquisition tools: place search over Overpass, as a function over an injectable `httpx.Client`, plus the URLs the egress diagnostic probes. Panorama search moved into the browser, and archive search and narration were removed (ADR 0006; ADR 0004 records the tools as first built). |
 | `main.py` | `create_app`: the routes, the cookie-keyed `/tour-data` route, the SPA fallback, the cross-site guard (`_reject_cross_site`), the two session dependencies (`current_session` resolves, `mint_session` creates) and `_viewer_config`. Routing and HTTP status mapping only; the work is in the modules above. |
 | `config.py` | `Settings`: Mapillary token, `content_dir`, `frontend_dist`, `sessions_dir`, the two sweep retention windows and the four resource caps. All overridable from `backend/.env`; `docs/DEPLOY.md` lists them. |
@@ -347,14 +347,25 @@ Points worth knowing before you touch any of it:
 <the working directory, <sessions_dir>/<sid>/…>              under tour-data/
 ```
 
-That is nearly all it is. Two things are done to the bytes. `mark_published`
+That is nearly all it is. Three things are done to the bytes. `mark_published`
 applies one text substitution to the zip's `index.html` (`data-published` on
 `<html>`, see "Routing: who is asking"), and every entry is written through
 one helper at mode 0644 with its mtime from the source, rather than copying the
 session directory's 0600 onto the public site. Neither is knowledge of the
 document: the substitution looks at one HTML tag and not at `tour.json`, and
-the mode is a property of the destination, so `publish.py` still imports no
-schema. Because flow 1 reads `tour-data/…` relative to the page,
+the mode is a property of the destination. The third is knowledge of the
+document, and the only one: when `tour.json` names an `icon`, `set_icon`
+rewrites the first `<link rel="icon">` in the zip's `index.html` to
+`tour-data/media/<id>` (the id HTML-escaped, since it comes from a document an
+author may have imported), so a browser finds the tour's icon with no script
+running. To know that, `build_site` migrates and validates `tour.json` through
+`Tour` without writing to the session, so `publish.py` now imports the schema
+after all (ADR 0009's amendment). With no icon the zip is byte-identical to
+what it was. The viewer sets the same link at runtime so Preview, which is the
+authoring host's unmarked `dist/index.html`, shows the icon too; on a published
+site that is the same URL and changes nothing.
+
+Because flow 1 reads `tour-data/…` relative to the page,
 unzipping onto any static host produces a working tour with no further step.
 The `tour-data/` prefix is not cosmetic: Angular already emits a `media/`
 directory for Leaflet's marker images, and tour media at the root would

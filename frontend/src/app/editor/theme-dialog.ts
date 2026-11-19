@@ -1,12 +1,15 @@
 import {
-  Component, ElementRef, computed, inject, output, viewChild,
+  Component, ElementRef, computed, inject, output, signal, viewChild,
   type AfterViewInit,
 } from '@angular/core';
 import { EditorStore } from './editor-store';
+import { SessionApi } from '../core/session-api';
+import { TourApi } from '../core/tour-api';
+import { toIconPng } from './icon-image';
 import { ThemePreview } from './theme-preview';
 import {
   clearThemeOverride, clearThemeOverrides, setThemeOverride, setThemePreset,
-  setTourLayout, setTypePairing, setTypeScale,
+  setTourIcon, setTourLayout, setTypePairing, setTypeScale,
 } from './document-ops';
 import {
   LAYOUT_NAMES, PRESET_NAMES, TYPE_PAIRINGS, TYPE_SCALES, contrastRatio, pinnedTokens, resolveTheme,
@@ -138,6 +141,11 @@ function reading(key: Reading['key'], label: string, a: string, b: string): Read
 })
 export class ThemeDialog implements AfterViewInit {
   private readonly store = inject(EditorStore);
+  private readonly session = inject(SessionApi);
+  protected readonly api = inject(TourApi);
+
+  /** The converter, a field so a spec can replace it without a canvas. */
+  protected toIcon: (file: Blob) => Promise<File> = toIconPng;
 
   /** Asks the parent to take the dialog down. Nothing closes itself. */
   readonly cancelled = output<void>();
@@ -219,5 +227,36 @@ export class ThemeDialog implements AfterViewInit {
   }
   protected resetAll(): void {
     this.store.apply((t) => clearThemeOverrides(t));
+  }
+
+  protected readonly icon = computed(() => this.store.draft()?.icon ?? null);
+  /** An icon is being converted or uploaded: the document has not been touched yet. */
+  protected readonly iconBusy = signal(false);
+  /** Why the last choice did nothing. Never written to the document. */
+  protected readonly iconError = signal<string | null>(null);
+
+  /** Convert, then upload, then set: a refusal at either step leaves the document as it was. */
+  protected async chooseIcon(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    try { input.value = ''; } catch { /* a file input may refuse; harmless */ }
+    if (!file || this.iconBusy()) return;
+    this.iconBusy.set(true);
+    this.iconError.set(null);
+    const tourId = this.store.draft()?.id;
+    try {
+      const mediaId = await this.session.uploadMedia(await this.toIcon(file));
+      // Another tour may have been opened while the upload was in flight.
+      if (this.store.draft()?.id !== tourId) return;
+      this.store.apply((t) => setTourIcon(t, mediaId));
+    } catch (err) {
+      this.iconError.set(err instanceof Error ? err.message : 'the upload failed');
+    } finally {
+      this.iconBusy.set(false);
+    }
+  }
+  protected removeIcon(): void {
+    this.iconError.set(null);
+    this.store.apply((t) => setTourIcon(t, null));
   }
 }

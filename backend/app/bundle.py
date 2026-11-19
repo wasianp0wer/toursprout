@@ -479,4 +479,4 @@ def _validate_tree(root: Path) -> list[str]:
     # uploaded something not yet placed, and deleting it would be the worse
     # failure.
     orphans = sorted(present - referenced)
-    return [f"media/{name} is not referenced by any overlay" for name in orphans]
+    return [f"media/{name} is not referenced by the tour" for name in orphans]

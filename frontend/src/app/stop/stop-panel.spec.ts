@@ -30,7 +30,7 @@ function overlay(over: Partial<Overlay> = {}): Overlay {
 
 function tour(overlays: Overlay[]): Tour {
   return {
-    id: 't', schemaVersion: 4, title: 'Old Town Fairfax', description: '',
+    id: 't', schemaVersion: 5, title: 'Old Town Fairfax', description: '',
     defaults: null, attribution: [],
     stops: [{
       id: 's1', order: 1, title: 'Historic Courthouse',

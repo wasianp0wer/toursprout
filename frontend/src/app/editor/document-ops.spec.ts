@@ -6,7 +6,7 @@ import {
   creditText, deriveOverlayHeading, setOverlayHeadingManual, setCreditText, setInWorldField, setOverlayAnchor, setOverlayAnchorKeepingHeading, setOverlayMode, setStopTitle, legalKindsFor,
   setStopLocation, selectPanorama,
   PLACEHOLDER_SUMMARY, setStopSummary, setTourDescription, setTourTitle,
-  setThemePreset, setThemeOverride, clearThemeOverride, clearThemeOverrides,
+  setTourIcon, setThemePreset, setThemeOverride, clearThemeOverride, clearThemeOverrides,
   setTypePairing, setTypeScale, setTourLayout,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
@@ -825,5 +825,19 @@ describe('replaceOverlayMedia', () => {
     const t = withOverlay(overlay('o1', { kind: 'audio', mediaId: 'a.m4a' }));
     const out = replaceOverlayMedia(t, 'o1', 'b.webm');
     expect(out.stops[0].overlays[0].mediaId).toBe('b.webm');
+  });
+});
+
+describe('setTourIcon', () => {
+  it('sets the icon without mutating the input', () => {
+    const t = tour();
+    expect(setTourIcon(t, 'a.png').icon).toBe('a.png');
+    expect('icon' in t).toBe(false);
+  });
+  it('removes the key entirely when given null', () => {
+    const withIcon = setTourIcon(tour(), 'a.png');
+    const out = setTourIcon(withIcon, null);
+    expect('icon' in out).toBe(false);
+    expect(withIcon.icon).toBe('a.png');
   });
 });

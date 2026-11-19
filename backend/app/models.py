@@ -22,7 +22,7 @@ class LngLat(Strict):
     lat: Annotated[float, Field(ge=-90.0, le=90.0)]
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class GeoAnchor(Strict):
@@ -316,13 +316,20 @@ class Theme(Strict):
     overrides: ThemeOverrides = Field(default_factory=ThemeOverrides)
 
 
+def _is_png(v: str) -> str:
+    if not v.lower().endswith(".png"):
+        raise ValueError("must be a .png file")
+    return v
+
+
 class Tour(Strict):
     id: str = Field(min_length=1)
-    schema_version: Literal[4] = Field(alias="schemaVersion")
+    schema_version: Literal[5] = Field(alias="schemaVersion")
     title: str = Field(min_length=1)
     description: str
     defaults: TourDefaults | None = None
     theme: Theme | None = None
+    icon: Annotated[MediaRef, AfterValidator(_is_png)] | None = None
     attribution: list[Attribution] = Field(default_factory=list)
     stops: list[Stop] = Field(min_length=1)
 
@@ -379,7 +386,8 @@ def referenced_media(tour: Tour) -> set[str]:
     stop's cached panorama. So the shipped example's six panoramas were
     reported as unreferenced orphans while six stops referenced them, and a
     bundle missing a panorama imported clean. A new `MediaRef` field belongs
-    here and nowhere else.
+    here and nowhere else. The tour's own `icon` is one: it is not on a stop
+    or an overlay, but it is a file under `media/` all the same.
     """
     refs = {o.media_id for s in tour.stops for o in s.overlays if o.media_id}
     refs |= {
@@ -387,4 +395,6 @@ def referenced_media(tour: Tour) -> set[str]:
         for s in tour.stops
         if s.panorama.cached_media_id
     }
+    if tour.icon:
+        refs.add(tour.icon)
     return refs

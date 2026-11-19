@@ -1,11 +1,12 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ThemeDialog } from './theme-dialog';
+import { SessionApi } from '../core/session-api';
 import { ThemePreview } from './theme-preview';
 import { EditorStore } from './editor-store';
-import { setThemeOverride, setThemePreset, setTypePairing } from './document-ops';
+import { setTourIcon, setThemeOverride, setThemePreset, setTypePairing } from './document-ops';
 import { controlsWithoutLabelAbove, tour } from './test-builders';
 import type { Tour } from '../core/tour.models';
 import { OVERRIDABLE, cssVariablesFor, pinnedTokens, resolveTheme } from '../core/theme';
@@ -35,8 +36,14 @@ describe('ThemeDialog', () => {
     s.value = value; s.dispatchEvent(new Event('change')); await settle();
   };
 
+  let uploadMedia: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
-    TestBed.configureTestingModule({ imports: [ThemeDialog] });
+    uploadMedia = vi.fn();
+    TestBed.configureTestingModule({
+      imports: [ThemeDialog],
+      providers: [{ provide: SessionApi, useValue: { uploadMedia } }],
+    });
     store = TestBed.inject(EditorStore);
   });
 
@@ -218,7 +225,7 @@ describe('ThemeDialog', () => {
       const own = (e: Element) => Array.from(e.childNodes)
         .filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent!.trim()).join('');
       const labels = qa('label').map(own);
-      expect(labels).toEqual(['Theme', 'Type pairing', 'Type scale']);
+      expect(labels).toEqual(['Theme', 'Type pairing', 'Type scale', 'Tour icon']);
       expect(qa('h4').map((h) => h.textContent!.trim())).toEqual(['Colours']);
       expect(q('summary')!.textContent!.trim()).toBe('More colours');
       expect(q('.layouts .name')!.textContent!.trim()).toBe('Layout');
@@ -245,6 +252,74 @@ describe('ThemeDialog', () => {
       store.apply((t) => setThemeOverride(t, 'paper', '#112233'));
       await settle();
       expect(preview.style.getPropertyValue('--paper')).toBe('#112233');
+    });
+  });
+
+  describe('tour icon', () => {
+    const png = new File([new Uint8Array([1])], 'logo-icon.png', { type: 'image/png' });
+    const pick = async () => {
+      const input = q('[data-icon-input]') as HTMLInputElement;
+      Object.defineProperty(input, 'files', { value: [new File([new Uint8Array([2])], 'logo.jpg')], configurable: true });
+      input.dispatchEvent(new Event('change'));
+      await new Promise((r) => setTimeout(r, 0));
+      await settle();
+    };
+    const convertWith = (fn: (f: Blob) => Promise<File>) => {
+      (fixture.componentInstance as unknown as { toIcon: typeof fn }).toIcon = fn;
+    };
+
+    it('uploads the converted icon and sets it on the tour', async () => {
+      await start();
+      convertWith(async () => png);
+      uploadMedia.mockResolvedValue('icon-1234.png');
+      await pick();
+      expect(uploadMedia).toHaveBeenCalledTimes(1);
+      expect((uploadMedia.mock.calls[0][0] as File).type).toBe('image/png');
+      expect(store.draft()!.icon).toBe('icon-1234.png');
+      expect((q('img[data-icon-preview]') as HTMLImageElement).src.endsWith('tour-data/media/icon-1234.png')).toBe(true);
+    });
+
+    it('removes the icon', async () => {
+      await start();
+      expect(q('button[data-icon-remove]')).toBeNull();
+      store.apply((t) => setTourIcon(t, 'icon-1234.png'));
+      await settle();
+      q('button[data-icon-remove]')!.click();
+      await settle();
+      expect('icon' in store.draft()!).toBe(false);
+      expect(q('button[data-icon-remove]')).toBeNull();
+    });
+
+    it('shows an error and leaves the tour alone when the image cannot be read', async () => {
+      await start(setTourIcon(tour(), 'old.png'));
+      convertWith(async () => { throw new Error('That file could not be read as an image.'); });
+      await pick();
+      expect(q('[data-icon-error]')!.textContent).toContain('That file could not be read as an image.');
+      expect(uploadMedia).not.toHaveBeenCalled();
+      expect(store.draft()!.icon).toBe('old.png');
+    });
+
+    it('leaves the tour alone when the upload is refused', async () => {
+      await start(setTourIcon(tour(), 'old.png'));
+      convertWith(async () => png);
+      uploadMedia.mockRejectedValue(new Error('too big'));
+      await pick();
+      expect(q('[data-icon-error]')!.textContent).toContain('too big');
+      expect(store.draft()!.icon).toBe('old.png');
+    });
+
+    it('drops the icon when a different tour was opened during the upload', async () => {
+      await start();
+      convertWith(async () => png);
+      let finish!: (id: string) => void;
+      uploadMedia.mockReturnValue(new Promise<string>((r) => { finish = r; }));
+      await pick();
+      store.load({ ...tour(), id: 'another-tour' });
+      finish('icon-1234.png');
+      await new Promise((r) => setTimeout(r, 0));
+      await settle();
+      expect(store.draft()!.id).toBe('another-tour');
+      expect(store.draft()!.icon).toBeUndefined();
     });
   });
 });

@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, ElementRef, inject, signal } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
+import { Component, computed, DestroyRef, effect, ElementRef, inject, signal } from '@angular/core';
 import { ConfigStore } from '../core/config-store';
 import { cssVariablesFor, resolveTheme } from '../core/theme';
 import { TourApi } from '../core/tour-api';
@@ -17,6 +18,7 @@ import { StopPanel } from '../stop/stop-panel';
 export class ViewerPage {
   private readonly api = inject(TourApi);
   private readonly config = inject(ConfigStore);
+  private readonly document = inject(DOCUMENT);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly store = inject(TourStore);
   /** Public: Task 4 hands it to the map and the panorama. */
@@ -43,7 +45,34 @@ export class ViewerPage {
       el.setAttribute('data-layout', r.layout);
       el.setAttribute('data-type-pairing', r.typePairing);
     });
+    this.bindFavicon(inject(DestroyRef));
     void this.bootstrap();
+  }
+
+  /**
+   * The one thing the viewer must put on the document, since a favicon lives
+   * in the head. For the same reason as the tokens above (EntryPage routes to
+   * /edit within one page load), it is put back when the viewer is destroyed.
+   */
+  private bindFavicon(destroyRef: DestroyRef): void {
+    let original: { href: string | null; type: string | null } | null = null;
+    const link = () => this.document.head.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    effect(() => {
+      const icon = this.store.tour()?.icon;
+      const el = link();
+      if (!icon || !el) return;
+      original ??= { href: el.getAttribute('href'), type: el.getAttribute('type') };
+      el.setAttribute('href', this.api.mediaUrl(icon));
+      el.setAttribute('type', 'image/png');
+    });
+    destroyRef.onDestroy(() => {
+      const el = link();
+      if (!original || !el) return;
+      for (const [name, value] of Object.entries(original)) {
+        if (value === null) el.removeAttribute(name);
+        else el.setAttribute(name, value);
+      }
+    });
   }
 
   private async bootstrap(): Promise<void> {

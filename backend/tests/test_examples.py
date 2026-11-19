@@ -165,7 +165,7 @@ def test_opening_the_example_excludes_the_media_manifest(session, cfg):
 
 def test_opening_the_example_warns_about_unreferenced_panoramas(session, cfg):
     warnings = open_example(session, cfg, SYNTHETIC_ID)
-    assert warnings == ["media/pano/pano-tiny.jpg is not referenced by any overlay"]
+    assert warnings == ["media/pano/pano-tiny.jpg is not referenced by the tour"]
 
 
 def test_opening_the_example_writes_a_bundle_json(session, cfg):
