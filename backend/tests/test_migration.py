@@ -225,7 +225,7 @@ def _v2_text(oid="t1"):
 def test_a_v1_document_reaches_the_current_version_in_one_call():
     """The point of the registry: callers ask for "current", not for a hop."""
     out = migrate(_v1_doc([_v1_text()]))
-    assert out["schemaVersion"] == SCHEMA_VERSION == 4
+    assert out["schemaVersion"] == SCHEMA_VERSION == 5
 
 
 def test_a_v2_document_reaches_the_current_version():
@@ -307,7 +307,7 @@ def test_the_real_v2_tour_migrates_and_validates():
 
 
 def test_the_v1_fixture_migrates_through_three_steps_to_the_current_version():
-    """The chain, against real content: v1 -> v2 -> v3 -> v4 in one call, with
+    """The chain, against real content: v1 -> v2 -> v3 -> v4 -> v5 in one call, with
     the v1-only shapes (rephoto, geoQuad) and the v3-only ones (cachedMediaId)
     both landing correctly."""
     raw = json.loads(V1_FIXTURE.read_text())
@@ -344,7 +344,7 @@ def test_v3_to_v4_is_a_version_bump_and_changes_nothing_else():
     before = deepcopy(doc)
     out = migrate(doc)
     assert doc == before  # pure: the input is never mutated
-    assert out["schemaVersion"] == SCHEMA_VERSION == 4
+    assert out["schemaVersion"] == SCHEMA_VERSION == 5
     assert {k: v for k, v in out.items() if k != "schemaVersion"} == \
            {k: v for k, v in doc.items() if k != "schemaVersion"}
 
@@ -352,3 +352,19 @@ def test_v3_to_v4_is_a_version_bump_and_changes_nothing_else():
 def test_the_v3_fixture_migrates_and_validates():
     tour = Tour.model_validate(migrate(json.loads(V3_FIXTURE.read_text())))
     assert tour.theme is None
+
+
+# --- v5: the tour icon step --------------------------------------------------
+
+
+def test_v4_to_v5_is_a_version_bump_and_changes_nothing_else():
+    doc = {"id": "t", "schemaVersion": 4, "title": "T", "description": "d",
+           "defaults": None, "theme": None, "attribution": [],
+           "stops": [{"id": "s1", "order": 1}]}
+    before = deepcopy(doc)
+    out = migrate(doc)
+    assert doc == before  # pure: the input is never mutated
+    assert out["schemaVersion"] == SCHEMA_VERSION == 5
+    assert "icon" not in out
+    assert {k: v for k, v in out.items() if k != "schemaVersion"} == \
+           {k: v for k, v in doc.items() if k != "schemaVersion"}

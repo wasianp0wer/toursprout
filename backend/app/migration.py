@@ -251,12 +251,25 @@ def _v3_to_v4(doc: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _v4_to_v5(doc: dict[str, Any]) -> dict[str, Any]:
+    """v5 adds an optional `icon` and nothing else, so this is a version bump.
+
+    No tour acquires an `icon` key: absent means no icon, which is how every
+    existing tour already looks. `extra="forbid"` is why even an additive
+    field needs a bump at all (ADR 0005).
+    """
+    out = deepcopy(doc)
+    out["schemaVersion"] = 5
+    return out
+
+
 # --- the chain --------------------------------------------------------------
 
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _v1_to_v2,
     2: _v2_to_v3,
     3: _v3_to_v4,
+    4: _v4_to_v5,
 }
 
 

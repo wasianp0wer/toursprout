@@ -115,12 +115,12 @@ export interface Attribution {
 export interface Tour {
   id: string;
   /**
-   * Narrowed to the literal pydantic enforces (`Literal[4]` in
+   * Narrowed to the literal pydantic enforces (`Literal[5]` in
    * backend/app/models.py), not `number`: a file-backed viewer with no
    * Python in the path (the migration lives only in app.migration) must
    * fail to compile against an older document rather than accept it silently.
    */
-  schemaVersion: 4;
+  schemaVersion: 5;
   title: string;
   description: string;
   /**
@@ -138,6 +138,11 @@ export interface Tour {
    * Nocturne, which is today's appearance.
    */
   theme?: Theme | null;
+  /**
+   * Optional and nullable like `theme`: a `.png` under `media/`, or nothing.
+   * Absent means no icon.
+   */
+  icon?: string | null;
 }
 
 export interface TourSummary {

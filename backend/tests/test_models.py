@@ -15,6 +15,7 @@ from app.models import (
     Theme,
     ThemeOverrides,
     Tour,
+    referenced_media,
 )
 
 from .theme_vocabulary import interface_fields, names_in
@@ -71,7 +72,7 @@ def _stop(**over):
 def _tour(**over):
     base = {
         "id": "fairfax-old-town",
-        "schemaVersion": 4,
+        "schemaVersion": 5,
         "title": "Old Town Fairfax",
         "description": "A walking tour of six historic sites.",
         "attribution": [
@@ -484,3 +485,27 @@ def test_the_frontend_theme_overrides_have_the_same_thirteen_fields():
     want = [f.alias or n for n, f in ThemeOverrides.model_fields.items()]
     assert len(want) == 13
     assert interface_fields("ThemeOverrides") == want
+
+
+# --- the tour icon -----------------------------------------------------------
+
+
+def test_tour_icon_is_optional_and_defaults_to_none():
+    assert Tour.model_validate(_tour()).icon is None
+
+
+def test_tour_icon_must_be_a_png():
+    with pytest.raises(ValidationError, match="png"):
+        Tour.model_validate(_tour(icon="logo.jpg"))
+    assert Tour.model_validate(_tour(icon="logo-ab12.PNG")).icon == "logo-ab12.PNG"
+
+
+@pytest.mark.parametrize("ref", ["../x.png", "media/x.png"])
+def test_tour_icon_is_a_safe_media_ref(ref):
+    with pytest.raises(ValidationError):
+        Tour.model_validate(_tour(icon=ref))
+
+
+def test_referenced_media_includes_the_icon():
+    tour = Tour.model_validate(_tour(icon="logo.png"))
+    assert "logo.png" in referenced_media(tour)

@@ -70,7 +70,7 @@ def _referenced_media(doc: dict) -> dict[str, bytes]:
 
 def _minimal_doc(media_id="m.jpg", cached=None):
     return {
-        "id": "t", "schemaVersion": 4, "title": "T", "description": "d",
+        "id": "t", "schemaVersion": 5, "title": "T", "description": "d",
         "attribution": [], "stops": [{
             "id": "s1", "order": 1, "title": "S", "summary": "sum",
             "location": {"lng": -77.3, "lat": 38.84}, "osmRef": None,
