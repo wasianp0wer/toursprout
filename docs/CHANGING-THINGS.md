@@ -37,14 +37,15 @@ Where one does not, the step is only a convention; do not trust the green
 build to catch it. For the shape of the system see
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-A note on additive versus breaking. Widening what a document may contain *within
-an existing field* (a new `kind`, a new `display` mode) leaves every existing
-document valid and needs no migration. A new optional **field** does not get
-that: `extra="forbid"` rejects it for an older reader, so it is a schema
-change with a version bump even though no existing document changes (ADR 0005;
-`theme` in v4 and `icon` in v5 are the worked examples, and their migration
-steps are a version stamp and nothing else). Anything that makes a previously
-valid document invalid, or changes its shape, is a schema change too: see entry 3.
+A note on additive versus breaking. Widening what a document may contain
+*within an existing field* (a new `kind`, a new `display` mode) leaves every
+existing document valid and needs no migration. A new optional **field** does
+not get that: `extra="forbid"` rejects it for an older reader, so it is a
+schema change with a version bump even though no existing document changes
+(ADR 0005; `theme` in v4 and `icon` in v5 are the worked examples, and their
+migration steps are a version stamp and nothing else). Anything that makes a
+previously valid document invalid, or changes its shape, is a schema change
+too: see entry 3.
 
 ---
 
@@ -151,21 +152,17 @@ the editor unmigrated cannot even be saved. Migration is the only door.
    `backend/tests/test_bundle.py`, helpers in `test_models.py`).
 
 **Freeze a fixture of the version you are leaving.** `backend/tests/fixtures/`
-holds `fairfax-old-town-v1.json`, `-v2.json` and `-v3.json`, each a
-snapshot of the repository's real tour at that version, never refreshed. They
+holds `fairfax-old-town-v1.json`, `-v2.json`, `-v3.json` and `-v4.json`, each
+a snapshot of the repository's real tour at that version, never refreshed. They
 are what makes the chain testable against real content instead of comparing
-an already-current document to itself. **There is no `-v4.json`:** the bump to
-v5 (the tour icon) did not freeze one, and
-`test_v4_to_v5_is_a_version_bump_and_changes_nothing_else` runs on a small hand-built v4 document instead. That is enough for a step that
-only stamps the version, and it is a gap all the same. The next bump, to v6,
-should freeze the real tour at v5 first, before you change the models, and
-may as well freeze v4 from `git show aec65c1:content/tours/fairfax-old-town.json`
-while it is there.
+an already-current document to itself. The next bump, to v6, should freeze the
+real tour at v5 first, before you change the models: copy it with
+`git show HEAD:content/tours/fairfax-old-town.json`.
 
 **Fails if incomplete:** `backend/tests/test_migration.py` (add cases for each
 migrated shape; `test_the_real_tour_migrates_and_validates`,
 `test_the_real_v2_tour_migrates_and_validates` and
-`test_the_v1_fixture_migrates_through_three_steps_to_the_current_version` run
+`test_the_v1_fixture_migrates_through_four_steps_to_the_current_version` run
 real content through the chain);
 `test_the_shipped_tour_is_valid_at_the_current_version` and
 `test_build_tour_emits_the_current_schema_shapes`
