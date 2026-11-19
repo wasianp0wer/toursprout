@@ -748,14 +748,16 @@ candidate for the next session than anything numbered below.
     `docs/superpowers/specs/2026-11-11-uploaded-base-imagery-design.md`, on
     the evidence in `-findings.md` beside it (1305 lines, gathered by
     reading the code, not estimated). Unlike item A it is **large**: it needs
-    a schema bump and a migration (v4 went to theming and v5 to the tour icon,
-    which took them first, so this is v6 or later), a
-    self-hosted viewer so `PanoramaViewer` is
-    no longer only mapillary-js, a direct three.js dependency pinned to the
-    0.134.0 that arrives transitively today, and `publish.py` taught to read
-    the document — it currently imports only `zipfile` and `Path` and zips
-    the working directory wholesale, which an earlier draft of that design
-    got wrong and had to correct.
+    a schema bump and a migration (v4 went to theming and v5 to the tour
+    icon, which took them first, so this is v6 or later), a self-hosted
+    viewer so `PanoramaViewer` is no longer only mapillary-js, a direct
+    three.js dependency pinned to the 0.134.0 that arrives transitively
+    today, and `publish.py` taught to read more of the document — it reads
+    one field of it already, `Tour.icon`, through `migrate` and `Tour`
+    (ADR 0009's amendment), but it still zips the working directory
+    wholesale and knows nothing of imagery, which an earlier draft of that
+    design got wrong (it said `publish.py` imported only `zipfile` and
+    `Path`) and had to correct.
 
     It is **not ready to implement.** Eight decisions taken after its
     builder check are not yet written into it, four of them the author's.

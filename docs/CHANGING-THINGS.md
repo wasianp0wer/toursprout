@@ -43,8 +43,8 @@ document valid and needs no migration. A new optional **field** does not get
 that: `extra="forbid"` rejects it for an older reader, so it is a schema
 change with a version bump even though no existing document changes (ADR 0005;
 `theme` in v4 and `icon` in v5 are the worked examples, and their migration
-steps are a version stamp and nothing else). Anything that makes a previously valid document
-invalid, or changes its shape, is a schema change too: see entry 3.
+steps are a version stamp and nothing else). Anything that makes a previously
+valid document invalid, or changes its shape, is a schema change too: see entry 3.
 
 ---
 
@@ -155,8 +155,8 @@ holds `fairfax-old-town-v1.json`, `-v2.json` and `-v3.json`, each a
 snapshot of the repository's real tour at that version, never refreshed. They
 are what makes the chain testable against real content instead of comparing
 an already-current document to itself. **There is no `-v4.json`:** the bump to
-v5 (the tour icon) did not freeze one, and `test_v4_to_v5_is_a_version_bump_and_changes_nothing_else`
-runs on a small hand-built v4 document instead. That is enough for a step that
+v5 (the tour icon) did not freeze one, and
+`test_v4_to_v5_is_a_version_bump_and_changes_nothing_else` runs on a small hand-built v4 document instead. That is enough for a step that
 only stamps the version, and it is a gap all the same. The next bump, to v6,
 should freeze the real tour at v5 first, before you change the models, and
 may as well freeze v4 from `git show aec65c1:content/tours/fairfax-old-town.json`

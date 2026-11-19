@@ -363,7 +363,9 @@ running. To know that, `build_site` migrates and validates `tour.json` through
 after all (ADR 0009's amendment). With no icon the zip is byte-identical to
 what it was. The viewer sets the same link at runtime so Preview, which is the
 authoring host's unmarked `dist/index.html`, shows the icon too; on a published
-site that is the same URL and changes nothing. Because flow 1 reads `tour-data/…` relative to the page,
+site that is the same URL and changes nothing.
+
+Because flow 1 reads `tour-data/…` relative to the page,
 unzipping onto any static host produces a working tour with no further step.
 The `tour-data/` prefix is not cosmetic: Angular already emits a `media/`
 directory for Leaflet's marker images, and tour media at the root would
