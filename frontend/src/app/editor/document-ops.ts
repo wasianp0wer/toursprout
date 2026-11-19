@@ -589,6 +589,15 @@ export function selectPanorama(
   return { tour: next, fix: { imageId, lng, lat } };
 }
 
+/** `null` removes the key: the stored tour has no icon, not an icon of null. */
+export function setTourIcon(tour: Tour, mediaId: string | null): Tour {
+  if (mediaId === null) {
+    const { icon: _gone, ...rest } = tour;
+    return rest;
+  }
+  return { ...tour, icon: mediaId };
+}
+
 // The theme ops. A tour with no theme is Nocturne with nothing set, so each op
 // starts from that and writes a whole theme object back: the stored shape is
 // the pydantic one, whose absent fields mean the defaults.

@@ -113,3 +113,9 @@ summary { font-size: 0.8rem; color: #9aa0ab; cursor: pointer; margin-bottom: 0.3
 .thumb[data-thumb='widePanel'] { grid-template-columns: 2fr 1fr; grid-template-areas: "p s" "m s"; }
 .thumb[data-thumb='panelLeft'] { grid-template-columns: 1fr 2fr; grid-template-areas: "s p" "s m"; }
 .thumb[data-thumb='immersive'] { grid-template-columns: 3fr 2fr; grid-template-areas: "p p" "s m"; }
+
+.icon { display: flex; flex-direction: column; gap: 0.35rem; }
+.icon .hint { margin: 0; font-size: 0.8rem; color: #8b909a; }
+.icon .current { display: flex; align-items: center; gap: 0.75rem; }
+.icon img { object-fit: contain; border: 1px solid #343a44; border-radius: 4px; }
+.icon .problem { margin: 0; font-size: 0.8rem; color: #e8825b; }
