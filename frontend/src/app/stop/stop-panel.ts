@@ -34,9 +34,6 @@ import { TourStore } from '../core/tour-store';
           <h3>{{ selected.title }}</h3>
 
           @switch (selected.kind) {
-            @case ('text') {
-              <p>{{ selected.body }}</p>
-            }
             @case ('image') {
               <img [src]="api.mediaUrl(selected.mediaId!)" [alt]="selected.title" />
             }
@@ -48,6 +45,13 @@ import { TourStore } from '../core/tour-store';
                 />
               </audio>
             }
+          }
+
+          @let paragraphs = bodyParagraphs(selected.body);
+          @if (paragraphs.length) {
+            <div class="body">
+              @for (para of paragraphs; track $index) { <p>{{ para }}</p> }
+            </div>
           }
 
           @let line = credit(selected.credit);
@@ -101,6 +105,7 @@ export class StopPanel {
   protected readonly api = inject(TourApi);
   protected readonly credit = creditLine;
   protected readonly audioType = audioType;
+  protected readonly bodyParagraphs = bodyParagraphs;
 
   protected onOpacity(id: string, event: Event): void {
     this.store.setOverlayOpacity(id, Number((event.target as HTMLInputElement).value));
@@ -109,4 +114,13 @@ export class StopPanel {
   protected readonly position = computed(
     () => `${this.store.currentIndex() + 1} of ${this.store.stops().length}`,
   );
+}
+
+/**
+ * The body as the author typed it into a textarea: a blank line starts a new
+ * paragraph, and a single newline stays inside its paragraph as a line break
+ * (`white-space: pre-line` in stop-panel.css). Any kind may carry a body.
+ */
+export function bodyParagraphs(body: string | null): string[] {
+  return (body ?? '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
 }

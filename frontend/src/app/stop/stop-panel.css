@@ -10,6 +10,7 @@ h2 { margin: 0 0 0.4rem; font-size: calc(1.35rem * var(--type-scale)); }
 .overlay-detail h3 { margin: 0 0 0.5rem; font-size: calc(1rem * var(--type-scale)); }
 .overlay-detail img { max-width: 100%; border-radius: 4px; }
 .overlay-detail audio { width: 100%; }
+.overlay-detail .body p { white-space: pre-line; }
 .credit { font-size: calc(0.72rem * var(--type-scale)); color: var(--muted); margin-top: 0.7rem; line-height: 1.45; }
 .credit a { color: var(--muted); text-decoration: none; }
 .credit a:hover { text-decoration: underline; }

@@ -111,6 +111,43 @@ describe('StopPanel', () => {
     expect(render().querySelector('img')?.getAttribute('src')).toBe('tour-data/media/photo.jpg');
   });
 
+  // Issue #2: the inspector offers a Body field on every kind, so a body
+  // written on an image or audio overlay has to reach the reader too.
+  it('renders the body of an image overlay', () => {
+    store.load(tour([overlay({ id: 'ov-i', kind: 'image', body: 'Taken from the east steps.', mediaId: 'photo.jpg' })]));
+    store.selectOverlay('ov-i');
+    expect(render().querySelector('.overlay-detail')?.textContent).toContain('Taken from the east steps.');
+  });
+
+  it('renders the body of an audio overlay', () => {
+    store.load(tour([overlay({ id: 'ov-a', kind: 'audio', body: 'Read by a docent.', mediaId: 'narration-s1.m4a' })]));
+    store.selectOverlay('ov-a');
+    expect(render().querySelector('.overlay-detail')?.textContent).toContain('Read by a docent.');
+  });
+
+  it('renders no body paragraph for a media overlay without one', () => {
+    store.load(tour([overlay({ id: 'ov-i', kind: 'image', body: '  ', mediaId: 'photo.jpg' })]));
+    store.selectOverlay('ov-i');
+    expect(render().querySelectorAll('.overlay-detail .body p')).toHaveLength(0);
+  });
+
+  // Issue #3: a textarea keeps the author's Enter presses, but one <p> of
+  // interpolated text collapses them. A blank line starts a new paragraph;
+  // a single newline is a line break, kept by `white-space: pre-line`.
+  it('splits the body into paragraphs at blank lines', () => {
+    store.load(tour([overlay({ body: 'Built in 1800.\n\nBurned in 1862.\n \n\nRebuilt.' })]));
+    store.selectOverlay('ov-1');
+    const paragraphs = [...render().querySelectorAll('.overlay-detail .body p')].map((p) => p.textContent);
+    expect(paragraphs).toEqual(['Built in 1800.', 'Burned in 1862.', 'Rebuilt.']);
+  });
+
+  it('keeps a single newline inside its paragraph', () => {
+    store.load(tour([overlay({ body: 'Fairfax Court House\nVirginia' })]));
+    store.selectOverlay('ov-1');
+    const paragraphs = [...render().querySelectorAll('.overlay-detail .body p')].map((p) => p.textContent);
+    expect(paragraphs).toEqual(['Fairfax Court House\nVirginia']);
+  });
+
   it('lists every overlay on the stop so all content is reachable', () => {
     store.load(tour([overlay(), overlay({ id: 'ov-2', title: 'Second' })]));
     expect(render().querySelectorAll('[data-overlay-item]')).toHaveLength(2);
