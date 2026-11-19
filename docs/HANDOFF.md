@@ -462,7 +462,7 @@ Verified against a live backend (a throwaway one on a temp `CONTENT_DIR`, so
 the author's own `content/work/` was never touched):
 `POST /api/session/examples/fairfax-old-town` returns `"stopCount": 6`,
 `"mediaCount": 15`, `"orphanCount": 6` and six informational warnings, one per
-panorama (`media/pano/pano-<stop>.jpg is not referenced by any overlay`) — as
+panorama (`media/pano/pano-<stop>.jpg is not referenced by the tour`) — as
 recorded under schema v2; under v3 the same call returns `"orphanCount": 0`
 and no warnings (ADR 0005; re-run on 2026-11-06), and
 `GET /api/session/export` then returns the same 4.5&nbsp;MB zip as before
@@ -551,7 +551,7 @@ This was run end to end against a live backend with `curl` (not
 - Re-importing that zip (`curl -X POST localhost:8000/api/session/import -F
   file=@fairfax-old-town.zip -F force=true`) returns 200, `"stopCount": 6`,
   `"mediaCount": 15`, and six warnings, one per panorama: `media/pano/
-  pano-<stop>.jpg is not referenced by any overlay`. These were
+  pano-<stop>.jpg is not referenced by the tour`. These were
   informational, and as of v3 they are not emitted at all — see the note
   above.
   (`force=true` was added to that line afterwards, when `import` gained the

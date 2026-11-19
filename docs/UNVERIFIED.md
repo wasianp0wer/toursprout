@@ -1643,7 +1643,7 @@ host or a browser; items 2 and 4 need a browser and nothing else.*
    the zip's `index.html` as text: the rewritten link, the escaped id, the
    untouched on-disk file. That a browser fetches `tour-data/media/<id>` from
    an unzipped site, under whatever base path the host serves it from and with
-   whatever content type it gives an extension-less file name, has not been
+   whatever content type it gives a `.png` file name, has not been
    checked. The id ends `.png`, so the type should follow, but it is reasoned.
    - **Close it (a host):** publish a tour with an icon, unzip it onto a static
      host in a subdirectory, and load it with the network panel up. Pass: the
@@ -1656,6 +1656,11 @@ host or a browser; items 2 and 4 need a browser and nothing else.*
    whether its contrast holds (`muted` on `attributionBar` is measured for the
    data credits; this link shares the style and was not measured on its own)
    is pixels.
+5. **Unseen: a mislabelled icon from an imported bundle.** An imported
+   bundle's `icon` need only be an allowed image type, not PNG bytes, so a
+   JPEG named `.png` publishes with `type="image/png"`. Browsers sniff
+   favicons, so it should still show; the mismatch is cosmetic and was not
+   tried.
 
 ## Not on this list, deliberately
 
