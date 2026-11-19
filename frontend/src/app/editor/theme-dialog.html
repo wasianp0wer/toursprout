@@ -105,6 +105,20 @@
           }
         </div>
       </div>
+      <div class="icon" data-icon>
+        <label>Tour icon
+          <input type="file" accept="image/*" data-icon-input [disabled]="iconBusy()"
+            (change)="chooseIcon($event)" />
+        </label>
+        <p class="hint">Shown in the browser tab of the published tour.</p>
+        @if (icon(); as id) {
+          <div class="current">
+            <img data-icon-preview [src]="api.mediaUrl(id)" alt="Current tour icon" width="32" height="32" />
+            <button type="button" class="quiet" data-icon-remove (click)="removeIcon()">Remove</button>
+          </div>
+        }
+        @if (iconError(); as message) { <p class="problem" data-icon-error role="alert">{{ message }}</p> }
+      </div>
       </div>
     </div>
 
