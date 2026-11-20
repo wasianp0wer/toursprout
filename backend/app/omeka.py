@@ -15,9 +15,11 @@ import re
 import time
 from html import unescape
 from html.parser import HTMLParser
+from typing import Annotated
 from urllib.parse import urlsplit
 
 import httpx
+from pydantic import BaseModel, Field, StringConstraints
 
 from .media_store import ALLOWED_TYPES, MediaError, sniff
 from .net_guard import PRIVATE, UNREACHABLE, GuardRefused, Resolver, check_public_url
@@ -28,6 +30,23 @@ AUDIO_TYPES = frozenset(t for t in ALLOWED_TYPES if t.startswith("audio/"))
 # A pasted page address carries the public theme's or the admin's path after
 # the install root; the first of these segments marks where the root ends.
 _PAGE_PATH = re.compile(r"/(?:items|collections|exhibits|admin|files)(?:/|$)")
+
+
+class OmekaSearchRequest(BaseModel):
+    siteUrl: str = Field(max_length=2000)
+    query: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
+                                            max_length=300)]
+    page: int = Field(default=1, ge=1, le=1000)
+
+
+class OmekaFilesRequest(BaseModel):
+    siteUrl: str = Field(max_length=2000)
+    itemId: int = Field(ge=1)
+
+
+class OmekaImportRequest(OmekaFilesRequest):
+    fileId: int = Field(ge=1)
+    title: str = Field(default="", max_length=300)
 
 
 def omeka_base(raw: str) -> str:

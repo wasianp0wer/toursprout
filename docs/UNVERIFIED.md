@@ -1662,6 +1662,34 @@ host or a browser; items 2 and 4 need a browser and nothing else.*
    favicons, so it should still show; the mismatch is cosmetic and was not
    tried.
 
+## 47. Omeka import from the production host, and how long it takes
+
+*Written 2026-11-20, with the Omeka import routes. Steps 1 and 2 of the spec's
+live check are done: the demo site's API is on, and the fixtures in
+`backend/tests/fixtures/omeka/` were captured from it live on 2026-11-20 and
+the parser fixed where they differed. Everything below needs the deployed
+editor.*
+
+1. **Unseen: that the production host can reach the demo site.** This is the
+   check loc.gov failed (entry 36). The suite uses a MockTransport and a fake
+   resolver; nothing has made a request from the host. The demo site
+   (`omeka.madelynharrington.net`) is behind Cloudflare, so it is not on the
+   editor's own server, but Cloudflare's bot protection may challenge requests
+   from a hosting provider's address with an HTML challenge page. That would
+   surface as "There is no Omeka Classic site at ...", so look at the actual
+   response before believing that message.
+   - **Close it (production host):** deploy, open the hosted editor, and search
+     the demo site. Pass: results list. If the host cannot connect, the message
+     says so, and the fix is on the host or the Omeka side. If it is a
+     challenge page, add a Cloudflare rule allowing the editor host's address to
+     reach `/api/*` and `/files/*`.
+2. **Unseen: an import, published.** Import one image and, if the site has
+   one, one audio file; publish; open the published page. Pass: the media plays
+   or shows, with the credit.
+3. **Unseen: timing.** Time one search and one import from the hosted editor.
+   Pass: both well under the 30 s route budget. If either comes close, the
+   host's CGI limit becomes the next thing to learn.
+
 ## Not on this list, deliberately
 
 These are open decisions, not unverified facts: the `stops.json` drift and

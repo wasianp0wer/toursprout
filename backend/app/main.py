@@ -31,7 +31,7 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.staticfiles import NotModifiedResponse
 
-from . import tools
+from . import net_guard, omeka, tools
 from .bundle import (
     BundleError,
     missing_media,
@@ -769,6 +769,85 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
         except tools.ToolError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.message) from exc
         return {"results": found}
+
+    # --- Omeka import ------------------------------------------------------
+    # Every hop goes through the address guard; tests install a MockTransport
+    # and a fake resolver on app.state instead.
+
+    def _omeka_client():
+        transport = getattr(app.state, "http_transport", None)
+        if transport is not None:
+            return tools.make_client(transport, omeka.OMEKA_REQUEST_TIMEOUT)
+        return net_guard.make_guarded_client(omeka.OMEKA_REQUEST_TIMEOUT)
+
+    def _omeka_resolve():
+        return getattr(app.state, "omeka_resolve", net_guard.resolve)
+
+    @app.post("/api/tools/omeka-search", dependencies=[Depends(_reject_cross_site)])
+    def tool_omeka_search(body: omeka.OmekaSearchRequest) -> dict:
+        deadline = time.monotonic() + omeka.OMEKA_ROUTE_BUDGET
+        resolve = _omeka_resolve()
+        base = omeka.omeka_base(body.siteUrl)
+        try:
+            with _omeka_client() as c:
+                site = omeka.get_site(c, base, deadline=deadline, resolve=resolve)
+                found = omeka.search_items(c, base, body.query, body.page,
+                                           deadline=deadline, resolve=resolve)
+        except tools.ToolError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
+        return {"site": site, **found}
+
+    @app.post("/api/tools/omeka-files", dependencies=[Depends(_reject_cross_site)])
+    def tool_omeka_files(body: omeka.OmekaFilesRequest) -> dict:
+        deadline = time.monotonic() + omeka.OMEKA_ROUTE_BUDGET
+        resolve = _omeka_resolve()
+        base = omeka.omeka_base(body.siteUrl)
+        try:
+            with _omeka_client() as c:
+                files = omeka.list_files(c, base, body.itemId,
+                                         deadline=deadline, resolve=resolve)
+        except tools.ToolError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
+        return {"files": [omeka.file_summary(f) for f in files]}
+
+    @app.post("/api/tools/omeka-import", dependencies=[Depends(_reject_cross_site)])
+    def tool_omeka_import(body: omeka.OmekaImportRequest, session: CurrentSession) -> dict:
+        if not session.is_open:
+            raise HTTPException(
+                status_code=409,
+                detail="no tour is open; call POST /api/session/new first",
+            )
+        deadline = time.monotonic() + omeka.OMEKA_ROUTE_BUDGET
+        resolve = _omeka_resolve()
+        base = omeka.omeka_base(body.siteUrl)
+        try:
+            with _omeka_client() as c:
+                files = omeka.list_files(c, base, body.itemId,
+                                         deadline=deadline, resolve=resolve)
+                # The file record is re-read here: the client never names
+                # the download URL.
+                record = next((f for f in files if f.get("id") == body.fileId), None)
+                if record is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="That file is no longer on the Omeka item.")
+                summary = omeka.file_summary(record)
+                if not summary["importable"]:
+                    raise HTTPException(status_code=400, detail=summary["reason"])
+                data = omeka.fetch_file(
+                    c, omeka.download_url(record), summary["kind"],
+                    deadline=deadline, resolve=resolve,
+                    max_bytes=cfg.max_media_file_bytes)
+        except tools.ToolError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
+        try:
+            media_id = store_media(
+                session.path, data, body.title or "omeka",
+                max_file_bytes=cfg.max_media_file_bytes,
+                max_session_bytes=cfg.max_session_media_bytes)
+        except MediaError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {**session.summary(), "mediaId": media_id}
 
     @app.get("/api/session/export")
     def export_bundle(session: CurrentSession) -> Response:
