@@ -10,6 +10,21 @@ export interface GeocodeResult {
   osmRef: string | null;
 }
 
+export interface OmekaSite { base: string; title: string }
+
+export interface OmekaItem {
+  itemId: number; itemUrl: string; title: string; description: string | null;
+  creator: string | null; date: string | null; rights: string | null; fileCount: number;
+}
+
+export interface OmekaSearch { site: OmekaSite; total: number; page: number; results: OmekaItem[] }
+
+export interface OmekaFile {
+  fileId: number; kind: 'image' | 'audio' | null; filename: string; thumbUrl: string | null;
+  importable: boolean; reason: string | null;
+  title: string | null; creator: string | null; rights: string | null;
+}
+
 /**
  * The acquisition tools. A sibling of SessionApi rather than part of it:
  * SessionApi is the open document (read, write, upload), while these are
@@ -27,6 +42,20 @@ export class ToolsApi {
    */
   async geocode(query: string): Promise<GeocodeResult[]> {
     return (await this.post<{ results: GeocodeResult[] }>('geocode', { query })).results;
+  }
+
+  omekaSearch(siteUrl: string, query: string, page = 1): Promise<OmekaSearch> {
+    return this.post<OmekaSearch>('omeka-search', { siteUrl, query, page });
+  }
+
+  async omekaFiles(siteUrl: string, itemId: number): Promise<OmekaFile[]> {
+    return (await this.post<{ files: OmekaFile[] }>('omeka-files', { siteUrl, itemId })).files;
+  }
+
+  /** Resolves to the stored mediaId of the imported file. */
+  async omekaImport(siteUrl: string, itemId: number, fileId: number, title: string): Promise<string> {
+    return (await this.post<{ mediaId: string }>(
+      'omeka-import', { siteUrl, itemId, fileId, title })).mediaId;
   }
 
   private async post<T>(tool: string, body: object): Promise<T> {

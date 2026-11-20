@@ -7,10 +7,11 @@ import {
   setStopLocation, selectPanorama,
   PLACEHOLDER_SUMMARY, setStopSummary, setTourDescription, setTourTitle,
   setTourIcon, setThemePreset, setThemeOverride, clearThemeOverride, clearThemeOverrides,
-  setTypePairing, setTypeScale, setTourLayout,
+  setTypePairing, setTypeScale, setTourLayout, omekaCredit, omekaOverlayText,
 } from './document-ops';
 import { overlay, stop, tour } from './test-builders';
 import type { Tour } from '../core/tour.models';
+import type { OmekaFile, OmekaItem } from '../core/tools-api';
 
 describe('slugify and uniqueId', () => {
   it('makes a readable slug', () => {
@@ -839,5 +840,70 @@ describe('setTourIcon', () => {
     const out = setTourIcon(withIcon, null);
     expect('icon' in out).toBe(false);
     expect(withIcon.icon).toBe('a.png');
+  });
+});
+
+describe('omeka credit, title and body', () => {
+  const site = { base: 'https://omeka.example', title: "Madelyn's Interests and Exhibits" };
+  const item = (o: Partial<OmekaItem> = {}): OmekaItem => ({
+    itemId: 3, itemUrl: 'https://omeka.example/items/show/3', title: 'Item title',
+    description: 'desc', creator: 'Item Creator', date: null, rights: 'Public domain', fileCount: 1, ...o,
+  });
+  const file = (o: Partial<OmekaFile> = {}): OmekaFile => ({
+    fileId: 9, kind: 'image', filename: 'orig.jpg', thumbUrl: null, importable: true,
+    reason: null, title: null, creator: null, rights: null, ...o,
+  });
+
+  it('omekaCredit prefers file fields over item fields', () => {
+    const c = omekaCredit(site, item(), file({ rights: 'CC0', creator: 'File Creator' }));
+    expect(c).toEqual({
+      type: 'sourced', source: "Madelyn's Interests and Exhibits",
+      url: 'https://omeka.example/items/show/3', license: 'CC0', creator: 'File Creator',
+    });
+  });
+
+  it('omekaCredit uses the item rights when the file has none', () => {
+    const c = omekaCredit(site, item(), file());
+    expect(c).toMatchObject({ license: 'Public domain', creator: 'Item Creator' });
+  });
+
+  it('omekaCredit uses the typed licence only when Omeka states none', () => {
+    const none = item({ rights: null });
+    expect(omekaCredit(site, none, file(), 'CC BY 4.0')).toMatchObject({ license: 'CC BY 4.0' });
+    expect(omekaCredit(site, item(), file(), 'CC BY 4.0')).toMatchObject({ license: 'Public domain' });
+  });
+
+  it('omekaCredit is null with no rights and no typed licence', () => {
+    const none = item({ rights: null });
+    expect(omekaCredit(site, none, file())).toBeNull();
+    expect(omekaCredit(site, none, file(), '   ')).toBeNull();
+  });
+
+  it('omekaCredit source falls back to the host when title is blank', () => {
+    expect(omekaCredit({ base: 'https://omeka.example', title: '  ' }, item(), file()))
+      .toMatchObject({ source: 'omeka.example' });
+  });
+
+  it('omekaCredit url is the item page and creator may be null', () => {
+    const c = omekaCredit(site, item({ creator: null }), file());
+    expect(c).toMatchObject({ url: 'https://omeka.example/items/show/3', creator: null });
+  });
+
+  it('omekaOverlayText falls back title -> item title -> filename, body is the description', () => {
+    expect(omekaOverlayText(item(), file({ title: 'File title' }))).toEqual({ title: 'File title', body: 'desc' });
+    expect(omekaOverlayText(item(), file()).title).toBe('Item title');
+    expect(omekaOverlayText(item({ title: ' ', description: null }), file()))
+      .toEqual({ title: 'orig.jpg', body: null });
+  });
+
+  it('addMediaOverlay writes body in the same change', () => {
+    const out = addMediaOverlay(tour(), 's1', 'image', 'm-1.jpg', 'm', undefined, undefined, '  desc ');
+    expect(out.stops[0].overlays[0].body).toBe('desc');
+  });
+
+  it('addMediaOverlay without body keeps body null', () => {
+    expect(addMediaOverlay(tour(), 's1', 'image', 'm-1.jpg', 'm').stops[0].overlays[0].body).toBeNull();
+    expect(addMediaOverlay(tour(), 's1', 'image', 'm-1.jpg', 'm', undefined, undefined, '  ')
+      .stops[0].overlays[0].body).toBeNull();
   });
 });
