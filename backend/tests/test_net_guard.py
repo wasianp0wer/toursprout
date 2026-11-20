@@ -5,10 +5,16 @@ Resolvers are injected, so no test here touches real DNS or the network.
 
 from __future__ import annotations
 
+import httpcore
 import httpx
 import pytest
 
-from app.net_guard import check_public_url, is_public_address
+from app.net_guard import (
+    GuardedBackend,
+    check_public_url,
+    is_public_address,
+    make_guarded_client,
+)
 from app.tools import ToolError
 
 PUBLIC = lambda host, port: ["104.21.46.14"]
@@ -80,3 +86,55 @@ def test_name_that_does_not_resolve_is_unreachable():
     assert e.value.status == 502
     assert e.value.message.startswith(
         "The editor's server could not reach nowhere.example (the name did not resolve).")
+
+
+# --- the check again at connect time (DNS rebinding) ------------------------
+
+class FakeStream(httpcore.NetworkStream):
+    pass
+
+
+class FakeInner(httpcore.NetworkBackend):
+    """Records where the guard told it to connect, instead of connecting."""
+
+    def __init__(self):
+        self.connected = []
+
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        self.connected.append((host, port))
+        return FakeStream()
+
+
+def test_connects_to_the_address_it_checked():
+    inner = FakeInner()
+    GuardedBackend(PUBLIC, inner).connect_tcp("omeka.example", 443)
+    assert inner.connected == [("104.21.46.14", 443)]
+
+
+def test_rebinding_refused_at_connect():
+    answers = iter([["104.21.46.14"], ["127.0.0.1"]])
+    resolver = lambda h, p: next(answers)
+    check_public_url("https://omeka.example/", resolve=resolver)  # first lookup passes
+    inner = FakeInner()
+    with pytest.raises(httpcore.ConnectError, match="private or local network address"):
+        GuardedBackend(resolver, inner).connect_tcp("omeka.example", 443)
+    assert inner.connected == []
+
+
+def test_unix_sockets_refused():
+    with pytest.raises(httpcore.ConnectError):
+        GuardedBackend(PUBLIC, FakeInner()).connect_unix_socket("/var/run/docker.sock")
+
+
+def test_production_client_uses_guarded_backend():
+    c = make_guarded_client(5.0)
+    assert isinstance(c._transport._pool._network_backend, GuardedBackend)
+    assert c.follow_redirects is False and c._trust_env is False
+    assert c.headers["User-Agent"].startswith("clio-wired")
+
+
+def test_guarded_client_refuses_a_private_name_end_to_end():
+    """A request through the real client stops at connect, before any socket."""
+    with (make_guarded_client(5.0, resolve=PRIVATE) as c,
+          pytest.raises(httpx.ConnectError, match="private or local")):
+        c.get("http://intranet.example/")

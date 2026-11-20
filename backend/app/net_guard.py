@@ -3,18 +3,22 @@
 The author may type any URL, so a fetch of it could otherwise reach the
 server's own loopback, the private network or the cloud metadata address.
 `check_public_url` refuses those before a request, with the message the
-author sees. The resolver is a parameter, so tests answer DNS themselves.
+author sees. A name can answer differently when httpx resolves it again
+(DNS rebinding), so `make_guarded_client` also checks at connect time and
+connects to the address it checked. The resolver is a parameter, so tests
+answer DNS themselves.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import socket
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
+import httpcore
 import httpx
 
-from app.tools import ToolError
+from app.tools import UA, ToolError
 
 Resolver = Callable[[str, int], list[str]]
 
@@ -71,3 +75,54 @@ def check_public_url(url: str | httpx.URL, *, resolve: Resolver = resolve) -> ht
     if not addresses or not all(is_public_address(ip) for ip in addresses):
         raise ToolError(400, PRIVATE.format(host=host))
     return parsed
+
+
+class GuardedBackend(httpcore.NetworkBackend):
+    """Resolves, refuses non-public addresses, connects to the address checked.
+
+    Only the TCP connect gets the IP; httpcore still passes the request's
+    hostname to `start_tls`, so SNI and the certificate check use the name.
+    """
+
+    def __init__(self, resolve: Resolver = resolve,
+                 inner: httpcore.NetworkBackend | None = None):
+        self._resolve = resolve
+        self._inner = inner or httpcore.SyncBackend()
+
+    def connect_tcp(self, host: str, port: int, timeout: float | None = None,
+                    local_address: str | None = None,
+                    socket_options: Iterable[httpcore.SOCKET_OPTION] | None = None,
+                    ) -> httpcore.NetworkStream:
+        if _is_ip_literal(host):
+            addresses = [host]
+        else:
+            try:
+                addresses = self._resolve(host, port)
+            except OSError as exc:
+                raise httpcore.ConnectError(f"{host}: the name did not resolve") from exc
+        if not addresses or not all(is_public_address(ip) for ip in addresses):
+            raise httpcore.ConnectError(PRIVATE.format(host=host))
+        return self._inner.connect_tcp(addresses[0], port, timeout=timeout,
+                                       local_address=local_address,
+                                       socket_options=socket_options)
+
+    def connect_unix_socket(self, path: str, timeout: float | None = None,
+                            socket_options: Iterable[httpcore.SOCKET_OPTION] | None = None,
+                            ) -> httpcore.NetworkStream:
+        raise httpcore.ConnectError("the editor does not connect to local sockets")
+
+    def sleep(self, seconds: float) -> None:
+        self._inner.sleep(seconds)
+
+
+def make_guarded_client(timeout: float, *, resolve: Resolver = resolve) -> httpx.Client:
+    # Unlike tools.make_client, the host is the author's: no redirects (each
+    # hop must pass check_public_url) and no proxy from the environment.
+    transport = httpx.HTTPTransport()
+    # httpx has no public hook for the network backend, so swap its pool.
+    transport._pool = httpcore.ConnectionPool(
+        ssl_context=httpx.create_ssl_context(),
+        network_backend=GuardedBackend(resolve))
+    return httpx.Client(transport=transport, timeout=timeout,
+                        headers={"User-Agent": UA},
+                        follow_redirects=False, trust_env=False)
