@@ -1,0 +1,1049 @@
+[
+ {
+  "id": 1,
+  "url": "https://omeka.madelynharrington.net/api/items/1",
+  "public": true,
+  "featured": false,
+  "added": "2026-09-21T23:53:13+00:00",
+  "modified": "2026-09-21T23:55:02+00:00",
+  "item_type": {
+   "id": 5,
+   "url": "https://omeka.madelynharrington.net/api/item_types/5",
+   "name": "Sound",
+   "resource": "item_types"
+  },
+  "collection": {
+   "id": 1,
+   "url": "https://omeka.madelynharrington.net/api/collections/1",
+   "resource": "collections"
+  },
+  "owner": {
+   "id": 1,
+   "url": "https://omeka.madelynharrington.net/api/users/1",
+   "resource": "users"
+  },
+  "files": {
+   "count": 1,
+   "url": "https://omeka.madelynharrington.net/api/files?item=1",
+   "resource": "files"
+  },
+  "tags": [],
+  "element_texts": [
+   {
+    "html": false,
+    "text": "Larry Speakes discusses AIDS at a press conference in 1982",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 50,
+     "url": "https://omeka.madelynharrington.net/api/elements/50",
+     "name": "Title",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Larry Speakes discussing AIDS with Lester Kinsolving in 1982",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 49,
+     "url": "https://omeka.madelynharrington.net/api/elements/49",
+     "name": "Subject",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Larry Speakes discussing AIDS with Lester Kinsolving in 1982",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 41,
+     "url": "https://omeka.madelynharrington.net/api/elements/41",
+     "name": "Description",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Ronald Reagan White House",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 39,
+     "url": "https://omeka.madelynharrington.net/api/elements/39",
+     "name": "Creator",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "https://en.wikipedia.org/wiki/File:Remarks_by_Larry_Speakes_during_daily_press_briefing,_October_15,_1982_(subject_AIDS)._White_House_Press_Room.mp3",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 48,
+     "url": "https://omeka.madelynharrington.net/api/elements/48",
+     "name": "Source",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Reagan Presidential Library Archives",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 45,
+     "url": "https://omeka.madelynharrington.net/api/elements/45",
+     "name": "Publisher",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "15 October 1982",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 40,
+     "url": "https://omeka.madelynharrington.net/api/elements/40",
+     "name": "Date",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Public domain",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 47,
+     "url": "https://omeka.madelynharrington.net/api/elements/47",
+     "name": "Rights",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "mp3 audio file",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 42,
+     "url": "https://omeka.madelynharrington.net/api/elements/42",
+     "name": "Format",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "English",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 44,
+     "url": "https://omeka.madelynharrington.net/api/elements/44",
+     "name": "Language",
+     "resource": "elements"
+    }
+   }
+  ],
+  "extended_resources": {
+   "exhibit_pages": {
+    "count": 0,
+    "url": "https://omeka.madelynharrington.net/api/exhibit_pages?item=1",
+    "resource": "exhibit_pages"
+   }
+  }
+ },
+ {
+  "id": 2,
+  "url": "https://omeka.madelynharrington.net/api/items/2",
+  "public": true,
+  "featured": false,
+  "added": "2026-09-22T00:12:29+00:00",
+  "modified": "2026-09-22T00:12:29+00:00",
+  "item_type": {
+   "id": 6,
+   "url": "https://omeka.madelynharrington.net/api/item_types/6",
+   "name": "Still Image",
+   "resource": "item_types"
+  },
+  "collection": null,
+  "owner": {
+   "id": 1,
+   "url": "https://omeka.madelynharrington.net/api/users/1",
+   "resource": "users"
+  },
+  "files": {
+   "count": 1,
+   "url": "https://omeka.madelynharrington.net/api/files?item=2",
+   "resource": "files"
+  },
+  "tags": [],
+  "element_texts": [
+   {
+    "html": false,
+    "text": "John Moisant and Mademoiselle Fifi",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 50,
+     "url": "https://omeka.madelynharrington.net/api/elements/50",
+     "name": "Title",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "John Moisant",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 49,
+     "url": "https://omeka.madelynharrington.net/api/elements/49",
+     "name": "Subject",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Mademoiselle Fifi",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 49,
+     "url": "https://omeka.madelynharrington.net/api/elements/49",
+     "name": "Subject",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Historical cats",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 49,
+     "url": "https://omeka.madelynharrington.net/api/elements/49",
+     "name": "Subject",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Aviation pioneer John Moisant and his cat Mademoiselle Fifi pictured in 1910.",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 41,
+     "url": "https://omeka.madelynharrington.net/api/elements/41",
+     "name": "Description",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Unknown",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 39,
+     "url": "https://omeka.madelynharrington.net/api/elements/39",
+     "name": "Creator",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "https://commons.wikimedia.org/wiki/File:John_B._Moisant_and_Mademoiselle_Fifi.jpg",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 48,
+     "url": "https://omeka.madelynharrington.net/api/elements/48",
+     "name": "Source",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Library of Congress",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 45,
+     "url": "https://omeka.madelynharrington.net/api/elements/45",
+     "name": "Publisher",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "August 31, 1910",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 40,
+     "url": "https://omeka.madelynharrington.net/api/elements/40",
+     "name": "Date",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Public Domain",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 47,
+     "url": "https://omeka.madelynharrington.net/api/elements/47",
+     "name": "Rights",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "n/a",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 44,
+     "url": "https://omeka.madelynharrington.net/api/elements/44",
+     "name": "Language",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Photo",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 51,
+     "url": "https://omeka.madelynharrington.net/api/elements/51",
+     "name": "Type",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Photograph",
+    "element_set": {
+     "id": 3,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/3",
+     "name": "Item Type Metadata",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 7,
+     "url": "https://omeka.madelynharrington.net/api/elements/7",
+     "name": "Original Format",
+     "resource": "elements"
+    }
+   }
+  ],
+  "extended_resources": {
+   "exhibit_pages": {
+    "count": 2,
+    "url": "https://omeka.madelynharrington.net/api/exhibit_pages?item=2",
+    "resource": "exhibit_pages"
+   }
+  }
+ },
+ {
+  "id": 3,
+  "url": "https://omeka.madelynharrington.net/api/items/3",
+  "public": true,
+  "featured": false,
+  "added": "2026-09-22T00:12:35+00:00",
+  "modified": "2026-09-22T00:12:35+00:00",
+  "item_type": null,
+  "collection": null,
+  "owner": {
+   "id": 2,
+   "url": "https://omeka.madelynharrington.net/api/users/2",
+   "resource": "users"
+  },
+  "files": {
+   "count": 1,
+   "url": "https://omeka.madelynharrington.net/api/files?item=3",
+   "resource": "files"
+  },
+  "tags": [],
+  "element_texts": [
+   {
+    "html": false,
+    "text": "Medieval Cats",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 50,
+     "url": "https://omeka.madelynharrington.net/api/elements/50",
+     "name": "Title",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Medieval cats doing their jobs very well",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 41,
+     "url": "https://omeka.madelynharrington.net/api/elements/41",
+     "name": "Description",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "unknown",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 39,
+     "url": "https://omeka.madelynharrington.net/api/elements/39",
+     "name": "Creator",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Bodleian Librar",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 48,
+     "url": "https://omeka.madelynharrington.net/api/elements/48",
+     "name": "Source",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Bodleian Library",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 45,
+     "url": "https://omeka.madelynharrington.net/api/elements/45",
+     "name": "Publisher",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "c. 1225-50",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 40,
+     "url": "https://omeka.madelynharrington.net/api/elements/40",
+     "name": "Date",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Image",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 51,
+     "url": "https://omeka.madelynharrington.net/api/elements/51",
+     "name": "Type",
+     "resource": "elements"
+    }
+   }
+  ],
+  "extended_resources": {
+   "exhibit_pages": {
+    "count": 2,
+    "url": "https://omeka.madelynharrington.net/api/exhibit_pages?item=3",
+    "resource": "exhibit_pages"
+   }
+  }
+ },
+ {
+  "id": 5,
+  "url": "https://omeka.madelynharrington.net/api/items/5",
+  "public": true,
+  "featured": false,
+  "added": "2026-09-22T00:16:38+00:00",
+  "modified": "2026-09-22T00:16:38+00:00",
+  "item_type": null,
+  "collection": null,
+  "owner": {
+   "id": 2,
+   "url": "https://omeka.madelynharrington.net/api/users/2",
+   "resource": "users"
+  },
+  "files": {
+   "count": 1,
+   "url": "https://omeka.madelynharrington.net/api/files?item=5",
+   "resource": "files"
+  },
+  "tags": [],
+  "element_texts": [
+   {
+    "html": false,
+    "text": "Egyptian Cat Statuette ",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 50,
+     "url": "https://omeka.madelynharrington.net/api/elements/50",
+     "name": "Title",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Egyptian Cat Statuette",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 49,
+     "url": "https://omeka.madelynharrington.net/api/elements/49",
+     "name": "Subject",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Cat statuette from the Ptolemaic period",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 41,
+     "url": "https://omeka.madelynharrington.net/api/elements/41",
+     "name": "Description",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Unknown",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 39,
+     "url": "https://omeka.madelynharrington.net/api/elements/39",
+     "name": "Creator",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Metropolitan Museum of Art",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 48,
+     "url": "https://omeka.madelynharrington.net/api/elements/48",
+     "name": "Source",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "664-30 B.C.E",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 40,
+     "url": "https://omeka.madelynharrington.net/api/elements/40",
+     "name": "Date",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Creative Commons",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 47,
+     "url": "https://omeka.madelynharrington.net/api/elements/47",
+     "name": "Rights",
+     "resource": "elements"
+    }
+   }
+  ],
+  "extended_resources": {
+   "exhibit_pages": {
+    "id": 2,
+    "url": "https://omeka.madelynharrington.net/api/exhibit_pages/2",
+    "resource": "exhibit_pages"
+   }
+  }
+ },
+ {
+  "id": 6,
+  "url": "https://omeka.madelynharrington.net/api/items/6",
+  "public": true,
+  "featured": false,
+  "added": "2026-09-22T00:20:51+00:00",
+  "modified": "2026-09-22T00:20:51+00:00",
+  "item_type": null,
+  "collection": null,
+  "owner": {
+   "id": 2,
+   "url": "https://omeka.madelynharrington.net/api/users/2",
+   "resource": "users"
+  },
+  "files": {
+   "count": 1,
+   "url": "https://omeka.madelynharrington.net/api/files?item=6",
+   "resource": "files"
+  },
+  "tags": [],
+  "element_texts": [
+   {
+    "html": false,
+    "text": "'Psyche,' a White Persian Cat",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 50,
+     "url": "https://omeka.madelynharrington.net/api/elements/50",
+     "name": "Title",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Oil on canvas painting of Psyche the Persian Cat",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 41,
+     "url": "https://omeka.madelynharrington.net/api/elements/41",
+     "name": "Description",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Francis Sartorius",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 39,
+     "url": "https://omeka.madelynharrington.net/api/elements/39",
+     "name": "Creator",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Fenton House, National Trust",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 48,
+     "url": "https://omeka.madelynharrington.net/api/elements/48",
+     "name": "Source",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "1787",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 40,
+     "url": "https://omeka.madelynharrington.net/api/elements/40",
+     "name": "Date",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Creative Commons",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 47,
+     "url": "https://omeka.madelynharrington.net/api/elements/47",
+     "name": "Rights",
+     "resource": "elements"
+    }
+   }
+  ],
+  "extended_resources": {
+   "exhibit_pages": {
+    "count": 2,
+    "url": "https://omeka.madelynharrington.net/api/exhibit_pages?item=6",
+    "resource": "exhibit_pages"
+   }
+  }
+ },
+ {
+  "id": 7,
+  "url": "https://omeka.madelynharrington.net/api/items/7",
+  "public": true,
+  "featured": false,
+  "added": "2026-09-22T00:36:30+00:00",
+  "modified": "2026-09-22T00:36:36+00:00",
+  "item_type": {
+   "id": 6,
+   "url": "https://omeka.madelynharrington.net/api/item_types/6",
+   "name": "Still Image",
+   "resource": "item_types"
+  },
+  "collection": null,
+  "owner": {
+   "id": 1,
+   "url": "https://omeka.madelynharrington.net/api/users/1",
+   "resource": "users"
+  },
+  "files": {
+   "count": 1,
+   "url": "https://omeka.madelynharrington.net/api/files?item=7",
+   "resource": "files"
+  },
+  "tags": [],
+  "element_texts": [
+   {
+    "html": false,
+    "text": "Tilcayo cat",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 50,
+     "url": "https://omeka.madelynharrington.net/api/elements/50",
+     "name": "Title",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Tilcayo cat",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 49,
+     "url": "https://omeka.madelynharrington.net/api/elements/49",
+     "name": "Subject",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "The newest cat to be discovered, the Tilcayo, the first new cat since 1923.",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 41,
+     "url": "https://omeka.madelynharrington.net/api/elements/41",
+     "name": "Description",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "Paola Nogales Ascarrunz",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 39,
+     "url": "https://omeka.madelynharrington.net/api/elements/39",
+     "name": "Creator",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "https://commons.wikimedia.org/wiki/File:Leopardus_tilcayo_(5x3_cropped).jpg",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 48,
+     "url": "https://omeka.madelynharrington.net/api/elements/48",
+     "name": "Source",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "17 September 2026",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 40,
+     "url": "https://omeka.madelynharrington.net/api/elements/40",
+     "name": "Date",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "CC-by-4.0",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 47,
+     "url": "https://omeka.madelynharrington.net/api/elements/47",
+     "name": "Rights",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "jpg",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 42,
+     "url": "https://omeka.madelynharrington.net/api/elements/42",
+     "name": "Format",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "n/a",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 44,
+     "url": "https://omeka.madelynharrington.net/api/elements/44",
+     "name": "Language",
+     "resource": "elements"
+    }
+   },
+   {
+    "html": false,
+    "text": "image",
+    "element_set": {
+     "id": 1,
+     "url": "https://omeka.madelynharrington.net/api/element_sets/1",
+     "name": "Dublin Core",
+     "resource": "element_sets"
+    },
+    "element": {
+     "id": 51,
+     "url": "https://omeka.madelynharrington.net/api/elements/51",
+     "name": "Type",
+     "resource": "elements"
+    }
+   }
+  ],
+  "extended_resources": {
+   "exhibit_pages": {
+    "count": 2,
+    "url": "https://omeka.madelynharrington.net/api/exhibit_pages?item=7",
+    "resource": "exhibit_pages"
+   }
+  }
+ }
+]

@@ -1,0 +1,41 @@
+[
+ {
+  "id": 3,
+  "url": "https://omeka.madelynharrington.net/api/files/3",
+  "file_urls": {
+   "original": "https://omeka.madelynharrington.net/files/original/6153217f96f2a27dd3d6b8dfc85af478.png",
+   "fullsize": "https://omeka.madelynharrington.net/files/fullsize/6153217f96f2a27dd3d6b8dfc85af478.jpg",
+   "thumbnail": "https://omeka.madelynharrington.net/files/thumbnails/6153217f96f2a27dd3d6b8dfc85af478.jpg",
+   "square_thumbnail": "https://omeka.madelynharrington.net/files/square_thumbnails/6153217f96f2a27dd3d6b8dfc85af478.jpg"
+  },
+  "added": "2026-09-22T00:12:35+00:00",
+  "modified": "2026-09-22T00:12:36+00:00",
+  "filename": "6153217f96f2a27dd3d6b8dfc85af478.png",
+  "authentication": "2135a807992efa5d6438ef5f52260e27",
+  "has_derivative_image": true,
+  "mime_type": "image/png",
+  "order": null,
+  "original_filename": "Screenshot 2026-09-21 200951.png",
+  "size": 3124241,
+  "stored": true,
+  "type_os": "PNG image data, 1757 x 1292, 8-bit/color RGBA, non-interlaced",
+  "metadata": {
+   "mime_type": "image/png",
+   "video": {
+    "dataformat": "png",
+    "lossless": false,
+    "resolution_x": 1757,
+    "resolution_y": 1292,
+    "bits_per_sample": 32,
+    "compression_ratio": 0.34407273603507244
+   }
+  },
+  "item": {
+   "id": 3,
+   "url": "https://omeka.madelynharrington.net/api/items/3",
+   "resource": "items"
+  },
+  "element_texts": [],
+  "extended_resources": []
+ }
+]

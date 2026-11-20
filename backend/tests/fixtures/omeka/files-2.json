@@ -1,0 +1,75 @@
+[
+ {
+  "id": 2,
+  "url": "https://omeka.madelynharrington.net/api/files/2",
+  "file_urls": {
+   "original": "https://omeka.madelynharrington.net/files/original/c951a61d6c0fa92777e94e754711ca67.jpg",
+   "fullsize": "https://omeka.madelynharrington.net/files/fullsize/c951a61d6c0fa92777e94e754711ca67.jpg",
+   "thumbnail": "https://omeka.madelynharrington.net/files/thumbnails/c951a61d6c0fa92777e94e754711ca67.jpg",
+   "square_thumbnail": "https://omeka.madelynharrington.net/files/square_thumbnails/c951a61d6c0fa92777e94e754711ca67.jpg"
+  },
+  "added": "2026-09-22T00:12:29+00:00",
+  "modified": "2026-09-22T00:12:29+00:00",
+  "filename": "c951a61d6c0fa92777e94e754711ca67.jpg",
+  "authentication": "c06fb0e0f0d78504fbd9dce5cc1c5e27",
+  "has_derivative_image": true,
+  "mime_type": "image/jpeg",
+  "order": null,
+  "original_filename": "fifi-and-moisant.jpg",
+  "size": 302137,
+  "stored": true,
+  "type_os": "JPEG image data, JFIF standard 1.01, resolution (DPI), density 1200x1200, segment length 16, baseline, precision 8, 1024x784, frames 3",
+  "metadata": {
+   "mime_type": "image/jpeg",
+   "video": {
+    "dataformat": "jpg",
+    "lossless": false,
+    "bits_per_sample": 24,
+    "pixel_aspect_ratio": 1,
+    "resolution_x": 1024,
+    "resolution_y": 784,
+    "compression_ratio": 0.125448836761267
+   },
+   "comments": {
+    "IPTCApplication": {
+     "ApplicationRecordVersion": [
+      "\u0002"
+     ],
+     "By-line": [
+      "Library of Congress"
+     ]
+    }
+   },
+   "comments_html": {
+    "IPTCApplication": {
+     "ApplicationRecordVersion": [
+      "\u0002"
+     ],
+     "By-line": [
+      "Library of Congress"
+     ]
+    }
+   },
+   "iptc": {
+    "comments": {
+     "IPTCApplication": {
+      "ApplicationRecordVersion": [
+       "\u0000\u0002"
+      ],
+      "By-line": [
+       "Library of Congress"
+      ]
+     }
+    },
+    "encoding": "ISO-8859-1"
+   }
+  },
+  "item": {
+   "id": 2,
+   "url": "https://omeka.madelynharrington.net/api/items/2",
+   "resource": "items"
+  },
+  "element_texts": [],
+  "extended_resources": []
+ }
+]

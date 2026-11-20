@@ -1,0 +1,103 @@
+[
+ {
+  "id": 1,
+  "url": "https://omeka.madelynharrington.net/api/files/1",
+  "file_urls": {
+   "original": "https://omeka.madelynharrington.net/files/original/a9280b8384b89f84f6a188bc597532af.mp3",
+   "fullsize": null,
+   "thumbnail": null,
+   "square_thumbnail": null
+  },
+  "added": "2026-09-21T23:53:13+00:00",
+  "modified": "2026-09-21T23:55:02+00:00",
+  "filename": "a9280b8384b89f84f6a188bc597532af.mp3",
+  "authentication": "eeb39661883d034b3c4b994e80534a02",
+  "has_derivative_image": false,
+  "mime_type": "audio/mpeg",
+  "order": null,
+  "original_filename": "Larry_Speakes_AIDS_1982-trimmed.mp3",
+  "size": 1121212,
+  "stored": true,
+  "type_os": "Audio file with ID3 version 2.4.0, contains:MPEG ADTS, layer III, v1, 128 kbps, 44.1 kHz, Stereo",
+  "metadata": {
+   "mime_type": "audio/mpeg",
+   "audio": {
+    "dataformat": "mp3",
+    "channels": 2,
+    "sample_rate": 44100,
+    "bitrate": 128047.56853785901,
+    "channelmode": "stereo",
+    "bitrate_mode": "cbr",
+    "lossless": false,
+    "encoder_options": "CBR128",
+    "compression_ratio": 0.09073665570993411,
+    "streams": [
+     {
+      "dataformat": "mp3",
+      "channels": 2,
+      "sample_rate": 44100,
+      "bitrate": 128047.56853785901,
+      "channelmode": "stereo",
+      "bitrate_mode": "cbr",
+      "lossless": false,
+      "encoder_options": "CBR128",
+      "compression_ratio": 0.09073665570993411
+     }
+    ]
+   },
+   "comments": {
+    "genre": [
+     "Blues"
+    ],
+    "artist": [
+     "Larry Speakes"
+    ],
+    "text": {
+     "Engineer": "Steve Branch"
+    },
+    "title": [
+     "S735 10-15-1982 Remarks by Larry Speakes during daily press briefing.  White House Press Room."
+    ],
+    "recording_time": [
+     "2012-05-07"
+    ],
+    "encoder_settings": [
+     "Lavf62.3.100"
+    ],
+    "year": [
+     "2012"
+    ]
+   },
+   "comments_html": {
+    "genre": [
+     "Blues"
+    ],
+    "artist": [
+     "Larry Speakes"
+    ],
+    "text": {
+     "Engineer": "Steve Branch"
+    },
+    "title": [
+     "S735 10-15-1982 Remarks by Larry Speakes during daily press briefing.  White House Press Room."
+    ],
+    "recording_time": [
+     "2012-05-07"
+    ],
+    "encoder_settings": [
+     "Lavf62.3.100"
+    ],
+    "year": [
+     "2012"
+    ]
+   }
+  },
+  "item": {
+   "id": 1,
+   "url": "https://omeka.madelynharrington.net/api/items/1",
+   "resource": "items"
+  },
+  "element_texts": [],
+  "extended_resources": []
+ }
+]
