@@ -49,7 +49,7 @@ describe('ToolsApi', () => {
 
   it('posts omeka-search and returns the payload', async () => {
     const payload: OmekaSearch = {
-      site: { base: 'https://omeka.example', title: 'T' }, total: 0, page: 1, results: [],
+      site: { base: 'https://omeka.example', title: 'T' }, total: 0, page: 1, rawCount: 0, results: [],
     };
     const p = api.omekaSearch('omeka.example', 'courthouse');
     const r = http.expectOne('/api/tools/omeka-search');

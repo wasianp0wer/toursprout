@@ -17,7 +17,8 @@ export interface OmekaItem {
   creator: string | null; date: string | null; rights: string | null; fileCount: number;
 }
 
-export interface OmekaSearch { site: OmekaSite; total: number; page: number; results: OmekaItem[] }
+/** `rawCount` is how many items the page held before file-less ones were dropped from `results`. */
+export interface OmekaSearch { site: OmekaSite; total: number; page: number; rawCount: number; results: OmekaItem[] }
 
 export interface OmekaFile {
   fileId: number; kind: 'image' | 'audio' | null; filename: string; thumbUrl: string | null;

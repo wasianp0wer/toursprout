@@ -480,7 +480,7 @@ describe('OutlinePane', () => {
         itemId: 2, itemUrl: 'https://omeka.example/items/show/2', title: 'Fifi', description: null,
         creator: 'Unknown', date: null, rights: 'Public Domain', fileCount: 1,
       };
-      tools['omekaSearch'].mockResolvedValue({ site: { base: 'https://omeka.example', title: 'Demo' }, total: 1, page: 1, results: [item] });
+      tools['omekaSearch'].mockResolvedValue({ site: { base: 'https://omeka.example', title: 'Demo' }, total: 1, page: 1, rawCount: 1, results: [item] });
       tools['omekaFiles'].mockResolvedValue([{
         fileId: 2, kind: 'image', filename: 'fifi.jpg', thumbUrl: null, importable: true, reason: null,
         title: null, creator: null, rights: null,
@@ -492,6 +492,8 @@ describe('OutlinePane', () => {
       click('[data-omeka-open]');
       const site = q('[data-omeka-site]') as HTMLInputElement;
       site.value = 'omeka.example'; site.dispatchEvent(new Event('input')); fixture.detectChanges();
+      const find = q('[data-omeka-query]') as HTMLInputElement;
+      find.value = 'fifi'; find.dispatchEvent(new Event('input')); fixture.detectChanges();
       click('[data-omeka-search]'); await settle();
       click('[data-omeka-item="2"]'); await settle();
       click('[data-omeka-add]'); await settle();

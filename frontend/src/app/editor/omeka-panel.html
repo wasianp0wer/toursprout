@@ -2,7 +2,7 @@
   <form class="search" (submit)="$event.preventDefault(); search()">
     <label>Site <input type="text" inputmode="url" autocomplete="url" data-omeka-site placeholder="https://omeka.example.org" [value]="siteUrl()" (input)="siteUrl.set($any($event.target).value)" /></label>
     <label>Find <input type="text" data-omeka-query [value]="query()" (input)="query.set($any($event.target).value)" /></label>
-    <button type="submit" data-omeka-search [disabled]="!!status() || !siteUrl().trim()">Search</button>
+    <button type="submit" data-omeka-search [disabled]="!!status() || !siteUrl().trim() || !query().trim()">Search</button>
   </form>
   @switch (status()) {
     @case ('searching') { <p class="note" role="status">Searching…</p> }
@@ -12,7 +12,7 @@
   @if (error(); as err) { <p class="note warning" data-omeka-error role="alert">{{ err }}</p> }
   @if (items(); as list) {
     @if (site(); as s) { <p class="site">{{ s.title }} <span class="count">({{ total() }})</span></p> }
-    @if (list.length === 0) { <p class="note" data-omeka-none>Nothing found.</p> }
+    @if (list.length === 0 && !hasMore()) { <p class="note" data-omeka-none>Nothing found.</p> }
     <ul class="items">
       @for (item of list; track item.itemId) {
         <li>
@@ -58,7 +58,7 @@
         </li>
       }
     </ul>
-    @if (list.length < total()) {
+    @if (hasMore()) {
       <button type="button" class="more" data-omeka-more [disabled]="!!status()" (click)="more()">More results</button>
     }
   }

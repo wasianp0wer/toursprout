@@ -1,4 +1,4 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { ToolsApi, type OmekaFile, type OmekaItem, type OmekaSite } from '../core/tools-api';
 import type { Credit } from '../core/tour.models';
 import { omekaCredit, omekaOverlayText } from './document-ops';
@@ -42,6 +42,11 @@ export class OmekaPanel {
   protected readonly site = signal<OmekaSite | null>(null);
   protected readonly total = signal(0);
   protected readonly items = signal<OmekaItem[] | null>(null);
+  /** Items Omeka returned so far, file-less ones included, and on the last page. */
+  private readonly rawSeen = signal(0);
+  private readonly lastRaw = signal(0);
+  /** `total` counts items with no files, which `items` never holds, so paging stops on raw counts. */
+  protected readonly hasMore = computed(() => this.lastRaw() > 0 && this.rawSeen() < this.total());
 
   protected readonly openItemId = signal<number | null>(null);
   protected readonly files = signal<OmekaFile[] | null>(null);
@@ -54,13 +59,15 @@ export class OmekaPanel {
   protected async search(): Promise<void> {
     const siteUrl = this.siteUrl().trim();
     const query = this.query().trim();
-    if (!siteUrl || this.status()) return;
+    if (!siteUrl || !query || this.status()) return;
     writeSite(siteUrl);
     await this.run('searching', async () => {
       const r = await this.tools.omekaSearch(siteUrl, query, 1);
       this.searched = { siteUrl, query, page: r.page };
       this.site.set(r.site);
       this.total.set(r.total);
+      this.rawSeen.set(r.rawCount);
+      this.lastRaw.set(r.rawCount);
       this.items.set(r.results);
       this.openItemId.set(null);
       this.files.set(null);
@@ -75,6 +82,8 @@ export class OmekaPanel {
       const r = await this.tools.omekaSearch(s.siteUrl, s.query, s.page + 1);
       s.page = r.page;
       this.total.set(r.total);
+      this.rawSeen.update((n) => n + r.rawCount);
+      this.lastRaw.set(r.rawCount);
       this.items.update((xs) => [...(xs ?? []), ...r.results]);
     });
   }

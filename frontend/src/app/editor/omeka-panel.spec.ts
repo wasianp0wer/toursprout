@@ -29,7 +29,8 @@ const pdf: OmekaFile = {
 };
 const png: OmekaFile = { ...jpeg, fileId: 3, filename: 'Screenshot 2026-09-21 200951.png' };
 
-const page = (results: OmekaItem[], total = results.length, n = 1): OmekaSearch => ({ site, total, page: n, results });
+const page = (results: OmekaItem[], total = results.length, n = 1, rawCount = results.length): OmekaSearch =>
+  ({ site, total, page: n, rawCount, results });
 
 describe('OmekaPanel', () => {
   let tools: { omekaSearch: ReturnType<typeof vi.fn>; omekaFiles: ReturnType<typeof vi.fn>; omekaImport: ReturnType<typeof vi.fn> };
@@ -218,5 +219,51 @@ describe('OmekaPanel', () => {
     expect(tools.omekaSearch).toHaveBeenLastCalledWith('omeka.madelynharrington.net', 'cat', 2);
     expect(all('[data-omeka-item]').map((n) => n.getAttribute('data-omeka-item'))).toEqual(['2', '3']);
     expect(q('[data-omeka-more]')).toBeNull();
+  });
+
+  it('hides More once every item Omeka counted has been seen, even when some had no files', async () => {
+    // Omeka counts 3 items; one has no files, so only 2 rows ever show.
+    tools.omekaSearch
+      .mockResolvedValueOnce(page([fifi], 3, 1, 2))
+      .mockResolvedValueOnce(page([cats], 3, 2, 1));
+    await search();
+    expect(q('[data-omeka-more]')).toBeTruthy();
+    await click('[data-omeka-more]');
+    expect(all('[data-omeka-item]').length).toBe(2);
+    expect(q('[data-omeka-more]')).toBeNull();
+  });
+
+  it('hides More when a page comes back empty', async () => {
+    tools.omekaSearch
+      .mockResolvedValueOnce(page([fifi], 5, 1, 1))
+      .mockResolvedValueOnce(page([], 5, 2, 0));
+    await search();
+    await click('[data-omeka-more]');
+    expect(q('[data-omeka-more]')).toBeNull();
+  });
+
+  it('never shows "Nothing found." and More together', async () => {
+    // The first page held only file-less items; later pages may not.
+    tools.omekaSearch
+      .mockResolvedValueOnce(page([], 4, 1, 2))
+      .mockResolvedValueOnce(page([], 4, 2, 2));
+    await search();
+    expect(q('[data-omeka-more]')).toBeTruthy();
+    expect(q('[data-omeka-none]')).toBeNull();
+    await click('[data-omeka-more]');
+    expect(q('[data-omeka-more]')).toBeNull();
+    expect(q('[data-omeka-none]')?.textContent?.trim()).toBe('Nothing found.');
+  });
+
+  it('Search is disabled while Find is blank', async () => {
+    type('[data-omeka-site]', 'omeka.madelynharrington.net');
+    type('[data-omeka-query]', '   ');
+    const button = q('[data-omeka-search]') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    (q('form.search') as HTMLFormElement).dispatchEvent(new Event('submit'));
+    await settle();
+    expect(tools.omekaSearch).not.toHaveBeenCalled();
+    type('[data-omeka-query]', 'cat');
+    expect(button.disabled).toBe(false);
   });
 });
