@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import time
 from collections.abc import Callable, Iterable
 
 import httpcore
@@ -22,10 +23,13 @@ from app.tools import UA, ToolError
 
 Resolver = Callable[[str, int], list[str]]
 
-BAD_URL = ("that is not a web address the editor can fetch "
-           "(only http and https on the usual ports)")
+BAD_URL = ("That is not an address the editor can fetch: only http and https "
+           "web addresses on the usual ports (80 and 443) are allowed.")
 PRIVATE = ("{host} points to a private or local network address, "
            "which the editor will not connect to.")
+# Each address a name resolves to gets a share of the connect timeout, but
+# never less than this, so one dead address cannot starve the next.
+MIN_CONNECT_SHARE = 3.0
 # The spec's unreachable message; DNS failure is one of its reasons.
 UNREACHABLE = ("The editor's server could not reach {host} ({reason}). The site may be "
                "down, or this server may not be allowed to connect to it. Check the "
@@ -83,7 +87,11 @@ def check_public_url(url: str | httpx.URL, *, resolve: Resolver = resolve) -> ht
 
 
 class GuardedBackend(httpcore.NetworkBackend):
-    """Resolves, refuses non-public addresses, connects to the address checked.
+    """Resolves, refuses non-public addresses, connects to an address checked.
+
+    Every address is checked before any connect. They are then tried in turn,
+    IPv4 first (a host whose IPv6 egress is broken still reaches a name that
+    publishes AAAA), each with a share of the timeout.
 
     Only the TCP connect gets the IP; httpcore still passes the request's
     hostname to `start_tls`, so SNI and the certificate check use the name.
@@ -107,9 +115,25 @@ class GuardedBackend(httpcore.NetworkBackend):
                 raise httpcore.ConnectError(f"{host}: the name did not resolve") from exc
         if not addresses or not all(is_public_address(ip) for ip in addresses):
             raise GuardRefused(PRIVATE.format(host=host))
-        return self._inner.connect_tcp(addresses[0], port, timeout=timeout,
-                                       local_address=local_address,
-                                       socket_options=socket_options)
+        addresses = sorted(addresses, key=lambda ip: ":" in ip)
+        deadline = None if timeout is None else time.monotonic() + timeout
+        share = None if timeout is None else max(timeout / len(addresses), MIN_CONNECT_SHARE)
+        failure: Exception | None = None
+        for ip in addresses:
+            attempt = share
+            if deadline is not None:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    break
+                attempt = min(share, left)
+            try:
+                return self._inner.connect_tcp(ip, port, timeout=attempt,
+                                               local_address=local_address,
+                                               socket_options=socket_options)
+            except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
+                failure = exc
+        assert failure is not None
+        raise failure
 
     def connect_unix_socket(self, path: str, timeout: float | None = None,
                             socket_options: Iterable[httpcore.SOCKET_OPTION] | None = None,
