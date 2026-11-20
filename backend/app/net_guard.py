@@ -33,6 +33,11 @@ UNREACHABLE = ("The editor's server could not reach {host} ({reason}). The site 
                "blocking it.")
 
 
+class GuardRefused(httpcore.ConnectError):
+    """The connect-time check refused the address: the author's 400, not a
+    network failure, and not worth a retry."""
+
+
 def resolve(host: str, port: int) -> list[str]:
     infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     return list(dict.fromkeys(str(info[4][0]) for info in infos))
@@ -101,7 +106,7 @@ class GuardedBackend(httpcore.NetworkBackend):
             except OSError as exc:
                 raise httpcore.ConnectError(f"{host}: the name did not resolve") from exc
         if not addresses or not all(is_public_address(ip) for ip in addresses):
-            raise httpcore.ConnectError(PRIVATE.format(host=host))
+            raise GuardRefused(PRIVATE.format(host=host))
         return self._inner.connect_tcp(addresses[0], port, timeout=timeout,
                                        local_address=local_address,
                                        socket_options=socket_options)

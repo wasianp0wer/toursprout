@@ -11,6 +11,7 @@ import pytest
 
 from app.net_guard import (
     GuardedBackend,
+    GuardRefused,
     check_public_url,
     is_public_address,
     make_guarded_client,
@@ -116,9 +117,17 @@ def test_rebinding_refused_at_connect():
     resolver = lambda h, p: next(answers)
     check_public_url("https://omeka.example/", resolve=resolver)  # first lookup passes
     inner = FakeInner()
-    with pytest.raises(httpcore.ConnectError, match="private or local network address"):
+    with pytest.raises(GuardRefused, match="private or local network address"):
         GuardedBackend(resolver, inner).connect_tcp("omeka.example", 443)
     assert inner.connected == []
+
+
+def test_guard_refusal_is_a_connect_error_others_are_not_refusals():
+    assert issubclass(GuardRefused, httpcore.ConnectError)
+    with pytest.raises(httpcore.ConnectError) as e:
+        GuardedBackend(lambda h, p: (_ for _ in ()).throw(OSError("nx")),
+                       FakeInner()).connect_tcp("omeka.example", 443)
+    assert not isinstance(e.value, GuardRefused)
 
 
 def test_unix_sockets_refused():
@@ -136,5 +145,6 @@ def test_production_client_uses_guarded_backend():
 def test_guarded_client_refuses_a_private_name_end_to_end():
     """A request through the real client stops at connect, before any socket."""
     with (make_guarded_client(5.0, resolve=PRIVATE) as c,
-          pytest.raises(httpx.ConnectError, match="private or local")):
+          pytest.raises(httpx.ConnectError, match="private or local") as e):
         c.get("http://intranet.example/")
+    assert isinstance(e.value.__cause__, GuardRefused)
