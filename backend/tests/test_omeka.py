@@ -89,7 +89,7 @@ def test_item_summary_live_item_3_has_no_rights():
 
 
 def test_item_summary_trims_trailing_space():
-    assert item_summary(ITEMS[3], BASE)  # id 5["title"] == "Egyptian Cat Statuette"
+    assert item_summary(ITEMS[3], BASE)["title"] == "Egyptian Cat Statuette"
 
 
 def test_item_summary_none_without_files():
