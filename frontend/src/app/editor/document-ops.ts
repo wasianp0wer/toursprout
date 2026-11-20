@@ -11,6 +11,7 @@
  * project's development environment at all.
  */
 import { bearingBetween, type LngLatLike } from '../core/geo';
+import type { OmekaFile, OmekaItem, OmekaSite } from '../core/tools-api';
 import { knownCompassAngle } from '../core/mapillary-search';
 import {
   LAYOUT_NAMES, OVERRIDABLE, PRESET_NAMES, TYPE_PAIRINGS, TYPE_SCALES, presetPairing,
@@ -476,6 +477,7 @@ export function addMediaOverlay(
   tour: Tour, stopId: string, kind: 'image' | 'audio', mediaId: string, title: string,
   supplied?: { creator: string; license: string },
   credit?: Credit,
+  body?: string | null,
 ): Tour {
   const stop = tour.stops.find((s) => s.id === stopId);
   if (!stop || mediaKindOf(mediaId) !== kind) return tour;
@@ -488,10 +490,40 @@ export function addMediaOverlay(
     id: uniqueId(slugify(text), allIds(base)), kind,
     anchor: { type: 'geo', lng: stop.location.lng, lat: stop.location.lat, altitudeM: 2 },
     display: { mode: 'marker', icon: kind === 'image' ? 'photo' : 'audio' },
-    title: text, body: null, mediaId,
+    title: text, body: body?.trim() || null, mediaId,
     credit: credit ?? defaultCreditFor(base),
   };
   return mapStop(base, stopId, (s) => ({ ...s, overlays: [...s.overlays, overlay] }));
+}
+
+/**
+ * The credit for a file imported from an Omeka site. Omeka's own statement of
+ * rights wins (file, then item); the author's typed licence is used only when
+ * Omeka states none, and with none at all this is null: nothing is invented.
+ */
+export function omekaCredit(
+  site: OmekaSite, item: OmekaItem, file: OmekaFile, authorLicense?: string,
+): Credit | null {
+  const license = file.rights?.trim() || item.rights?.trim() || authorLicense?.trim() || '';
+  if (!license) return null;
+  const base = site.base.trim().replace(/\/+$/, '');
+  return {
+    type: 'sourced',
+    source: site.title.trim() || new URL(site.base).host,
+    url: `${base}/items/show/${item.itemId}`,
+    license,
+    creator: file.creator?.trim() || item.creator?.trim() || null,
+  };
+}
+
+/** Overlay title (file, item, then filename) and body (the item's description). */
+export function omekaOverlayText(
+  item: OmekaItem, file: OmekaFile,
+): { title: string; body: string | null } {
+  return {
+    title: file.title?.trim() || item.title?.trim() || file.filename,
+    body: item.description?.trim() || null,
+  };
 }
 
 /**
