@@ -1,22 +1,27 @@
 """Omeka Classic import: parse the REST API's JSON into what the editor shows.
 
-This half is pure: every function takes data that is already in hand (a
-decoded record, an `httpx.Response`) and returns plain dicts or raises
-`ToolError` with the HTTP status the route should use. The messages are the
-author-facing text from the spec's error table, plain, with no Markdown.
+The parsing half is pure: those functions take data already in hand (a
+decoded record, an `httpx.Response`) and return plain dicts or raise
+`ToolError` with the HTTP status the route should use. The fetching half
+(after "fetching" below) makes the GETs: every hop through the address guard,
+redirects by hand, and every request inside the route's deadline. The
+messages are the author-facing text from the spec's error table, plain, with
+no Markdown.
 """
 
 from __future__ import annotations
 
 import re
+import time
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
 import httpx
 
-from .media_store import ALLOWED_TYPES
-from .tools import ToolError
+from .media_store import ALLOWED_TYPES, MediaError, sniff
+from .net_guard import UNREACHABLE, Resolver, check_public_url
+from .tools import ToolError, _describe
 
 AUDIO_TYPES = frozenset(t for t in ALLOWED_TYPES if t.startswith("audio/"))
 
@@ -176,3 +181,188 @@ def site_from_response(resp: httpx.Response, base: str) -> dict:
         "site's home page, for example https://example.org or "
         "https://example.org/omeka. (Omeka S sites are not supported yet.)",
     )
+
+
+# --- fetching -----------------------------------------------------------------
+
+# Under CGI each request is one process and the host may kill a long one, so
+# every Omeka route finishes within OMEKA_ROUTE_BUDGET: the route computes
+# `deadline = time.monotonic() + OMEKA_ROUTE_BUDGET` once and passes it down.
+OMEKA_REQUEST_TIMEOUT = 10.0
+OMEKA_ROUTE_BUDGET = 30.0
+OMEKA_DOWNLOAD_BUDGET = 25.0
+OMEKA_ATTEMPTS = 2
+MAX_REDIRECTS = 5
+# An API answer is a page of JSON records; anything this big is not one.
+OMEKA_API_MAX_BYTES = 8 * 1024 * 1024
+
+_REDIRECTS = (301, 302, 303, 307, 308)
+
+
+class _Unreachable(ToolError):
+    """A transport failure: the unreachable 502, which a download retries."""
+
+
+def _too_slow(host: str) -> ToolError:
+    return ToolError(504, f"The Omeka site at {host} took too long to answer. "
+                          "Try again, or try a smaller file.")
+
+
+def _transport_error(exc: httpx.HTTPError, request: httpx.Request) -> ToolError:
+    host = request.url.host
+    # A timeout set to what was left of the budget, not to the per-request
+    # limit, firing is the budget running out.
+    read = (request.extensions.get("timeout") or {}).get("read")
+    capped = read is not None and read < OMEKA_REQUEST_TIMEOUT
+    if capped and isinstance(exc, httpx.TimeoutException):
+        return _too_slow(host)
+    return _Unreachable(502, UNREACHABLE.format(host=host, reason=_describe(exc)))
+
+
+def _get(client: httpx.Client, url: str, *, params: dict | None = None,
+         deadline: float, resolve: Resolver, stream: bool = False,
+         accept: str = "application/json") -> httpx.Response:
+    """GET `url`, following up to MAX_REDIRECTS redirects by hand so that
+    check_public_url sees every hop. Each request's timeout is the smaller of
+    OMEKA_REQUEST_TIMEOUT and what is left of `deadline`. Returns the first
+    response that is not a redirect; with `stream=True` its body is unread
+    and the caller closes it."""
+    current = check_public_url(httpx.URL(url, params=params), resolve=resolve)
+    for _hop in range(MAX_REDIRECTS + 1):
+        host = current.host
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _too_slow(host)
+        timeout = min(OMEKA_REQUEST_TIMEOUT, remaining)
+        request = client.build_request("GET", current, headers={"Accept": accept},
+                                       timeout=timeout)
+        try:
+            resp = client.send(request, stream=True, follow_redirects=False)
+        except httpx.HTTPError as exc:
+            raise _transport_error(exc, request) from exc
+        location = resp.headers.get("location")
+        if resp.status_code in _REDIRECTS and location:
+            resp.close()
+            current = check_public_url(current.join(location), resolve=resolve)
+            continue
+        if stream:
+            return resp
+        try:
+            body = _read_capped(resp, OMEKA_API_MAX_BYTES, deadline, ToolError(
+                502, f"The Omeka site at {host} sent an answer too large to read."))
+        finally:
+            resp.close()
+        return httpx.Response(resp.status_code, headers=resp.headers, content=body,
+                              request=request)
+    raise ToolError(502, f"The Omeka site at {current.host} redirected too many times.")
+
+
+def _api_list(client: httpx.Client, base: str, path: str, params: dict, *,
+              deadline: float, resolve: Resolver) -> tuple[httpx.Response, list]:
+    resp = _get(client, f"{base}/api/{path}", params=params,
+                deadline=deadline, resolve=resolve)
+    if resp.status_code != 200:
+        site_from_response(resp, base)  # raises the table's error for the status
+    host = _host(base)
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise ToolError(502, f"The Omeka site at {host} returned something "
+                             "that is not JSON.") from exc
+    if not isinstance(data, list):
+        raise ToolError(502, f"The Omeka site at {host} returned an unexpected response.")
+    return resp, data
+
+
+def get_site(client: httpx.Client, base: str, *, deadline: float,
+             resolve: Resolver) -> dict:
+    resp = _get(client, f"{base}/api/site", deadline=deadline, resolve=resolve)
+    return site_from_response(resp, base)
+
+
+def search_items(client: httpx.Client, base: str, query: str, page: int, *,
+                 deadline: float, resolve: Resolver) -> dict:
+    """One page of the site's search. Items with no files are left out of
+    `results`; `total` is Omeka's count, which includes them."""
+    resp, items = _api_list(client, base, "items", {"search": query, "page": page},
+                            deadline=deadline, resolve=resolve)
+    declared = resp.headers.get("Omeka-Total-Results", "").strip()
+    results = [s for s in (item_summary(i, base) for i in items) if s is not None]
+    return {"total": int(declared) if declared.isdigit() else 0,
+            "page": page, "results": results}
+
+
+def list_files(client: httpx.Client, base: str, item_id: int, *, deadline: float,
+               resolve: Resolver) -> list[dict]:
+    _resp, files = _api_list(client, base, "files", {"item": item_id},
+                             deadline=deadline, resolve=resolve)
+    return files
+
+
+def _read_capped(resp: httpx.Response, max_bytes: int, deadline: float,
+                 too_big: ToolError) -> bytes:
+    """The body, abandoned as soon as it passes `max_bytes` (raising
+    `too_big`), so a huge answer never sits whole in memory; a declared
+    Content-Length over the cap is refused before a byte is read. The
+    per-request timeout bounds each read only, so `deadline` bounds the
+    whole."""
+    host = resp.request.url.host
+    declared = resp.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > max_bytes:
+        raise too_big
+    body = bytearray()
+    try:
+        for chunk in resp.iter_bytes():
+            body += chunk
+            if len(body) > max_bytes:
+                raise too_big
+            if time.monotonic() > deadline:
+                raise _too_slow(host)
+    except httpx.HTTPError as exc:
+        raise _transport_error(exc, resp.request) from exc
+    return bytes(body)
+
+
+def fetch_file(client: httpx.Client, url: str, kind: str, *, deadline: float,
+               resolve: Resolver, max_bytes: int) -> bytes:
+    """Download an Omeka file (fetch_archive_image reborn). Streamed and
+    capped at `max_bytes`; one retry on a transport failure or 5xx, none on
+    4xx; every attempt and redirect hop inside OMEKA_DOWNLOAD_BUDGET and the
+    route's `deadline`. The body must sniff as `kind` ("image" or "audio"),
+    whatever its Content-Type says."""
+    deadline = min(deadline, time.monotonic() + OMEKA_DOWNLOAD_BUDGET)
+    failure: ToolError | None = None
+    for _attempt in range(OMEKA_ATTEMPTS):
+        try:
+            resp = _get(client, url, deadline=deadline, resolve=resolve,
+                        stream=True, accept="*/*")
+        except _Unreachable as exc:
+            failure = exc
+            continue
+        host, status = resp.request.url.host, resp.status_code
+        try:
+            if status == 200:
+                body = _read_capped(resp, max_bytes, deadline, ToolError(
+                    502, f"The file on {host} is larger than the "
+                         f"{max_bytes // (1024 * 1024)} MB limit."))
+        except _Unreachable as exc:
+            failure = exc
+            continue
+        finally:
+            resp.close()
+        if status == 200:
+            try:
+                sniffed, _ext = sniff(body)
+            except MediaError:
+                sniffed = ""
+            if not sniffed.startswith(f"{kind}/"):
+                raise ToolError(502, f"The Omeka site at {host} sent something "
+                                     f"that is not an {kind} file.")
+            return body
+        if status < 500:
+            raise ToolError(502, f"The Omeka site at {host} has no file at that "
+                                 f"address (HTTP {status}).")
+        failure = ToolError(502, f"The Omeka site at {host} had an error ({status}). "
+                                 "Try again in a minute.")
+    assert failure is not None
+    raise failure
