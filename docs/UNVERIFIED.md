@@ -1675,13 +1675,14 @@ editor.*
    resolver; nothing has made a request from the host. The demo site
    (`omeka.madelynharrington.net`) is behind Cloudflare, so it is not on the
    editor's own server, but Cloudflare's bot protection may challenge requests
-   from a hosting provider's address with an HTML challenge page. That would
-   surface as "There is no Omeka Classic site at ...", so look at the actual
-   response before believing that message.
+   from a hosting provider's address. A challenge answers `403` (header
+   `cf-mitigated: challenge`, an HTML body) or `503`, and the editor shows
+   "The Omeka site at ... is behind Cloudflare, which challenged the editor's
+   server as a bot. ..." rather than a "no Omeka Classic site" message.
    - **Close it (production host):** deploy, open the hosted editor, and search
      the demo site. Pass: results list. If the host cannot connect, the message
-     says so, and the fix is on the host or the Omeka side. If it is a
-     challenge page, add a Cloudflare rule allowing the editor host's address to
+     says so, and the fix is on the host or the Omeka side. If the message
+     names a Cloudflare challenge, add a Cloudflare rule allowing the editor host's address to
      reach `/api/*` and `/files/*`.
 2. **Unseen: an import, published.** Import one image and, if the site has
    one, one audio file; publish; open the published page. Pass: the media plays

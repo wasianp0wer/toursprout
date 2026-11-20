@@ -163,6 +163,7 @@ the builder improves them:
 | What came back | Status | Message to the author |
 |---|---|---|
 | `403` with `{"message": "API is disabled"}` | 409 | "The Omeka site at {host} has its API turned off. Someone with an administrator login can turn it on: in the Omeka admin, go to **Settings → API**, tick **Enable API access**, and save. Then search again." |
+| `403` or `503` that is a Cloudflare bot challenge (a `cf-mitigated` header, or `server: cloudflare` with an HTML body) | 409 | "The Omeka site at {host} is behind Cloudflare, which challenged the editor's server as a bot. Whoever manages the site's Cloudflare account can allow it: add a rule letting this server's address reach /api/* and /files/* without a challenge. Then try again." Checked on the API calls and the file download alike; not retried. |
 | any other `403`/`401` | 409 | "The Omeka site at {host} refused the request ({Omeka's message, if any}). It may only allow signed-in access, which this import does not support." |
 | `404`, or a `200` that is not JSON with a `title` | 404 | "There is no Omeka Classic site at {base}. Check the address is the site's home page, for example `https://example.org` or `https://example.org/omeka`. (Omeka S sites are not supported yet.)" |
 | a `200` from `{base}/api/sites` instead (Omeka S) | 404 | "{base} is an Omeka S site. Only Omeka Classic is supported." — *only checked after `/api/site` fails, and only if it is cheap; the builder may drop this row and let the previous message stand.* |
@@ -237,14 +238,17 @@ plain `def` (threadpool), request models in `tools.py`.
 **`POST /api/tools/omeka-search`** `{siteUrl, query, page=1}` →
 ```json
 { "site": { "base": "...", "title": "..." },
-  "total": 132, "page": 1,
+  "total": 132, "page": 1, "rawCount": 50,
   "results": [ { "itemId": 17, "itemUrl": "{base}/items/show/17",
                  "title": "...", "description": "...", "creator": "...",
                  "date": "...", "rights": "...", "fileCount": 2 } ] }
 ```
 Calls `/api/site` then `/api/items`. Items with `files.count == 0` are left
 out of `results` (an item with nothing to import is noise) but counted in
-`total` as Omeka reports it. `query` is required and non-blank, max 300
+`total` as Omeka reports it. `rawCount` is how many items Omeka returned on
+this page before that filtering, so the panel stops offering More results
+once a page comes back empty or the raw items seen reach `total` (counting
+`results` against `total` would never get there). `query` is required and non-blank, max 300
 characters; `page` 1–1000.
 
 **`POST /api/tools/omeka-files`** `{siteUrl, itemId}` →
@@ -390,11 +394,12 @@ Recorded in `docs/UNVERIFIED.md` as a new entry until done.
    Omeka side before the demo, not in this code. The demo site is behind
    Cloudflare (it resolves to `172.67.222.62` and `104.21.46.14`), so it is
    not on the editor's own server. But Cloudflare's bot protection may
-   challenge requests from a hosting provider's address and answer with an
-   HTML challenge page. That would surface as "no Omeka Classic site", so
-   look at the actual response before believing that message. The fix is a
-   Cloudflare rule allowing the editor host's address to reach `/api/*` and
-   `/files/*`, which the author controls.
+   challenge requests from a hosting provider's address. A challenge is a
+   `403` (with a `cf-mitigated: challenge` header and an HTML page) or a
+   `503`, and the editor reports it as such: "The Omeka site at {host} is
+   behind Cloudflare, which challenged the editor's server as a bot. ..."
+   The fix is a Cloudflare rule allowing the editor host's address to reach
+   `/api/*` and `/files/*`, which the author controls.
 5. Time one search and one import from the hosted editor. If either comes
    close to 30 s, the host's CGI limit becomes the next thing to learn.
 4. Import one image and, if the site has one, one audio file; publish;
