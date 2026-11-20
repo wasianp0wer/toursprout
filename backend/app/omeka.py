@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from .media_store import ALLOWED_TYPES, MediaError, sniff
-from .net_guard import UNREACHABLE, Resolver, check_public_url
+from .net_guard import PRIVATE, UNREACHABLE, GuardRefused, Resolver, check_public_url
 from .tools import ToolError, _describe
 
 AUDIO_TYPES = frozenset(t for t in ALLOWED_TYPES if t.startswith("audio/"))
@@ -208,13 +208,20 @@ def _too_slow(host: str) -> ToolError:
                           "Try again, or try a smaller file.")
 
 
-def _transport_error(exc: httpx.HTTPError, request: httpx.Request) -> ToolError:
+def _transport_error(exc: httpx.HTTPError, request: httpx.Request,
+                     deadline: float) -> ToolError:
     host = request.url.host
-    # A timeout set to what was left of the budget, not to the per-request
-    # limit, firing is the budget running out.
+    cause: BaseException | None = exc
+    while cause is not None:
+        if isinstance(cause, GuardRefused):
+            return ToolError(400, PRIVATE.format(host=host))
+        cause = cause.__cause__
+    # A timeout that was what was left of the budget, not the per-request
+    # limit, or that fired at the deadline, is the budget running out.
     read = (request.extensions.get("timeout") or {}).get("read")
     capped = read is not None and read < OMEKA_REQUEST_TIMEOUT
-    if capped and isinstance(exc, httpx.TimeoutException):
+    if isinstance(exc, httpx.TimeoutException) and (
+            capped or time.monotonic() >= deadline):
         return _too_slow(host)
     return _Unreachable(502, UNREACHABLE.format(host=host, reason=_describe(exc)))
 
@@ -239,7 +246,7 @@ def _get(client: httpx.Client, url: str, *, params: dict | None = None,
         try:
             resp = client.send(request, stream=True, follow_redirects=False)
         except httpx.HTTPError as exc:
-            raise _transport_error(exc, request) from exc
+            raise _transport_error(exc, request, deadline) from exc
         location = resp.headers.get("location")
         if resp.status_code in _REDIRECTS and location:
             resp.close()
@@ -306,10 +313,20 @@ def _read_capped(resp: httpx.Response, max_bytes: int, deadline: float,
     Content-Length over the cap is refused before a byte is read. The
     per-request timeout bounds each read only, so `deadline` bounds the
     whole."""
-    host = resp.request.url.host
+    request = resp.request
+    host = request.url.host
     declared = resp.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > max_bytes:
         raise too_big
+    # httpcore takes the body's read timeout from the request once, when the
+    # body starts, so cut it to what is left of the budget now: the headers
+    # may have used most of it.
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise _too_slow(host)
+    timeouts = dict(request.extensions.get("timeout") or {})
+    timeouts["read"] = min(OMEKA_REQUEST_TIMEOUT, remaining)
+    request.extensions["timeout"] = timeouts
     body = bytearray()
     try:
         for chunk in resp.iter_bytes():
@@ -319,7 +336,7 @@ def _read_capped(resp: httpx.Response, max_bytes: int, deadline: float,
             if time.monotonic() > deadline:
                 raise _too_slow(host)
     except httpx.HTTPError as exc:
-        raise _transport_error(exc, resp.request) from exc
+        raise _transport_error(exc, resp.request, deadline) from exc
     return bytes(body)
 
 

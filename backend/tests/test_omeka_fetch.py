@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from app.net_guard import make_guarded_client
 from app.omeka import (
     MAX_REDIRECTS,
     OMEKA_REQUEST_TIMEOUT,
@@ -371,3 +372,100 @@ def test_api_body_is_capped():
     with drip as c, pytest.raises(ToolError) as e:
         search_items(c, BASE, "a", 1, deadline=far(), resolve=PUBLIC)
     assert e.value.status == 502 and "too large" in e.value.message
+
+
+# --- review fixes: the body's read timeout, and the connect-time guard -------
+
+class FakeClock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class Stall(httpx.SyncByteStream):
+    """One chunk, then a read that stalls for its whole read timeout (on the
+    fake clock) and times out. Records the read timeout it was given."""
+
+    def __init__(self, request, clock, seen):
+        self.request, self.clock, self.seen = request, clock, seen
+
+    def __iter__(self):
+        read = self.request.extensions["timeout"]["read"]
+        self.seen.append(read)
+        yield JPEG
+        self.clock.now += read
+        raise httpx.ReadTimeout("timed out", request=self.request)
+
+
+def test_body_read_timeout_past_the_deadline_is_504(monkeypatch):
+    clock = FakeClock()
+    monkeypatch.setattr("app.omeka.time.monotonic", clock)
+    reads: list[float] = []
+
+    def handler(request):
+        clock.now += 5  # the headers take 5 s; 7 s of a 12 s budget remain
+        return httpx.Response(200, stream=Stall(request, clock, reads))
+    handler, seen = counting(handler)
+    with client_for(handler) as c, pytest.raises(ToolError) as e:
+        fetch_file(c, f"{BASE}/a.jpg", "image", deadline=clock.now + 12,
+                   resolve=PUBLIC, max_bytes=1000)
+    assert e.value.status == 504
+    assert reads == [pytest.approx(7.0)] and len(seen) == 1
+    assert clock.now == pytest.approx(1012.0)  # stopped at the deadline, not past it
+
+    # The API path has no retry to hide the overrun behind: still the 504.
+    reads.clear()
+    with client_for(handler) as c, pytest.raises(ToolError) as e:
+        get_site(c, BASE, deadline=clock.now + 12, resolve=PUBLIC)
+    assert e.value.status == 504
+    assert reads == [pytest.approx(7.0)]
+
+
+def test_body_read_timeout_is_capped_to_the_remaining_budget(monkeypatch):
+    clock = FakeClock()
+    monkeypatch.setattr("app.omeka.time.monotonic", clock)
+    reads: list[float] = []
+
+    class Once(httpx.SyncByteStream):
+        def __init__(self, request):
+            self.request = request
+
+        def __iter__(self):
+            reads.append(self.request.extensions["timeout"]["read"])
+            yield JPEG
+
+    def handler(request):
+        clock.now += 7  # the headers took 7 s of a 10 s budget
+        return httpx.Response(200, stream=Once(request))
+    with client_for(handler) as c:
+        fetch_file(c, f"{BASE}/a.jpg", "image", deadline=clock.now + 10,
+                   resolve=PUBLIC, max_bytes=1000)
+    assert reads == [pytest.approx(3.0)]
+
+
+def test_connect_time_refusal_is_400_on_the_api_path():
+    private = lambda host, port: ["10.0.0.5"]
+    # The pre-check sees a public answer; the connect-time lookup (rebinding)
+    # sees a private one.
+    with make_guarded_client(OMEKA_REQUEST_TIMEOUT, resolve=private) as c, \
+            pytest.raises(ToolError) as e:
+        get_site(c, BASE, deadline=far(), resolve=PUBLIC)
+    assert e.value.status == 400
+    assert e.value.message == ("omeka.example points to a private or local network "
+                               "address, which the editor will not connect to.")
+
+
+def test_connect_time_refusal_is_400_on_download_and_not_retried():
+    lookups = []
+
+    def private(host, port):
+        lookups.append(host)
+        return ["10.0.0.5"]
+    with make_guarded_client(OMEKA_REQUEST_TIMEOUT, resolve=private) as c, \
+            pytest.raises(ToolError) as e:
+        fetch_file(c, f"{BASE}/a.jpg", "image", deadline=far(), resolve=PUBLIC,
+                   max_bytes=1000)
+    assert e.value.status == 400
+    assert lookups == ["omeka.example"]
