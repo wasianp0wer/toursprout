@@ -1,0 +1,65 @@
+<section class="omeka" aria-label="Import from Omeka">
+  <form class="search" (submit)="$event.preventDefault(); search()">
+    <label>Site <input type="text" inputmode="url" autocomplete="url" data-omeka-site placeholder="https://omeka.example.org" [value]="siteUrl()" (input)="siteUrl.set($any($event.target).value)" /></label>
+    <label>Find <input type="text" data-omeka-query [value]="query()" (input)="query.set($any($event.target).value)" /></label>
+    <button type="submit" data-omeka-search [disabled]="!!status() || !siteUrl().trim()">Search</button>
+  </form>
+  @switch (status()) {
+    @case ('searching') { <p class="note" role="status">Searching…</p> }
+    @case ('opening') { <p class="note" role="status">Opening…</p> }
+    @case ('adding') { <p class="note" data-omeka-adding role="status">Adding…</p> }
+  }
+  @if (error(); as err) { <p class="note warning" data-omeka-error role="alert">{{ err }}</p> }
+  @if (items(); as list) {
+    @if (site(); as s) { <p class="site">{{ s.title }} <span class="count">({{ total() }})</span></p> }
+    @if (list.length === 0) { <p class="note" data-omeka-none>Nothing found.</p> }
+    <ul class="items">
+      @for (item of list; track item.itemId) {
+        <li>
+          <button type="button" class="row" [attr.data-omeka-item]="item.itemId" [attr.aria-expanded]="openItemId() === item.itemId" [disabled]="!!status()" (click)="toggleItem(item)">
+            <span aria-hidden="true">{{ openItemId() === item.itemId ? '▾' : '▸' }}</span> {{ item.title }}
+            <span class="count">{{ fileCount(item.fileCount) }}</span>
+          </button>
+          @if (openItemId() === item.itemId) {
+            <div class="detail">
+              @if (item.creator || item.date) {
+                <p>
+                  @if (item.creator) { Creator: {{ item.creator }} }
+                  @if (item.date) { Date: {{ item.date }} }
+                </p>
+              }
+              @if (item.rights) { <p>Rights: {{ item.rights }}</p> }
+              <ul class="files">
+                @for (file of files() ?? []; track file.fileId) {
+                  <li [attr.data-omeka-file]="file.fileId">
+                    <div class="file">
+                      @if (file.thumbUrl) { <img [src]="file.thumbUrl" alt="" width="48" height="48" /> }
+                      <span class="name">{{ file.filename }}</span>
+                      @if (file.importable) {
+                        <span class="count">{{ file.kind }}</span>
+                      } @else {
+                        <span class="reason">{{ file.reason }}</span>
+                      }
+                    </div>
+                    @if (file.importable) {
+                      @if (file.rights && file.rights !== item.rights) { <p>Rights: {{ file.rights }}</p> }
+                      @if (needsLicense(item, file)) {
+                        <label>No rights statement. Enter the licence you are adding it under:
+                          <input type="text" data-omeka-license [value]="licenses()[file.fileId] ?? ''" (input)="setLicense(file.fileId, $any($event.target).value)" />
+                        </label>
+                      }
+                      <button type="button" data-omeka-add [disabled]="!canAdd(item, file)" (click)="add(item, file)">Add to this stop</button>
+                    }
+                  </li>
+                }
+              </ul>
+            </div>
+          }
+        </li>
+      }
+    </ul>
+    @if (list.length < total()) {
+      <button type="button" class="more" data-omeka-more [disabled]="!!status()" (click)="more()">More results</button>
+    }
+  }
+</section>

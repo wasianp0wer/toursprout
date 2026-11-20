@@ -107,6 +107,31 @@ Put the rights statement in the Body even if you also gave a licence earlier.
 The licence comes from that first question and is the same for everything you
 add; the editor has no box to change it for one photograph.
 
+## Importing from Omeka
+
+If your photographs or recordings are already on an Omeka Classic site, the
+editor can bring them in for you, credit and all.
+
+1. Click the stop they belong to, then **Import from Omeka**.
+2. Type the site's address under **Site** (the editor remembers it), a word
+   to look for under **Find**, and press **Search**.
+3. Click an item to see its files, then **Add to this stop** beside the one
+   you want. It appears under the stop with the item's title, description,
+   creator and rights already filled in.
+
+Some things to know:
+
+- **The site's API must be turned on.** If it is not, the editor says so.
+  Someone with an administrator login turns it on in the Omeka admin under
+  **Settings → API**.
+- **Only public items show up.** An item the site keeps private will not
+  appear in a search.
+- **Images come in as Omeka's large JPEG**, not the original upload. That is
+  plenty for a tour.
+- **If the item states no rights,** the editor asks for the licence you are
+  adding it under, and **Add to this stop** stays greyed out until you type
+  one. Nothing is filled in for you.
+
 ## Sending your tour back
 
 Click **Export bundle** at the top. Your browser downloads a `.zip` file with

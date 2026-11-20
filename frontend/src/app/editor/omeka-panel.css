@@ -1,0 +1,21 @@
+/* Labels, controls and buttons come from the editor rules in styles.css. */
+:host {
+  display: block; margin: 0.5rem 0 0; padding: 0.6rem;
+  background: #171a1f; border: 1px solid #343a44; border-radius: 4px;
+}
+/* The outline pane hides rather than destroys the panel; display: block above would beat [hidden]. */
+:host([hidden]) { display: none; }
+.search { display: grid; gap: 0.4rem; }
+.search button { justify-self: end; }
+p { margin: 0.4rem 0 0; font-size: 0.8rem; }
+.note { font-size: 0.75rem; color: #9aa0ab; }
+.note.warning { color: #e8825b; }
+.site { font-weight: 600; }
+.count, .reason { font-size: 0.7rem; color: #9aa0ab; margin-left: 0.4rem; }
+ul { list-style: none; padding-left: 0; margin: 0.4rem 0 0; }
+.row { width: 100%; text-align: left; border: none; background: transparent; font-size: 0.85rem; }
+.detail { padding-left: 1rem; }
+.files > li { margin-top: 0.4rem; display: grid; gap: 0.3rem; }
+.file { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; overflow-wrap: anywhere; }
+.file img { object-fit: cover; border-radius: 2px; flex: none; }
+.more { margin-top: 0.4rem; }
