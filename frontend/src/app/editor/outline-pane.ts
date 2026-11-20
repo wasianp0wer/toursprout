@@ -266,9 +266,12 @@ export class OutlinePane implements OnDestroy {
   // --- import from Omeka ---------------------------------------------------
 
   protected readonly omekaOpen = signal(false);
+  /** Set on first open and never cleared: closing hides the panel, so an import in flight still lands. */
+  protected readonly omekaMounted = signal(false);
 
   protected toggleOmeka(): void {
     this.omekaOpen.update((v) => !v);
+    if (this.omekaOpen()) this.omekaMounted.set(true);
   }
 
   /** The panel has stored the file; the document half is the same as an upload's. */

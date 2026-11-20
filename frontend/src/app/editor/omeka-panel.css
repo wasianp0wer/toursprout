@@ -3,6 +3,8 @@
   display: block; margin: 0.5rem 0 0; padding: 0.6rem;
   background: #171a1f; border: 1px solid #343a44; border-radius: 4px;
 }
+/* The outline pane hides rather than destroys the panel; display: block above would beat [hidden]. */
+:host([hidden]) { display: none; }
 .search { display: grid; gap: 0.4rem; }
 .search button { justify-self: end; }
 p { margin: 0.4rem 0 0; font-size: 0.8rem; }

@@ -471,7 +471,44 @@ describe('OutlinePane', () => {
       click('[data-omeka-open]');
       expect(el.querySelector('app-omeka-panel')).toBeTruthy();
       click('[data-omeka-open]');
-      expect(el.querySelector('app-omeka-panel')).toBeNull();
+      expect((el.querySelector('app-omeka-panel') as HTMLElement | null)?.hidden ?? true).toBe(true);
+    });
+
+    it('closing the panel during an import still adds the overlay when the import resolves', async () => {
+      const tools = TestBed.inject(ToolsApi) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+      const item = {
+        itemId: 2, itemUrl: 'https://omeka.example/items/show/2', title: 'Fifi', description: null,
+        creator: 'Unknown', date: null, rights: 'Public Domain', fileCount: 1,
+      };
+      tools['omekaSearch'].mockResolvedValue({ site: { base: 'https://omeka.example', title: 'Demo' }, total: 1, page: 1, results: [item] });
+      tools['omekaFiles'].mockResolvedValue([{
+        fileId: 2, kind: 'image', filename: 'fifi.jpg', thumbUrl: null, importable: true, reason: null,
+        title: null, creator: null, rights: null,
+      }]);
+      let resolve!: (id: string) => void;
+      tools['omekaImport'].mockReturnValue(new Promise<string>((r) => { resolve = r; }));
+      const settle = async () => { for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0)); fixture.detectChanges(); };
+      store.select('a'); fixture.detectChanges();
+      click('[data-omeka-open]');
+      const site = q('[data-omeka-site]') as HTMLInputElement;
+      site.value = 'omeka.example'; site.dispatchEvent(new Event('input')); fixture.detectChanges();
+      click('[data-omeka-search]'); await settle();
+      click('[data-omeka-item="2"]'); await settle();
+      click('[data-omeka-add]'); await settle();
+      click('[data-omeka-open]');  // closed while Adding…
+      resolve('fifi-abc123.jpg');
+      await settle();
+      expect(overlaysOf('a').map((o) => o.mediaId)).toEqual(['fifi-abc123.jpg']);
+    });
+
+    it('an open panel can be closed when no stop is selected', () => {
+      store.select('a'); fixture.detectChanges();
+      click('[data-omeka-open]');
+      store.select(null); fixture.detectChanges();
+      expect((q('[data-omeka-open]') as HTMLButtonElement).disabled).toBe(false);
+      click('[data-omeka-open]');
+      expect((el.querySelector('app-omeka-panel') as HTMLElement).hidden).toBe(true);
+      expect((q('[data-omeka-open]') as HTMLButtonElement).disabled).toBe(true);
     });
 
     it('an added event creates one overlay with body and credit, in one undo step, and selects it', () => {
