@@ -186,7 +186,18 @@ above. So **every route finishes within 30 s in total**, end to end: a
 shared deadline is passed through each call. Search and files: 10 s per
 Omeka request. Import: the file-record read gets 10 s, and the download
 shares a 25 s deadline across one retry and every redirect hop (not
-`fetch_archive_image`'s 5 attempts and 90 s). Running out of deadline is a
+`fetch_archive_image`'s 5 attempts and 90 s).
+
+The 30 s is a budget, not a hard ceiling. httpcore fixes a response's read
+timeout once, when the body starts, so the body's read timeout is set to
+whatever budget remains at that moment. A server that sends part of a body
+and then stalls can therefore hold the route past 30 s, but by no more than
+the budget that was left when the body began. A timeout at or after the
+deadline is reported as the 504 below, not as "unreachable". A watchdog at
+the socket level would close this gap entirely, and was judged out of
+proportion for now; step 5 of the live check measures the real timings.
+
+Running out of deadline is a
 `ToolError(504)` with "The Omeka site at {host} took too long to answer.
 Try again, or try a smaller file."
 
