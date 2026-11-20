@@ -6,6 +6,7 @@ import {
 import { SessionApi } from '../core/session-api';
 import type { Credit } from '../core/tour.models';
 import { ActiveRecording, RecordingError, formatWarning, startRecording } from './recorder';
+import { OmekaPanel, type OmekaAdded } from './omeka-panel';
 
 type MediaKind = 'image' | 'audio';
 type PromptKind = MediaKind | 'text' | 'record';
@@ -15,6 +16,7 @@ type PromptKind = MediaKind | 'text' | 'record';
   selector: 'app-outline-pane',
   templateUrl: './outline-pane.html',
   styleUrl: './outline-pane.css',
+  imports: [OmekaPanel],
 })
 export class OutlinePane implements OnDestroy {
   protected readonly store = inject(EditorStore);
@@ -242,6 +244,7 @@ export class OutlinePane implements OnDestroy {
    */
   private createFromMedia(
     kind: MediaKind, mediaId: string, title: string, stopId: string, credit?: Credit, uploadedNote = '',
+    body?: string | null,
   ): void {
     const stored = mediaKindOf(mediaId);
     if (stored !== kind) {
@@ -250,7 +253,7 @@ export class OutlinePane implements OnDestroy {
     }
     const before = this.store.draft();
     this.store.apply((t) => addMediaOverlay(
-      t, stopId, kind, mediaId, title, this.store.pendingDefaults() ?? undefined, credit));
+      t, stopId, kind, mediaId, title, this.store.pendingDefaults() ?? undefined, credit, body));
     const after = this.store.draft();
     if (after === before) {
       this.mediaError.set(`${this.refusalMessage(stopId)} ${uploadedNote}`.trim());
@@ -258,6 +261,21 @@ export class OutlinePane implements OnDestroy {
     }
     const added = after!.stops.find((s) => s.id === stopId)?.overlays.at(-1);
     if (added) this.store.select(added.id);
+  }
+
+  // --- import from Omeka ---------------------------------------------------
+
+  protected readonly omekaOpen = signal(false);
+
+  protected toggleOmeka(): void {
+    this.omekaOpen.update((v) => !v);
+  }
+
+  /** The panel has stored the file; the document half is the same as an upload's. */
+  protected onOmekaAdded(e: OmekaAdded): void {
+    this.mediaError.set(null);
+    this.createFromMedia(e.kind, e.mediaId, e.title, e.stopId, e.credit,
+      'The file was imported but not added.', e.body);
   }
 
   ngOnDestroy(): void {

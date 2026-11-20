@@ -12,6 +12,7 @@
     } @else {
       <button type="button" data-record [disabled]="!store.currentStop() || busy()" (click)="record()">Record audio</button>
     }
+    <button type="button" data-omeka-open [disabled]="!store.currentStop()" [attr.aria-expanded]="omekaOpen()" (click)="toggleOmeka()">Import from Omeka</button>
     <input #imageInput type="file" hidden data-file-image accept="image/jpeg,image/png,image/webp" (change)="onFile('image', $event)" />
     <input #audioInput type="file" hidden data-file-audio accept="audio/*,.webm,.m4a,.mp3,.ogg,.wav" (change)="onFile('audio', $event)" />
     <button type="button" data-move-up [disabled]="!store.selectedStop()" (click)="move(-1)" aria-label="Move stop up">Up</button>
@@ -27,6 +28,9 @@
       <button type="submit" data-defaults-submit>Continue</button>
       <button type="button" data-defaults-cancel (click)="cancelDefaults()">Cancel</button>
     </form>
+  }
+  @if (omekaOpen()) {
+    <app-omeka-panel [stopId]="store.currentStop()?.id ?? ''" (added)="onOmekaAdded($event)" />
   }
   @if (recState() === 'recording') { <p class="note" data-recording role="status">Recording from your microphone…</p> }
   @if (recFormatNote(); as fn) { <p class="note warning" data-record-format>{{ fn }}</p> }

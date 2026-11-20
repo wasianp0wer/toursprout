@@ -5,6 +5,9 @@ import { EditorStore } from './editor-store';
 import { SessionApi } from '../core/session-api';
 import { controlsWithoutLabelAbove, overlay, stop, tour } from './test-builders';
 import { installRecording, uninstallRecording } from './recording-fakes';
+import { By } from '@angular/platform-browser';
+import { ToolsApi } from '../core/tools-api';
+import { OmekaPanel } from './omeka-panel';
 
 describe('OutlinePane', () => {
   let store: EditorStore;
@@ -436,6 +439,62 @@ describe('OutlinePane', () => {
     it('is disabled with no current stop', () => {
       store.select(null); fixture.detectChanges();
       expect((q('[data-record]') as HTMLButtonElement).disabled).toBe(true);
+    });
+  });
+
+  describe('import from Omeka', () => {
+    const credit = {
+      type: 'sourced' as const, source: 'Omeka demo', url: 'https://omeka.example/items/show/2',
+      license: 'Public Domain', creator: 'Unknown',
+    };
+    const overlaysOf = (id: string) => store.draft()!.stops.find((s) => s.id === id)!.overlays;
+
+    beforeEach(() => {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        imports: [OutlinePane],
+        providers: [{ provide: ToolsApi, useValue: { omekaSearch: vi.fn(), omekaFiles: vi.fn(), omekaImport: vi.fn() } }],
+      });
+      store = TestBed.inject(EditorStore);
+      store.load(tour([stop('a', 1), stop('b', 2, [overlay('o1')])]));
+      fixture = TestBed.createComponent(OutlinePane);
+      el = fixture.nativeElement;
+      fixture.detectChanges();
+    });
+
+    it('Import from Omeka is disabled without a current stop', () => {
+      const button = () => q('[data-omeka-open]') as HTMLButtonElement;
+      expect(button().textContent?.trim()).toBe('Import from Omeka');
+      expect(button().disabled).toBe(true);
+      store.select('a'); fixture.detectChanges();
+      expect(button().disabled).toBe(false);
+      click('[data-omeka-open]');
+      expect(el.querySelector('app-omeka-panel')).toBeTruthy();
+      click('[data-omeka-open]');
+      expect(el.querySelector('app-omeka-panel')).toBeNull();
+    });
+
+    it('an added event creates one overlay with body and credit, in one undo step, and selects it', () => {
+      store.select('a'); fixture.detectChanges();
+      click('[data-omeka-open]');
+      const panel = fixture.debugElement.query(By.directive(OmekaPanel)).componentInstance as OmekaPanel;
+      // The stop the import was started for, not the one now selected.
+      store.select('b'); fixture.detectChanges();
+      panel.added.emit({
+        stopId: 'a', kind: 'image', mediaId: 'fifi-abc123.jpg',
+        title: 'John Moisant and Mademoiselle Fifi', body: 'Aviation pioneer John Moisant and his cat', credit,
+      });
+      fixture.detectChanges();
+      const [o] = overlaysOf('a');
+      expect(overlaysOf('a').length).toBe(1);
+      expect(o).toMatchObject({
+        kind: 'image', mediaId: 'fifi-abc123.jpg', title: 'John Moisant and Mademoiselle Fifi',
+        body: 'Aviation pioneer John Moisant and his cat', credit,
+      });
+      expect(store.selectedId()).toBe(o.id);
+      store.undo();
+      expect(overlaysOf('a').length).toBe(0);
+      expect(store.canUndo()).toBe(false);
     });
   });
 });
