@@ -22,7 +22,14 @@ import httpx
 from pydantic import BaseModel, Field, StringConstraints
 
 from .media_store import ALLOWED_TYPES, MediaError, sniff
-from .net_guard import PRIVATE, UNREACHABLE, GuardRefused, Resolver, check_public_url
+from .net_guard import (
+    BAD_URL,
+    PRIVATE,
+    UNREACHABLE,
+    GuardRefused,
+    Resolver,
+    check_public_url,
+)
 from .tools import ToolError, _describe
 
 AUDIO_TYPES = frozenset(t for t in ALLOWED_TYPES if t.startswith("audio/"))
@@ -55,7 +62,10 @@ def omeka_base(raw: str) -> str:
     raw = raw.strip()
     if "://" not in raw:
         raw = "https://" + raw
-    parts = urlsplit(raw)
+    try:
+        parts = urlsplit(raw)
+    except ValueError as exc:  # e.g. an unclosed IPv6 bracket
+        raise ToolError(400, BAD_URL) from exc
     path = parts.path
     m = _PAGE_PATH.search(path)
     if m:
@@ -67,13 +77,41 @@ def _host(base: str) -> str:
     return urlsplit(base).netloc
 
 
+# Tags that break a line; text either side of one must not run together.
+_BLOCK_TAGS = frozenset({"p", "br", "div", "li", "ul", "ol", "tr", "blockquote",
+                         "h1", "h2", "h3", "h4", "h5", "h6"})
+_HIDDEN_TAGS = frozenset({"script", "style"})
+
+
 class _TextOnly(HTMLParser):
+    """The text of an HTML fragment as HTML lays it out: whitespace runs are
+    one space, block boundaries are line breaks, script and style unseen."""
+
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
+        self._hidden = 0
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag in _HIDDEN_TAGS:
+            self._hidden += 1
+        elif tag in _BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in _HIDDEN_TAGS:
+            self._hidden = max(0, self._hidden - 1)
+        elif tag in _BLOCK_TAGS:
+            self.parts.append("\n")
 
     def handle_data(self, data: str) -> None:
-        self.parts.append(data)
+        if not self._hidden:
+            # A newline in the source is only whitespace; breaks come from tags.
+            self.parts.append(re.sub(r"\s", " ", data))
+
+    def text(self) -> str:
+        lines = (" ".join(line.split()) for line in "".join(self.parts).split("\n"))
+        return "\n".join(line for line in lines if line)
 
 
 def _plain(value: str, html: bool) -> str:
@@ -81,7 +119,7 @@ def _plain(value: str, html: bool) -> str:
         p = _TextOnly()
         p.feed(value)
         p.close()
-        value = "".join(p.parts)
+        value = p.text()
     else:
         value = unescape(value) if "&" in value and "<" in value else value
     return value.strip()
@@ -163,11 +201,30 @@ def file_summary(f: dict) -> dict:
     }
 
 
+def _cloudflare_challenge(resp: httpx.Response, host: str) -> None:
+    """Raise the 409 for a Cloudflare bot challenge: a 403 or 503 marked
+    `cf-mitigated`, or an HTML one from a Cloudflare server. Only the headers
+    are read, so a streamed response can be checked unread."""
+    if resp.status_code not in (403, 503):
+        return
+    html = resp.headers.get("content-type", "").startswith("text/html")
+    if "cf-mitigated" in resp.headers or (
+            resp.headers.get("server", "").lower() == "cloudflare" and html):
+        raise ToolError(
+            409,
+            f"The Omeka site at {host} is behind Cloudflare, which challenged the "
+            "editor's server as a bot. Whoever manages the site's Cloudflare account "
+            "can allow it: add a rule letting this server's address reach /api/* and "
+            "/files/* without a challenge. Then try again.",
+        )
+
+
 def site_from_response(resp: httpx.Response, base: str) -> dict:
     """Identify the site from its `GET {base}/api/site` response, or raise
     the ToolError the spec's table gives for that failure."""
     host = _host(base)
     status = resp.status_code
+    _cloudflare_challenge(resp, host)
     try:
         body = resp.json()
     except ValueError:
@@ -264,12 +321,21 @@ def _get(client: httpx.Client, url: str, *, params: dict | None = None,
                                        timeout=timeout)
         try:
             resp = client.send(request, stream=True, follow_redirects=False)
+        except httpx.RemoteProtocolError as exc:
+            # httpx parses a redirect's Location even when not following it.
+            if str(exc).startswith("Invalid URL in location header"):
+                raise ToolError(400, BAD_URL) from exc
+            raise _transport_error(exc, request, deadline) from exc
         except httpx.HTTPError as exc:
             raise _transport_error(exc, request, deadline) from exc
         location = resp.headers.get("location")
         if resp.status_code in _REDIRECTS and location:
             resp.close()
-            current = check_public_url(current.join(location), resolve=resolve)
+            try:
+                target = current.join(location)
+            except httpx.InvalidURL as exc:
+                raise ToolError(400, BAD_URL) from exc
+            current = check_public_url(target, resolve=resolve)
             continue
         if stream:
             return resp
@@ -278,7 +344,11 @@ def _get(client: httpx.Client, url: str, *, params: dict | None = None,
                 502, f"The Omeka site at {host} sent an answer too large to read."))
         finally:
             resp.close()
-        return httpx.Response(resp.status_code, headers=resp.headers, content=body,
+        # The body is already decoded, so the rebuilt response must not claim
+        # an encoding (httpx would decode it again) or the wire's length.
+        headers = [(k, v) for k, v in resp.headers.multi_items()
+                   if k.lower() not in ("content-encoding", "content-length")]
+        return httpx.Response(resp.status_code, headers=headers, content=body,
                               request=request)
     raise ToolError(502, f"The Omeka site at {current.host} redirected too many times.")
 
@@ -309,13 +379,15 @@ def get_site(client: httpx.Client, base: str, *, deadline: float,
 def search_items(client: httpx.Client, base: str, query: str, page: int, *,
                  deadline: float, resolve: Resolver) -> dict:
     """One page of the site's search. Items with no files are left out of
-    `results`; `total` is Omeka's count, which includes them."""
+    `results`; `total` is Omeka's count, which includes them, and `rawCount`
+    is how many items this page held before they were left out, so the
+    client can tell when it has paged through `total`."""
     resp, items = _api_list(client, base, "items", {"search": query, "page": page},
                             deadline=deadline, resolve=resolve)
     declared = resp.headers.get("Omeka-Total-Results", "").strip()
     results = [s for s in (item_summary(i, base) for i in items) if s is not None]
     return {"total": int(declared) if declared.isdigit() else 0,
-            "page": page, "results": results}
+            "page": page, "rawCount": len(items), "results": results}
 
 
 def list_files(client: httpx.Client, base: str, item_id: int, *, deadline: float,
@@ -377,6 +449,7 @@ def fetch_file(client: httpx.Client, url: str, kind: str, *, deadline: float,
             continue
         host, status = resp.request.url.host, resp.status_code
         try:
+            _cloudflare_challenge(resp, host)
             if status == 200:
                 body = _read_capped(resp, max_bytes, deadline, ToolError(
                     502, f"The file on {host} is larger than the "

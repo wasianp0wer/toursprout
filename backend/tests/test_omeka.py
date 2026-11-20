@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from app.net_guard import BAD_URL
 from app.omeka import (
     AUDIO_TYPES,
     download_url,
@@ -200,3 +201,53 @@ def test_site_5xx():
 def test_site_blank_title_falls_back_to_host():
     resp = httpx.Response(200, json={"title": "  ", "omeka_version": "3.2.1"})
     assert site_from_response(resp, "https://example.org/omeka")["title"] == "example.org"
+
+
+@pytest.mark.parametrize("value,plain", [
+    ("<p>First para.</p><p>Second para.</p>", "First para.\nSecond para."),
+    ("One<br>two<br/>three", "One\ntwo\nthree"),
+    ("<ul><li>A</li><li>B</li></ul>", "A\nB"),
+    ("<div>Top</div>tail", "Top\ntail"),
+    ("<p>Hi<script>alert('x')</script><style>p { color: red }</style> there</p>", "Hi there"),
+    ("<p>  Spread\n   over\tlines  </p>\n\n<p></p>", "Spread over lines"),
+])
+def test_dublin_core_html_blocks_and_scripts(value, plain):
+    assert dublin_core([text(value, "Description", html=True)]) == {"Description": plain}
+
+
+CF_MESSAGE = (
+    "The Omeka site at omeka.example is behind Cloudflare, which challenged the "
+    "editor's server as a bot. Whoever manages the site's Cloudflare account can "
+    "allow it: add a rule letting this server's address reach /api/* and /files/* "
+    "without a challenge. Then try again."
+)
+
+
+@pytest.mark.parametrize("status,headers", [
+    (403, {"cf-mitigated": "challenge", "server": "cloudflare",
+           "content-type": "text/html; charset=UTF-8"}),
+    (503, {"cf-mitigated": "challenge"}),
+    (403, {"server": "cloudflare", "content-type": "text/html"}),
+    (503, {"server": "cloudflare", "content-type": "text/html; charset=UTF-8"}),
+])
+def test_site_cloudflare_challenge(status, headers):
+    resp = httpx.Response(status, text="<html>Just a moment...</html>", headers=headers)
+    with pytest.raises(ToolError) as e:
+        site_from_response(resp, EX)
+    assert e.value.status == 409 and e.value.message == CF_MESSAGE
+
+
+def test_site_cloudflare_json_403_is_not_a_challenge():
+    """Omeka's own 403 passed through Cloudflare keeps its message."""
+    resp = httpx.Response(403, json={"message": "API is disabled"},
+                          headers={"server": "cloudflare"})
+    with pytest.raises(ToolError) as e:
+        site_from_response(resp, EX)
+    assert e.value.message == SITE_MESSAGES["disabled"]
+
+
+@pytest.mark.parametrize("raw", ["http://[::1", "https://[bad/omeka"])
+def test_omeka_base_malformed_is_400(raw):
+    with pytest.raises(ToolError) as e:
+        omeka_base(raw)
+    assert e.value.status == 400 and e.value.message == BAD_URL

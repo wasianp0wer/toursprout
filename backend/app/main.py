@@ -787,8 +787,8 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     def tool_omeka_search(body: omeka.OmekaSearchRequest) -> dict:
         deadline = time.monotonic() + omeka.OMEKA_ROUTE_BUDGET
         resolve = _omeka_resolve()
-        base = omeka.omeka_base(body.siteUrl)
         try:
+            base = omeka.omeka_base(body.siteUrl)
             with _omeka_client() as c:
                 site = omeka.get_site(c, base, deadline=deadline, resolve=resolve)
                 found = omeka.search_items(c, base, body.query, body.page,
@@ -801,8 +801,8 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     def tool_omeka_files(body: omeka.OmekaFilesRequest) -> dict:
         deadline = time.monotonic() + omeka.OMEKA_ROUTE_BUDGET
         resolve = _omeka_resolve()
-        base = omeka.omeka_base(body.siteUrl)
         try:
+            base = omeka.omeka_base(body.siteUrl)
             with _omeka_client() as c:
                 files = omeka.list_files(c, base, body.itemId,
                                          deadline=deadline, resolve=resolve)
@@ -819,8 +819,8 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
             )
         deadline = time.monotonic() + omeka.OMEKA_ROUTE_BUDGET
         resolve = _omeka_resolve()
-        base = omeka.omeka_base(body.siteUrl)
         try:
+            base = omeka.omeka_base(body.siteUrl)
             with _omeka_client() as c:
                 files = omeka.list_files(c, base, body.itemId,
                                          deadline=deadline, resolve=resolve)

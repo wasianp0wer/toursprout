@@ -4,6 +4,7 @@ no test touches the network or real DNS."""
 
 from __future__ import annotations
 
+import gzip
 import json
 import time
 from pathlib import Path
@@ -11,7 +12,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app.net_guard import make_guarded_client
+from app.net_guard import BAD_URL, make_guarded_client
 from app.omeka import (
     MAX_REDIRECTS,
     OMEKA_REQUEST_TIMEOUT,
@@ -83,7 +84,7 @@ def test_search_sends_query_and_page():
         return httpx.Response(200, json=[], headers={"Omeka-Total-Results": "0"})
     with client_for(handler) as c:
         r = search_items(c, BASE, "cupola", 2, deadline=far(), resolve=PUBLIC)
-    assert r == {"total": 0, "page": 2, "results": []}
+    assert r == {"total": 0, "page": 2, "rawCount": 0, "results": []}
 
 
 def test_get_json_bad_json_is_502():
@@ -469,3 +470,79 @@ def test_connect_time_refusal_is_400_on_download_and_not_retried():
                    max_bytes=1000)
     assert e.value.status == 400
     assert lookups == ["omeka.example"]
+
+
+# --- compressed answers, Cloudflare challenges, malformed redirects ------------
+
+def gzipped(body: bytes, **headers) -> httpx.Response:
+    return httpx.Response(200, content=gzip.compress(body),
+                          headers={"Content-Encoding": "gzip", **headers})
+
+
+def test_gzipped_api_answers_are_decoded_once():
+    def handler(request):
+        if request.url.path == "/api/site":
+            return gzipped(fixture("site.json"))
+        return gzipped(fixture("items.json"), **{"Omeka-Total-Results": "6"})
+    with client_for(handler) as c:
+        site = get_site(c, BASE, deadline=far(), resolve=PUBLIC)
+        r = search_items(c, BASE, "a", 1, deadline=far(), resolve=PUBLIC)
+    assert site["title"] == "Madelyn's Interests and Exhibits"
+    assert [x["itemId"] for x in r["results"]] == [1, 2, 3, 5, 6, 7]
+
+
+def test_gzipped_file_is_decoded_once():
+    with client_for(lambda req: gzipped(JPEG)) as c:
+        assert fetch_file(c, f"{BASE}/a.jpg", "image", deadline=far(), resolve=PUBLIC,
+                          max_bytes=1000) == JPEG
+
+
+def test_search_raw_count_is_items_before_filtering():
+    items = json.loads(fixture("items.json"))
+    items[0]["files"]["count"] = 0
+    with client_for(lambda req: httpx.Response(
+            200, json=items, headers={"Omeka-Total-Results": "6"})) as c:
+        r = search_items(c, BASE, "a", 1, deadline=far(), resolve=PUBLIC)
+    assert r["rawCount"] == 6 and len(r["results"]) == 5
+
+
+def test_search_live_raw_count():
+    with client_for(lambda req: httpx.Response(
+            200, content=fixture("items.json"),
+            headers={"Omeka-Total-Results": "6"})) as c:
+        r = search_items(c, BASE, "a", 1, deadline=far(), resolve=PUBLIC)
+    assert r["rawCount"] == 6
+
+
+CHALLENGE = {"cf-mitigated": "challenge", "server": "cloudflare",
+             "content-type": "text/html; charset=UTF-8"}
+
+
+def test_cloudflare_challenge_on_the_api_list_is_409():
+    with client_for(lambda req: httpx.Response(
+            403, text="<html>Just a moment...</html>", headers=CHALLENGE)) as c, \
+            pytest.raises(ToolError) as e:
+        search_items(c, BASE, "a", 1, deadline=far(), resolve=PUBLIC)
+    assert e.value.status == 409 and "behind Cloudflare" in e.value.message
+
+
+@pytest.mark.parametrize("status", [403, 503])
+def test_cloudflare_challenge_on_download_is_409_and_not_retried(status):
+    handler, seen = counting(lambda req: httpx.Response(
+        status, text="<html>Just a moment...</html>", headers=CHALLENGE))
+    with client_for(handler) as c, pytest.raises(ToolError) as e:
+        fetch_file(c, f"{BASE}/a.jpg", "image", deadline=far(), resolve=PUBLIC,
+                   max_bytes=1000)
+    assert e.value.status == 409
+    assert e.value.message.startswith(
+        "The Omeka site at omeka.example is behind Cloudflare, which challenged")
+    assert len(seen) == 1
+
+
+def test_malformed_redirect_location_is_400():
+    handler, seen = counting(lambda req: httpx.Response(
+        302, headers={"Location": "http://[::1"}))
+    with client_for(handler) as c, pytest.raises(ToolError) as e:
+        get_site(c, BASE, deadline=far(), resolve=PUBLIC)
+    assert e.value.status == 400 and e.value.message == BAD_URL
+    assert len(seen) == 1

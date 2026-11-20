@@ -170,3 +170,13 @@ def test_import_private_site_400(client):
     r = client.post("/api/tools/omeka-import", json=BODIES["omeka-import"])
     assert r.status_code == 400
     assert seen == []
+
+
+@pytest.mark.parametrize("tool", ["omeka-search", "omeka-files", "omeka-import"])
+def test_malformed_site_url_is_400(client, tool):
+    open_tour(client)
+    seen = mock(client, api)
+    r = client.post(f"/api/tools/{tool}", json={**BODIES[tool], "siteUrl": "http://[::1"})
+    assert r.status_code == 400
+    assert r.json()["detail"].startswith("That is not an address the editor can fetch")
+    assert seen == []
