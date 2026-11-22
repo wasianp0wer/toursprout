@@ -32,7 +32,10 @@ The outline's toolbar has grown to more than eight text buttons that wrap over s
 - **The options row hangs below its trigger.** In review this replaced the first call, which laid the row over the toolbar.
   - The row sits at `top: 100%` of its group, starting at the trigger's left edge, and expands to the right over the top of the stop list.
   - An overlaying row had covered the neighbouring triggers, so the pointer couldn't move straight from Add to Import.
-- **Clicks.** A trigger click opens its menu, or keeps it open if hover or focus already opened it. Only a click on a menu that an earlier click opened closes it.
+- **Clicks.** A trigger click opens its menu, or keeps it open if hover or focus already opened it.
+  - A clicked-open menu stays open when the pointer leaves it, and hovering another trigger doesn't take over. This was added at the user's request on 2026-11-22.
+  - It closes on a second click of its trigger, when focus moves outside its group, on a press anywhere outside its group, or on Esc.
+  - The outside-press check is there because Safari doesn't focus a clicked button, so focusout alone would miss it.
 - **Recording closes the Add menu.** Starting a recording closes Add, so at narrow widths the hanging row can't cover Stop and Discard when they wrap to a second row.
 - **Icons are inline SVG**, drawn in the template, with `stroke="currentColor"` and `aria-hidden="true"`. No package is added.
 - **Motion.**

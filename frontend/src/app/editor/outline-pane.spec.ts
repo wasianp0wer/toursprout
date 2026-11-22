@@ -591,6 +591,53 @@ describe('OutlinePane', () => {
       expect(expanded('add')).toBe('false');
     });
 
+    it('a clicked menu stays open when the pointer leaves it', () => {
+      fire(group('add'), 'mouseenter');
+      click('[data-menu="add"]');
+      fire(group('add'), 'mouseleave');
+      expect(expanded('add')).toBe('true');
+      expect(opts('add').hasAttribute('inert')).toBe(false);
+    });
+
+    it('hovering another menu does not take over a clicked one', () => {
+      click('[data-menu="add"]');
+      fire(group('add'), 'mouseleave');
+      fire(group('import'), 'mouseenter');
+      expect(expanded('add')).toBe('true');
+      expect(expanded('import')).toBe('false');
+    });
+
+    it('a clicked menu closes when focus moves outside it', () => {
+      click('[data-menu="add"]');
+      const outside = q('[data-stop="a"] [data-select]')!;
+      group('add').dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: outside }));
+      fixture.detectChanges();
+      expect(expanded('add')).toBe('false');
+    });
+
+    it('a clicked menu stays open while focus moves among its own options', () => {
+      click('[data-menu="add"]');
+      group('add').dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: q('[data-add-stop]') }));
+      fixture.detectChanges();
+      expect(expanded('add')).toBe('true');
+    });
+
+    it('a clicked menu closes on a press outside it, not on a press inside it', () => {
+      click('[data-menu="add"]');
+      fire(q('[data-add-stop]')!, 'pointerdown', { bubbles: true });
+      expect(expanded('add')).toBe('true');
+      fire(document.body, 'pointerdown', { bubbles: true });
+      expect(expanded('add')).toBe('false');
+    });
+
+    it('clicking another menu while one is clicked open switches to it', () => {
+      click('[data-menu="add"]');
+      fire(q('[data-menu="import"]')!, 'pointerdown', { bubbles: true });
+      click('[data-menu="import"]');
+      expect(expanded('add')).toBe('false');
+      expect(expanded('import')).toBe('true');
+    });
+
     it('a click after hover, then a second click, closes the menu', () => {
       fire(group('add'), 'mouseenter');
       click('[data-menu="add"]');

@@ -18,10 +18,12 @@ type PromptKind = MediaKind | 'text' | 'record';
   templateUrl: './outline-pane.html',
   styleUrl: './outline-pane.css',
   imports: [OmekaPanel],
+  host: { '(document:pointerdown)': 'onDocumentPointerDown($event)' },
 })
 export class OutlinePane implements OnDestroy {
   protected readonly store = inject(EditorStore);
   private readonly api = inject(SessionApi);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   private readonly imageInput = viewChild<ElementRef<HTMLInputElement>>('imageInput');
   private readonly audioInput = viewChild<ElementRef<HTMLInputElement>>('audioInput');
@@ -60,7 +62,10 @@ export class OutlinePane implements OnDestroy {
     });
   }
 
-  /** The menu a click opened (or confirmed). Only a second click may close it. */
+  /**
+   * The menu a click opened (or confirmed). It stays open until a second click,
+   * focus or a press outside it, or Escape; the pointer leaving does not close it.
+   */
   private clickedMenu: MenuName | null = null;
 
   protected toggleMenu(m: MenuName): void {
@@ -81,7 +86,21 @@ export class OutlinePane implements OnDestroy {
   protected openMenuOn(m: MenuName): void {
     if (this.restoringFocus) return;
     if (m === 'edit' && !this.store.selectedId()) return;
+    // Hovering past another menu must not take over one the author clicked open.
+    if (this.clickedMenu && this.clickedMenu !== m) return;
     this.openMenu.set(m);
+  }
+
+  protected leaveMenu(m: MenuName): void {
+    if (this.clickedMenu !== m) this.closeMenu(m);
+  }
+
+  /** A press outside a clicked-open menu closes it: Safari does not focus a clicked button, so focusout alone would miss it. */
+  protected onDocumentPointerDown(e: Event): void {
+    const m = this.clickedMenu;
+    if (!m) return;
+    const group = this.host.nativeElement.querySelector(`[data-menu="${m}"]`)?.closest('.menu');
+    if (!(e.target instanceof Node) || !group?.contains(e.target)) this.closeMenu(m);
   }
 
   protected closeMenu(m: MenuName): void {

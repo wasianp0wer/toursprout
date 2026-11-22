@@ -1,6 +1,6 @@
 <nav class="outline">
   <div class="toolbar">
-    <div class="menu" (mouseenter)="openMenuOn('add')" (mouseleave)="closeMenu('add')" (focusin)="openMenuOn('add')" (focusout)="onFocusOut('add', $event)" (keydown.escape)="escapeMenu('add', $event)">
+    <div class="menu" (mouseenter)="openMenuOn('add')" (mouseleave)="leaveMenu('add')" (focusin)="openMenuOn('add')" (focusout)="onFocusOut('add', $event)" (keydown.escape)="escapeMenu('add', $event)">
       <button type="button" class="trigger" data-menu="add" aria-haspopup="true" [attr.aria-expanded]="openMenu() === 'add'" aria-label="Add" title="Add" (click)="toggleMenu('add')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
       <div class="options" data-menu-options="add" [attr.inert]="openMenu() === 'add' ? null : ''">
         <button type="button" class="opt" style="--i:0" data-add-stop aria-label="Add stop" (click)="addStop()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></button>
@@ -10,13 +10,13 @@
         <button type="button" class="opt" style="--i:4" data-record [disabled]="!store.currentStop() || busy() || recState() !== 'idle'" aria-label="Record audio" (click)="record()"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="6"/></svg></button>
       </div>
     </div>
-    <div class="menu" (mouseenter)="openMenuOn('import')" (mouseleave)="closeMenu('import')" (focusin)="openMenuOn('import')" (focusout)="onFocusOut('import', $event)" (keydown.escape)="escapeMenu('import', $event)">
+    <div class="menu" (mouseenter)="openMenuOn('import')" (mouseleave)="leaveMenu('import')" (focusin)="openMenuOn('import')" (focusout)="onFocusOut('import', $event)" (keydown.escape)="escapeMenu('import', $event)">
       <button type="button" class="trigger" data-menu="import" aria-haspopup="true" [attr.aria-expanded]="openMenu() === 'import'" aria-label="Import" title="Import" (click)="toggleMenu('import')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg></button>
       <div class="options" data-menu-options="import" [attr.inert]="openMenu() === 'import' ? null : ''">
         <button type="button" class="opt" style="--i:0" data-omeka-open [disabled]="!store.currentStop() && !omekaOpen()" [attr.aria-expanded]="omekaOpen()" aria-label="Import from Omeka" (click)="toggleOmeka()"><span class="sr-only">Import from Omeka</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V10M19 21V10M9 21V10M15 21V10M2 10l10-7 10 7z"/></svg></button>
       </div>
     </div>
-    <div class="menu" (mouseenter)="openMenuOn('edit')" (mouseleave)="closeMenu('edit')" (focusin)="openMenuOn('edit')" (focusout)="onFocusOut('edit', $event)" (keydown.escape)="escapeMenu('edit', $event)">
+    <div class="menu" (mouseenter)="openMenuOn('edit')" (mouseleave)="leaveMenu('edit')" (focusin)="openMenuOn('edit')" (focusout)="onFocusOut('edit', $event)" (keydown.escape)="escapeMenu('edit', $event)">
       <button type="button" class="trigger" data-menu="edit" aria-haspopup="true" [attr.aria-expanded]="openMenu() === 'edit'" [disabled]="!store.selectedId()" aria-label="Edit" title="Edit" (click)="toggleMenu('edit')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3l4 4L8 20l-5 1 1-5z"/><path d="M14 6l4 4"/></svg></button>
       <div class="options" data-menu-options="edit" [attr.inert]="openMenu() === 'edit' ? null : ''">
         <button type="button" class="opt" style="--i:0" data-move-up [disabled]="!store.selectedStop()" aria-label="Move stop up" (click)="move(-1)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
