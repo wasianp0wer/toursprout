@@ -25,8 +25,15 @@ The outline's toolbar has grown to more than eight text buttons that wrap over s
   - If the selection clears while Edit is open, Edit closes.
   - Import from Omeka keeps its rule that it is enabled while the panel is open.
 - **The Add and Import icons are always enabled.** Add stop is always possible, and Import holds the Omeka toggle, which can also close the panel.
-- **Name labels stay inside the pane.** The outline is its own scroll box (`overflow-y: auto`), so anything sticking out of it would be clipped. Each option's name appears just below it on hover and on keyboard focus, never above. Every icon-only button also carries `aria-label` and `title`.
-- **The options overlay the toolbar row.** The open option row is absolutely positioned from the trigger's right edge and has the pane's background, so the other icons never shift under the pointer. At the sidebar's 15rem minimum width, the Add row fits.
+- **Name labels stay inside the pane.** The outline is its own scroll box (`overflow-y: auto`), so anything sticking out of it would be clipped.
+  - Each option's name appears just below it on hover and on keyboard focus.
+  - The last option of a multi-option row anchors its label to its right edge, so the label can't run past the pane.
+  - Options carry `aria-label` but no `title`, because a native tooltip would duplicate the label. The three triggers keep `title`. This change was made in review.
+- **The options row hangs below its trigger.** In review this replaced the first call, which laid the row over the toolbar.
+  - The row sits at `top: 100%` of its group, starting at the trigger's left edge, and expands to the right over the top of the stop list.
+  - An overlaying row had covered the neighbouring triggers, so the pointer couldn't move straight from Add to Import.
+- **Clicks.** A trigger click opens its menu, or keeps it open if hover or focus already opened it. Only a click on a menu that an earlier click opened closes it.
+- **Recording closes the Add menu.** Starting a recording closes Add, so at narrow widths the hanging row can't cover Stop and Discard when they wrap to a second row.
 - **Icons are inline SVG**, drawn in the template, with `stroke="currentColor"` and `aria-hidden="true"`. No package is added.
 - **Motion.**
   - Options animate from `opacity: 0; transform: translateX(-0.5rem) scaleX(0.6)`, with `transform-origin: left`, to rest.
