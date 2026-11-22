@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, OnDestroy, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { EditorStore } from './editor-store';
 import {
   addMediaOverlay, addStop, addTextOverlay, deleteOverlay, deleteStop, defaultsAnswerValid, hasDefaults, mediaKindOf, moveStop,
@@ -9,6 +9,7 @@ import { ActiveRecording, RecordingError, formatWarning, startRecording } from '
 import { OmekaPanel, type OmekaAdded } from './omeka-panel';
 
 type MediaKind = 'image' | 'audio';
+type MenuName = 'add' | 'import' | 'edit';
 type PromptKind = MediaKind | 'text' | 'record';
 
 /** The tour as a list: stops in order, each with its overlays. Thin over EditorStore. */
@@ -46,6 +47,44 @@ export class OutlinePane implements OnDestroy {
   protected readonly license = signal('');
   /** The stop chosen when the button was pressed; selection may move during an upload. */
   private targetStopId: string | null = null;
+
+  /** Which toolbar menu shows its options; at most one. */
+  protected readonly openMenu = signal<MenuName | null>(null);
+
+  constructor() {
+    // Edit has nothing to act on once the selection clears.
+    effect(() => { if (!this.store.selectedId() && this.openMenu() === 'edit') this.openMenu.set(null); });
+  }
+
+  protected toggleMenu(m: MenuName): void {
+    this.openMenu.update((cur) => (cur === m ? null : m));
+  }
+
+  private restoringFocus = false;
+
+  protected openMenuOn(m: MenuName): void {
+    if (this.restoringFocus) return;
+    if (m === 'edit' && !this.store.selectedId()) return;
+    this.openMenu.set(m);
+  }
+
+  protected closeMenu(m: MenuName): void {
+    if (this.openMenu() === m) this.openMenu.set(null);
+  }
+
+  protected onFocusOut(m: MenuName, e: FocusEvent): void {
+    const group = e.currentTarget as HTMLElement;
+    if (!(e.relatedTarget instanceof Node) || !group.contains(e.relatedTarget)) this.closeMenu(m);
+  }
+
+  protected escapeMenu(m: MenuName, e: Event): void {
+    if (this.openMenu() !== m) return;
+    this.closeMenu(m);
+    // Focusing the trigger fires focusin, which would reopen the menu.
+    this.restoringFocus = true;
+    (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[data-menu]')?.focus();
+    this.restoringFocus = false;
+  }
 
   protected readonly stops = computed(() =>
     [...(this.store.draft()?.stops ?? [])].sort((a, b) => a.order - b.order));

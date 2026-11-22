@@ -1,6 +1,36 @@
 /* Labels, controls and buttons come from the editor rules in styles.css. */
 :host { display: block; }
-.toolbar { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+/* Icon-only buttons: a square hit area for the glyph. */
+.trigger, .opt { display: inline-flex; align-items: center; justify-content: center; padding: 0.35rem; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.menu { position: relative; }
+/* The open row overlays the toolbar from the trigger's right edge, on the
+   pane's own background, so the other icons never shift under the pointer. */
+.options {
+  position: absolute; z-index: 2; top: 0; left: 100%;
+  display: flex; gap: 0.35rem; padding-left: 0.35rem;
+  background: #0f1114;
+  visibility: hidden; transition: visibility 0s linear 0.3s;
+}
+.menu:has(> .trigger[aria-expanded="true"]) > .options { visibility: visible; transition-delay: 0s; }
+.opt {
+  position: relative;
+  opacity: 0; transform: translateX(-0.5rem) scaleX(0.6); transform-origin: left;
+  transition: opacity 160ms ease-out, transform 160ms ease-out;
+  transition-delay: calc(var(--i, 0) * 30ms);
+}
+.menu:has(> .trigger[aria-expanded="true"]) .opt { opacity: 1; transform: none; }
+.menu:has(> .trigger[aria-expanded="true"]) .opt:disabled { opacity: 0.5; }
+/* Names show just below, never above: the outline scrolls, so overflow is clipped. */
+.opt:hover::after, .opt:focus-visible::after {
+  content: attr(aria-label);
+  position: absolute; top: calc(100% + 0.25rem); left: 0; z-index: 3;
+  padding: 0.15rem 0.4rem; border: 1px solid #343a44; border-radius: 4px;
+  background: #1c2026; color: #c9ccd3; font-size: 0.7rem; white-space: nowrap; pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .opt, .menu:has(> .trigger[aria-expanded="true"]) .opt { transform: none; transition-property: opacity; }
+}
 .note { font-size: 0.75rem; color: #9aa0ab; margin: 0.5rem 0 0; }
 .error { font-size: 0.8rem; color: #e8825b; margin: 0.5rem 0 0; }
 /* Asked once, in place of the upload: framed so it reads as a question
@@ -19,3 +49,5 @@ ul { padding-left: 1.25rem; margin: 0; }
 .row { width: 100%; text-align: left; border: none; background: transparent; font-size: 0.85rem; }
 li.selected > .row { background: #2a2f38; color: #e8b04b; }
 .kind { font-size: 0.7rem; color: #9aa0ab; margin-left: 0.4rem; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

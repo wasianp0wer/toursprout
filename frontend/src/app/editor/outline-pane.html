@@ -1,23 +1,37 @@
 <nav class="outline">
   <div class="toolbar">
-    <button type="button" data-add-stop (click)="addStop()">Add stop</button>
-    <button type="button" data-add-overlay [disabled]="!store.currentStop()" (click)="addOverlay()">Add text overlay</button>
-    <button type="button" data-add-image [disabled]="!store.currentStop() || busy()" (click)="addMedia('image')">Add image</button>
-    <button type="button" data-add-audio [disabled]="!store.currentStop() || busy()" (click)="addMedia('audio')">Add audio</button>
+    <div class="menu" (mouseenter)="openMenuOn('add')" (mouseleave)="closeMenu('add')" (focusin)="openMenuOn('add')" (focusout)="onFocusOut('add', $event)" (keydown.escape)="escapeMenu('add', $event)">
+      <button type="button" class="trigger" data-menu="add" aria-haspopup="true" [attr.aria-expanded]="openMenu() === 'add'" aria-label="Add" title="Add" (click)="toggleMenu('add')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      <div class="options" data-menu-options="add" [attr.inert]="openMenu() === 'add' ? null : ''">
+        <button type="button" class="opt" style="--i:0" data-add-stop aria-label="Add stop" title="Add stop" (click)="addStop()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></button>
+        <button type="button" class="opt" style="--i:1" data-add-overlay [disabled]="!store.currentStop()" aria-label="Add text overlay" title="Add text overlay" (click)="addOverlay()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg></button>
+        <button type="button" class="opt" style="--i:2" data-add-image [disabled]="!store.currentStop() || busy()" aria-label="Add image" title="Add image" (click)="addMedia('image')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>
+        <button type="button" class="opt" style="--i:3" data-add-audio [disabled]="!store.currentStop() || busy()" aria-label="Add audio" title="Add audio" (click)="addMedia('audio')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></button>
+        <button type="button" class="opt" style="--i:4" data-record [disabled]="!store.currentStop() || busy() || recState() !== 'idle'" aria-label="Record audio" title="Record audio" (click)="record()"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="6"/></svg></button>
+      </div>
+    </div>
+    <div class="menu" (mouseenter)="openMenuOn('import')" (mouseleave)="closeMenu('import')" (focusin)="openMenuOn('import')" (focusout)="onFocusOut('import', $event)" (keydown.escape)="escapeMenu('import', $event)">
+      <button type="button" class="trigger" data-menu="import" aria-haspopup="true" [attr.aria-expanded]="openMenu() === 'import'" aria-label="Import" title="Import" (click)="toggleMenu('import')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg></button>
+      <div class="options" data-menu-options="import" [attr.inert]="openMenu() === 'import' ? null : ''">
+        <button type="button" class="opt" style="--i:0" data-omeka-open [disabled]="!store.currentStop() && !omekaOpen()" [attr.aria-expanded]="omekaOpen()" aria-label="Import from Omeka" title="Import from Omeka" (click)="toggleOmeka()"><span class="sr-only">Import from Omeka</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V10M19 21V10M9 21V10M15 21V10M2 10l10-7 10 7z"/></svg></button>
+      </div>
+    </div>
+    <div class="menu" (mouseenter)="openMenuOn('edit')" (mouseleave)="closeMenu('edit')" (focusin)="openMenuOn('edit')" (focusout)="onFocusOut('edit', $event)" (keydown.escape)="escapeMenu('edit', $event)">
+      <button type="button" class="trigger" data-menu="edit" aria-haspopup="true" [attr.aria-expanded]="openMenu() === 'edit'" [disabled]="!store.selectedId()" aria-label="Edit" title="Edit" (click)="toggleMenu('edit')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3l4 4L8 20l-5 1 1-5z"/><path d="M14 6l4 4"/></svg></button>
+      <div class="options" data-menu-options="edit" [attr.inert]="openMenu() === 'edit' ? null : ''">
+        <button type="button" class="opt" style="--i:0" data-move-up [disabled]="!store.selectedStop()" aria-label="Move stop up" title="Move stop up" (click)="move(-1)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+        <button type="button" class="opt" style="--i:1" data-move-down [disabled]="!store.selectedStop()" aria-label="Move stop down" title="Move stop down" (click)="move(1)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
+        <button type="button" class="opt" style="--i:2" data-delete [disabled]="!store.selectedId()" aria-label="Delete" title="Delete" (click)="remove()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg></button>
+      </div>
+    </div>
     @if (recState() !== 'idle') {
       @if (recState() === 'recording') {
         <button type="button" data-record-stop (click)="stopRecording()">Stop and add recording</button>
       }
       <button type="button" data-record-cancel (click)="cancelRecording()">Discard</button>
-    } @else {
-      <button type="button" data-record [disabled]="!store.currentStop() || busy()" (click)="record()">Record audio</button>
     }
-    <button type="button" data-omeka-open [disabled]="!store.currentStop() && !omekaOpen()" [attr.aria-expanded]="omekaOpen()" (click)="toggleOmeka()">Import from Omeka</button>
     <input #imageInput type="file" hidden data-file-image accept="image/jpeg,image/png,image/webp" (change)="onFile('image', $event)" />
     <input #audioInput type="file" hidden data-file-audio accept="audio/*,.webm,.m4a,.mp3,.ogg,.wav" (change)="onFile('audio', $event)" />
-    <button type="button" data-move-up [disabled]="!store.selectedStop()" (click)="move(-1)" aria-label="Move stop up">Up</button>
-    <button type="button" data-move-down [disabled]="!store.selectedStop()" (click)="move(1)" aria-label="Move stop down">Down</button>
-    <button type="button" data-delete [disabled]="!store.selectedId()" (click)="remove()">Delete</button>
   </div>
   @if (promptKind()) {
     <form class="defaults" data-defaults-form (submit)="$event.preventDefault(); submitDefaults()">
