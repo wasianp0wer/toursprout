@@ -147,6 +147,15 @@ describe('OmekaPanel', () => {
     expect(q('[data-omeka-item]')).toBeNull();
   });
 
+  it('has a labelled close button that asks to be closed', async () => {
+    let closed = 0;
+    fixture.componentInstance.closed.subscribe(() => closed++);
+    const x = q('[data-omeka-close]') as HTMLButtonElement;
+    expect(x.getAttribute('aria-label')).toBe('Close Omeka import');
+    await click('[data-omeka-close]');
+    expect(closed).toBe(1);
+  });
+
   it('shows "Nothing found." on zero results', async () => {
     tools.omekaSearch.mockResolvedValue(page([], 0));
     await search();

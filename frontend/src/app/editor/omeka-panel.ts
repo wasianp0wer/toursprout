@@ -34,6 +34,8 @@ export class OmekaPanel {
 
   readonly stopId = input.required<string>();
   readonly added = output<OmekaAdded>();
+  /** The × was pressed; the outline pane hides the panel (it stays mounted, so an import in flight still lands). */
+  readonly closed = output<void>();
 
   protected readonly siteUrl = signal(readSite());
   protected readonly query = signal('');

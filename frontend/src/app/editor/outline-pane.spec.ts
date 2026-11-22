@@ -513,6 +513,16 @@ describe('OutlinePane', () => {
       expect((q('[data-omeka-open]') as HTMLButtonElement).disabled).toBe(true);
     });
 
+    it('the panel\'s close button hides it, and the toggle opens it again', () => {
+      store.select('a'); fixture.detectChanges();
+      click('[data-omeka-open]');
+      click('app-omeka-panel [data-omeka-close]');
+      expect((el.querySelector('app-omeka-panel') as HTMLElement).hidden).toBe(true);
+      expect(q('[data-omeka-open]')?.getAttribute('aria-expanded')).toBe('false');
+      click('[data-omeka-open]');
+      expect((el.querySelector('app-omeka-panel') as HTMLElement).hidden).toBe(false);
+    });
+
     it('an added event creates one overlay with body and credit, in one undo step, and selects it', () => {
       store.select('a'); fixture.detectChanges();
       click('[data-omeka-open]');

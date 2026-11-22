@@ -1,4 +1,8 @@
 <section class="omeka" aria-label="Import from Omeka">
+  <header class="head">
+    <h2>Import from Omeka</h2>
+    <button type="button" class="close" data-omeka-close aria-label="Close Omeka import" title="Close" (click)="closed.emit()">×</button>
+  </header>
   <form class="search" (submit)="$event.preventDefault(); search()">
     <label>Site <input type="text" inputmode="url" autocomplete="url" data-omeka-site placeholder="https://omeka.example.org" [value]="siteUrl()" (input)="siteUrl.set($any($event.target).value)" /></label>
     <label>Find <input type="text" data-omeka-query [value]="query()" (input)="query.set($any($event.target).value)" /></label>

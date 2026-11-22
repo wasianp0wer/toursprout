@@ -5,6 +5,9 @@
 }
 /* The outline pane hides rather than destroys the panel; display: block above would beat [hidden]. */
 :host([hidden]) { display: none; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin: 0 0 0.4rem; }
+.head h2 { margin: 0; font-size: 0.85rem; font-weight: 600; }
+.close { font-size: 1rem; line-height: 1; padding: 0.1rem 0.4rem; }
 .search { display: grid; gap: 0.4rem; }
 .search button { justify-self: end; }
 p { margin: 0.4rem 0 0; font-size: 0.8rem; }

@@ -46,7 +46,7 @@
   <!-- Mounted on first open and then only hidden, so closing it mid-import
        cannot destroy the panel before its import resolves and emits. -->
   @if (omekaMounted()) {
-    <app-omeka-panel [hidden]="!omekaOpen()" [stopId]="store.currentStop()?.id ?? ''" (added)="onOmekaAdded($event)" />
+    <app-omeka-panel [hidden]="!omekaOpen()" [stopId]="store.currentStop()?.id ?? ''" (added)="onOmekaAdded($event)" (closed)="omekaOpen.set(false)" />
   }
   @if (recState() === 'recording') { <p class="note" data-recording role="status">Recording from your microphone…</p> }
   @if (recFormatNote(); as fn) { <p class="note warning" data-record-format>{{ fn }}</p> }
