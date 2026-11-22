@@ -5,6 +5,7 @@
 } @else if (open()) {
   <section class="shell" data-shell>
     <header>
+      <img class="app-logo" src="favicon.png" alt="" data-app-logo />
       <input class="tour-title" type="text" aria-label="Tour title" data-tour-title [value]="store.draft()?.title ?? ''" (input)="setTitle($any($event.target).value)" />
       <input class="tour-description" type="text" aria-label="Tour description" placeholder="A line about this tour" data-tour-description [value]="store.draft()?.description ?? ''" (input)="setDescription($any($event.target).value)" />
       <span class="autosave-status" data-autosave-status>{{ saveLabel() }}</span>

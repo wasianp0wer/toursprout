@@ -536,4 +536,112 @@ describe('OutlinePane', () => {
       expect(store.canUndo()).toBe(false);
     });
   });
+
+  describe('toolbar menus', () => {
+    const group = (m: string) => q(`[data-menu="${m}"]`)!.closest('.menu') as HTMLElement;
+    const opts = (m: string) => q(`[data-menu-options="${m}"]`) as HTMLElement;
+    const expanded = (m: string) => q(`[data-menu="${m}"]`)!.getAttribute('aria-expanded');
+    const fire = (t: EventTarget, type: string, init?: EventInit) => { t.dispatchEvent(new Event(type, init)); fixture.detectChanges(); };
+
+    it('there are three menu triggers labelled Add, Import and Edit', () => {
+      const triggers = Array.from(el.querySelectorAll('[data-menu]'));
+      expect(triggers.map((t) => t.getAttribute('data-menu'))).toEqual(['add', 'import', 'edit']);
+      expect(triggers.map((t) => t.getAttribute('aria-label'))).toEqual(['Add', 'Import', 'Edit']);
+      expect(triggers.map((t) => t.getAttribute('title'))).toEqual(['Add', 'Import', 'Edit']);
+      for (const t of triggers) expect(t.getAttribute('aria-haspopup')).toBe('true');
+    });
+
+    it('options are closed and inert until their menu opens', () => {
+      expect(opts('add').hasAttribute('inert')).toBe(true);
+      expect(expanded('add')).toBe('false');
+      click('[data-menu="add"]');
+      expect(expanded('add')).toBe('true');
+      expect(opts('add').hasAttribute('inert')).toBe(false);
+      click('[data-menu="add"]');
+      expect(expanded('add')).toBe('false');
+    });
+
+    it('hovering a trigger group opens its menu, leaving closes it', () => {
+      fire(group('add'), 'mouseenter');
+      expect(expanded('add')).toBe('true');
+      expect(opts('add').hasAttribute('inert')).toBe(false);
+      fire(group('add'), 'mouseleave');
+      expect(expanded('add')).toBe('false');
+    });
+
+    it('focus inside a group opens it, Escape closes it and returns focus to the trigger', () => {
+      document.body.appendChild(el);
+      try {
+        const option = q('[data-add-stop]') as HTMLButtonElement;
+        fire(option, 'focusin', { bubbles: true });
+        expect(expanded('add')).toBe('true');
+        fire(option, 'keydown', { bubbles: true });
+        expect(expanded('add')).toBe('true');
+        option.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        fixture.detectChanges();
+        expect(expanded('add')).toBe('false');
+        expect(document.activeElement).toBe(q('[data-menu="add"]'));
+      } finally { el.remove(); }
+    });
+
+    it('opening one menu closes the other', () => {
+      click('[data-menu="add"]');
+      click('[data-menu="import"]');
+      expect(expanded('add')).toBe('false');
+      expect(expanded('import')).toBe('true');
+    });
+
+    it('Edit is disabled with nothing selected, enabled for a stop or an overlay', () => {
+      const dis = (sel: string) => (q(sel) as HTMLButtonElement).disabled;
+      expect(dis('[data-menu="edit"]')).toBe(true);
+      store.select('a'); fixture.detectChanges();
+      expect(dis('[data-menu="edit"]')).toBe(false);
+      expect(dis('[data-move-up]')).toBe(false);
+      store.select('o1'); fixture.detectChanges();
+      expect(dis('[data-menu="edit"]')).toBe(false);
+      expect(dis('[data-move-up]')).toBe(true);
+      expect(dis('[data-move-down]')).toBe(true);
+      expect(dis('[data-delete]')).toBe(false);
+    });
+
+    it('clearing the selection closes an open Edit menu', () => {
+      store.select('a'); fixture.detectChanges();
+      click('[data-menu="edit"]');
+      expect(expanded('edit')).toBe('true');
+      store.select(null); fixture.detectChanges();
+      expect(expanded('edit')).toBe('false');
+      expect(opts('edit').hasAttribute('inert')).toBe(true);
+      expect((q('[data-menu="edit"]') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('while recording, Stop and Discard show outside every menu', async () => {
+      installRecording();
+      try {
+        store.select('a'); fixture.detectChanges();
+        click('[data-record]');
+        await new Promise((r) => setTimeout(r, 5)); fixture.detectChanges();
+        expect(q('[data-record-stop]')).toBeTruthy();
+        expect(q('[data-record-cancel]')).toBeTruthy();
+        expect(q('[data-record-stop]')!.closest('[data-menu-options]')).toBeNull();
+        expect(q('[data-record-cancel]')!.closest('[data-menu-options]')).toBeNull();
+        expect((q('[data-record]') as HTMLButtonElement).disabled).toBe(true);
+      } finally { uninstallRecording(); }
+    });
+
+    it('every option is icon-only with its name as aria-label and title', () => {
+      const expected: Record<string, string> = {
+        '[data-add-stop]': 'Add stop', '[data-add-overlay]': 'Add text overlay', '[data-add-image]': 'Add image',
+        '[data-add-audio]': 'Add audio', '[data-record]': 'Record audio', '[data-omeka-open]': 'Import from Omeka',
+        '[data-move-up]': 'Move stop up', '[data-move-down]': 'Move stop down', '[data-delete]': 'Delete',
+      };
+      for (const [sel, name] of Object.entries(expected)) {
+        const b = q(sel)!;
+        expect(b.getAttribute('aria-label'), sel).toBe(name);
+        expect(b.getAttribute('title'), sel).toBe(name);
+        expect(b.querySelector('svg[aria-hidden="true"]'), sel).toBeTruthy();
+        expect(b.textContent!.trim(), sel).toBe('');
+      }
+      for (const m of ['add', 'import', 'edit']) expect(q(`[data-menu="${m}"] svg[aria-hidden="true"]`)).toBeTruthy();
+    });
+  });
 });

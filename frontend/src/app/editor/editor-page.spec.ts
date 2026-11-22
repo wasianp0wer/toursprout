@@ -201,6 +201,15 @@ describe('EditorPage', () => {
     expect(q('[data-publish]')?.getAttribute('href')).toBe('/api/session/publish');
   });
 
+  it('puts the TourSprout logo just before the title in the header', async () => {
+    await mountOpen();
+    const logo = q('header [data-app-logo]') as HTMLImageElement;
+    expect(logo.getAttribute('src')).toBe('favicon.png');
+    // Decoration beside a labelled field, so screen readers skip it.
+    expect(logo.getAttribute('alt')).toBe('');
+    expect(logo.nextElementSibling).toBe(q('[data-tour-title]'));
+  });
+
   it('offers Close tour and Preview in the header', async () => {
     await mountOpen();
     expect(q('[data-close-tour]')).toBeTruthy();

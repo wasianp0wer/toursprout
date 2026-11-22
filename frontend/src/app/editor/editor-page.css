@@ -42,6 +42,9 @@
   .sidebar app-inspector-pane { flex: none; overflow: visible; }
 }
 
+/* Sized to the title's line so the header row keeps its height; the header's
+   1rem gap would hold it too far from the title it labels. */
+.app-logo { width: 2rem; height: 2rem; margin-right: -0.6rem; flex: none; }
 .tour-title, .tour-description {
   background: transparent; color: inherit; border: 1px solid transparent; border-radius: 4px;
   font: inherit; padding: 0.15rem 0.4rem;
