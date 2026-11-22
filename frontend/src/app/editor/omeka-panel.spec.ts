@@ -3,7 +3,21 @@ import { TestBed } from '@angular/core/testing';
 import { OmekaPanel, type OmekaAdded } from './omeka-panel';
 import { ToolsApi, type OmekaFile, type OmekaItem, type OmekaSearch } from '../core/tools-api';
 
-const SITE_KEY = 'clio-wired.omeka-site';
+/**
+ * A fresh in-memory Storage per test. The ambient one can't be trusted: Node 25's built-in
+ * `localStorage` (no --localstorage-file) shadows jsdom's and has no setItem.
+ */
+function memoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() { return data.size; },
+    key: (i: number) => [...data.keys()][i] ?? null,
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => { data.set(k, String(v)); },
+    removeItem: (k: string) => { data.delete(k); },
+    clear: () => data.clear(),
+  };
+}
 const site = { base: 'https://omeka.madelynharrington.net', title: "Madelyn's Interests and Exhibits" };
 
 /** Shapes as the backend returns them for the live demo site (backend/tests/fixtures/omeka). */
@@ -68,7 +82,7 @@ describe('OmekaPanel', () => {
   };
 
   beforeEach(() => {
-    try { localStorage.removeItem(SITE_KEY); } catch { /* none */ }
+    vi.stubGlobal('localStorage', memoryStorage());
     tools = {
       omekaSearch: vi.fn().mockResolvedValue(page([fifi, cats])),
       omekaFiles: vi.fn().mockImplementation(async (_s: string, id: number) => (id === 2 ? [jpeg, pdf] : [png])),
@@ -80,7 +94,7 @@ describe('OmekaPanel', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    try { localStorage.removeItem(SITE_KEY); } catch { /* none */ }
+    vi.unstubAllGlobals();
   });
 
   it('searches with the typed site and query and lists items with file counts', async () => {
@@ -100,8 +114,8 @@ describe('OmekaPanel', () => {
   });
 
   it('survives localStorage throwing', async () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+    vi.spyOn(localStorage, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
     create();
     expect((q('[data-omeka-site]') as HTMLInputElement).value).toBe('');
     await search();
