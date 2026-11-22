@@ -561,6 +561,33 @@ describe('OutlinePane', () => {
       expect(expanded('add')).toBe('false');
     });
 
+    it('a click after hover leaves the menu open', () => {
+      fire(group('add'), 'mouseenter');
+      click('[data-menu="add"]');
+      expect(expanded('add')).toBe('true');
+      expect(opts('add').hasAttribute('inert')).toBe(false);
+    });
+
+    it('a click after focus (Enter on a button) leaves the menu open and its options live', () => {
+      fire(q('[data-menu="add"]')!, 'focusin', { bubbles: true });
+      click('[data-menu="add"]');
+      expect(expanded('add')).toBe('true');
+      expect(opts('add').hasAttribute('inert')).toBe(false);
+    });
+
+    it('click then click closes the menu', () => {
+      click('[data-menu="add"]');
+      click('[data-menu="add"]');
+      expect(expanded('add')).toBe('false');
+    });
+
+    it('a click after hover, then a second click, closes the menu', () => {
+      fire(group('add'), 'mouseenter');
+      click('[data-menu="add"]');
+      click('[data-menu="add"]');
+      expect(expanded('add')).toBe('false');
+    });
+
     it('hovering a trigger group opens its menu, leaving closes it', () => {
       fire(group('add'), 'mouseenter');
       expect(expanded('add')).toBe('true');
@@ -635,7 +662,7 @@ describe('OutlinePane', () => {
       for (const [sel, name] of Object.entries(expected)) {
         const b = q(sel)!;
         expect(b.getAttribute('aria-label'), sel).toBe(name);
-        expect(b.getAttribute('title'), sel).toBe(name);
+        expect(b.hasAttribute('title'), sel).toBe(false);
         expect(b.querySelector('svg[aria-hidden="true"]'), sel).toBeTruthy();
         // The Omeka button keeps a visually hidden text node for an older test.
         expect(b.textContent!.trim(), sel).toBe(sel === '[data-omeka-open]' ? name : '');

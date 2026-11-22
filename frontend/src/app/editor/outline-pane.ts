@@ -56,8 +56,20 @@ export class OutlinePane implements OnDestroy {
     effect(() => { if (!this.store.selectedId() && this.openMenu() === 'edit') this.openMenu.set(null); });
   }
 
+  /** The menu a click opened (or confirmed). Only a second click may close it. */
+  private clickedMenu: MenuName | null = null;
+
   protected toggleMenu(m: MenuName): void {
-    this.openMenu.update((cur) => (cur === m ? null : m));
+    if (this.openMenu() !== m) {
+      this.openMenu.set(m);
+      this.clickedMenu = m;
+    } else if (this.clickedMenu === m) {
+      this.openMenu.set(null);
+      this.clickedMenu = null;
+    } else {
+      // Hover or focus already opened it: this click keeps it open.
+      this.clickedMenu = m;
+    }
   }
 
   private restoringFocus = false;
@@ -69,7 +81,7 @@ export class OutlinePane implements OnDestroy {
   }
 
   protected closeMenu(m: MenuName): void {
-    if (this.openMenu() === m) this.openMenu.set(null);
+    if (this.openMenu() === m) { this.openMenu.set(null); this.clickedMenu = null; }
   }
 
   protected onFocusOut(m: MenuName, e: FocusEvent): void {
@@ -82,8 +94,11 @@ export class OutlinePane implements OnDestroy {
     this.closeMenu(m);
     // Focusing the trigger fires focusin, which would reopen the menu.
     this.restoringFocus = true;
-    (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[data-menu]')?.focus();
-    this.restoringFocus = false;
+    try {
+      (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[data-menu]')?.focus();
+    } finally {
+      this.restoringFocus = false;
+    }
   }
 
   protected readonly stops = computed(() =>
