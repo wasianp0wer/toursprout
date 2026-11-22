@@ -639,6 +639,33 @@ describe('OutlinePane', () => {
       expect((q('[data-menu="edit"]') as HTMLButtonElement).disabled).toBe(true);
     });
 
+    it('pressing Record audio closes the Add menu so Discard is not covered', async () => {
+      installRecording();
+      try {
+        store.select('a'); fixture.detectChanges();
+        click('[data-menu="add"]');
+        expect(expanded('add')).toBe('true');
+        click('[data-record]');
+        await new Promise((r) => setTimeout(r, 5)); fixture.detectChanges();
+        expect(expanded('add')).toBe('false');
+        expect(q('[data-record-cancel]')).toBeTruthy();
+      } finally { uninstallRecording(); }
+    });
+
+    it('a cleared selection resets Edit click tracking, so hover then click keeps it open', () => {
+      store.select('a'); fixture.detectChanges();
+      click('[data-menu="edit"]');
+      store.select(null); fixture.detectChanges();
+      store.select('a'); fixture.detectChanges();
+      fire(group('edit'), 'mouseenter');
+      click('[data-menu="edit"]');
+      expect(expanded('edit')).toBe('true');
+    });
+
+    it('a lone last option keeps its label anchored left', () => {
+      expect(q('[data-menu-options="import"] .opt')!.matches(':last-child:not(:first-child)')).toBe(false);
+    });
+
     it('while recording, Stop and Discard show outside every menu', async () => {
       installRecording();
       try {

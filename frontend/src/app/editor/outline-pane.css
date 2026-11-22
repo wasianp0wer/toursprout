@@ -31,7 +31,7 @@
   background: #1c2026; color: #c9ccd3; font-size: 0.7rem; white-space: nowrap; pointer-events: none;
 }
 /* The last option's label is right-aligned so it cannot overflow the pane. */
-.opt:last-child:hover::after, .opt:last-child:focus-visible::after { left: auto; right: 0; }
+.opt:last-child:not(:first-child):hover::after, .opt:last-child:not(:first-child):focus-visible::after { left: auto; right: 0; }
 @media (prefers-reduced-motion: reduce) {
   .opt, .menu:has(> .trigger[aria-expanded="true"]) .opt { transform: none; transition-property: opacity; }
 }

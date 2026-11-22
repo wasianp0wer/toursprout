@@ -53,7 +53,11 @@ export class OutlinePane implements OnDestroy {
 
   constructor() {
     // Edit has nothing to act on once the selection clears.
-    effect(() => { if (!this.store.selectedId() && this.openMenu() === 'edit') this.openMenu.set(null); });
+    effect(() => {
+      if (this.store.selectedId()) return;
+      if (this.openMenu() === 'edit') this.openMenu.set(null);
+      if (this.clickedMenu === 'edit') this.clickedMenu = null;
+    });
   }
 
   /** The menu a click opened (or confirmed). Only a second click may close it. */
@@ -187,6 +191,8 @@ export class OutlinePane implements OnDestroy {
     const stop = this.store.currentStop();
     const doc = this.store.draft();
     if (!stop || !doc || this.busy() || this.recState() !== 'idle') return;
+    // Stop and Discard appear in the toolbar row; the hanging Add row must not cover them.
+    this.closeMenu('add');
     this.mediaError.set(null);
     this.targetStopId = stop.id;
     if (!hasDefaults(doc) && !this.store.pendingDefaults()) {
