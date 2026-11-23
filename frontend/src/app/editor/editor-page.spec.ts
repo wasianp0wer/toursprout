@@ -40,6 +40,7 @@ describe('EditorPage', () => {
     autosave.stop();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    document.title = '';
   });
 
   /** The page's work is promise-based and the app is zoneless, so a
@@ -199,6 +200,19 @@ describe('EditorPage', () => {
     expect(q('[data-export]')?.getAttribute('href')).toBe('/api/session/export');
     expect(q('[data-export]')?.hasAttribute('download')).toBe(true);
     expect(q('[data-publish]')?.getAttribute('href')).toBe('/api/session/publish');
+  });
+
+  it('names the tab after the tour, marked as editing, and follows title edits', async () => {
+    document.title = 'Toursprout — Virtual Walking Tours';
+    await mountOpen();
+    expect(document.title).toBe(`${store.draft()!.title} - Toursprout (editing)`);
+    const title = q('[data-tour-title]') as HTMLInputElement;
+    title.value = 'Second Tour';
+    title.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(document.title).toBe('Second Tour - Toursprout (editing)');
+    fixture.destroy();
+    expect(document.title).toBe('Toursprout — Virtual Walking Tours');
   });
 
   it('puts the TourSprout logo just before the title in the header', async () => {

@@ -35,7 +35,10 @@ describe('ViewerPage', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => favicon.remove());
+  afterEach(() => {
+    favicon.remove();
+    document.title = '';
+  });
 
   it('shows an actionable message when the backend is unreachable', async () => {
     const fixture = TestBed.createComponent(ViewerPage);
@@ -153,6 +156,27 @@ describe('ViewerPage', () => {
       expect(last.getAttribute('href')).toBe('https://github.com/wasianp0wer/toursprout');
       expect(last.getAttribute('target')).toBe('_blank');
       expect(last.getAttribute('rel')).toBe('noopener');
+    });
+  });
+
+  describe('tab title', () => {
+    it('names the tab after the tour', async () => {
+      document.title = 'Toursprout — Virtual Walking Tours';
+      await mountWith({ ...TOUR, title: 'Courthouse Square' });
+      expect(document.title).toBe('Courthouse Square');
+    });
+
+    it('leaves the tab title alone when the tour has no title', async () => {
+      document.title = 'Toursprout — Virtual Walking Tours';
+      await mountWith({ ...TOUR, title: '' });
+      expect(document.title).toBe('Toursprout — Virtual Walking Tours');
+    });
+
+    it('restores the original tab title when destroyed', async () => {
+      document.title = 'Toursprout — Virtual Walking Tours';
+      const { fixture } = await mountWith({ ...TOUR, title: 'Courthouse Square' });
+      fixture.destroy();
+      expect(document.title).toBe('Toursprout — Virtual Walking Tours');
     });
   });
 

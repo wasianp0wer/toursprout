@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from app.publish import PublishError, build_site, mark_published, set_icon
+from app.publish import PublishError, build_site, mark_published, set_icon, set_title
 from app.session import Session
 
 
@@ -190,3 +190,31 @@ def test_an_unreadable_open_tour_is_a_publish_error(ready):
     with pytest.raises(PublishError, match="could not be read"):
         build_site(session.path, dist, out)
     assert not out.exists()
+
+
+def test_set_title_replaces_the_title():
+    out = set_title("<head><title>Toursprout</title></head>", "Courthouse Square")
+    assert out == "<head><title>Courthouse Square</title></head>"
+
+
+def test_set_title_escapes_the_title():
+    out = set_title("<head><title>x</title></head>", "A & B</title><script>")
+    assert "<script>" not in out
+    assert "A &amp; B" in out
+
+
+def test_the_published_index_is_titled_after_the_tour(ready):
+    session, dist, out = ready
+    (dist / "index.html").write_text("<html><head><title>Toursprout</title></head></html>")
+    doc = json.loads((session.path / "tour.json").read_text())
+    doc["title"] = "Courthouse Square"
+    session.write_tour(doc)
+    build_site(session.path, dist, out)
+    with zipfile.ZipFile(out) as zf:
+        assert "<title>Courthouse Square</title>" in zf.read("index.html").decode()
+    assert "<title>Toursprout</title>" in (dist / "index.html").read_text()
+
+
+def test_the_real_index_html_has_a_title_set_title_replaces():
+    src = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "index.html").read_text()
+    assert "<title>x</title>" in set_title(src, "x")

@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { DOCUMENT } from '@angular/common';
 import { Component, computed, DestroyRef, effect, ElementRef, inject, signal } from '@angular/core';
+import { Title } from '@angular/platform-browser';
 import { ConfigStore } from '../core/config-store';
 import { cssVariablesFor, resolveTheme } from '../core/theme';
 import { TourApi } from '../core/tour-api';
@@ -46,6 +47,7 @@ export class ViewerPage {
       el.setAttribute('data-type-pairing', r.typePairing);
     });
     this.bindFavicon(inject(DestroyRef));
+    this.bindTitle(inject(DestroyRef));
     void this.bootstrap();
   }
 
@@ -73,6 +75,20 @@ export class ViewerPage {
         else el.setAttribute(name, value);
       }
     });
+  }
+
+  /**
+   * The tab is named after the tour, on the preview and the published site
+   * alike. Put back on destroy for the same reason as the favicon.
+   */
+  private bindTitle(destroyRef: DestroyRef): void {
+    const title = inject(Title);
+    const original = title.getTitle();
+    effect(() => {
+      const name = this.store.tour()?.title;
+      if (name) title.setTitle(name);
+    });
+    destroyRef.onDestroy(() => title.setTitle(original));
   }
 
   private async bootstrap(): Promise<void> {

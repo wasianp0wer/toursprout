@@ -9,8 +9,9 @@ The `tour-data/` prefix is not cosmetic: Angular's build already emits a
 published to `media/` at the root, the two would collide and overwrite each
 other. Keeping tour media under `tour-data/media/` keeps them apart.
 
-Publishing reads one field of the document: the tour's `icon`, which is
-written into the zip's `index.html` as the page's icon link.
+Publishing reads two fields of the document: the tour's `icon`, which is
+written into the zip's `index.html` as the page's icon link, and its `title`,
+written in as the page's `<title>`.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from .migration import migrate
 from .models import Tour
 
 _HTML_TAG = re.compile(r"<html\b([^>]*)>", re.IGNORECASE)
+_TITLE = re.compile(r"<title\b[^>]*>.*?</title>", re.IGNORECASE | re.DOTALL)
 _ICON_LINK = re.compile(r"""<link\b[^>]*\brel=["']icon["'][^>]*>""", re.IGNORECASE)
 
 
@@ -65,6 +67,17 @@ def set_icon(html: str, media_id: str) -> str:
     return _ICON_LINK.sub(lambda _: link, html, count=1)
 
 
+def set_title(html: str, title: str) -> str:
+    """Replace the first `<title>` element with one naming the tour.
+
+    The viewer sets the same title once it loads; this puts it in the page
+    beforehand, for the tab and for link previews. A no-op if the page has
+    no title. The text is escaped.
+    """
+    element = f"<title>{htmllib.escape(title, quote=False)}</title>"
+    return _TITLE.sub(lambda _: element, html, count=1)
+
+
 def _add(zf: zipfile.ZipFile, path: Path, arc: str, data: bytes) -> None:
     """Write `data` as `arc`, mtime from `path`, mode always 0o644.
 
@@ -92,9 +105,9 @@ def build_site(session_path: Path, dist: Path, out_zip: Path) -> None:
         )
 
     try:
-        icon = Tour.model_validate(
+        tour = Tour.model_validate(
             migrate(json.loads((session_path / "tour.json").read_text("utf-8")))
-        ).icon
+        )
     except (ValueError, ValidationError) as exc:
         raise PublishError(f"the open tour could not be read: {exc}") from exc
 
@@ -111,8 +124,10 @@ def build_site(session_path: Path, dist: Path, out_zip: Path) -> None:
                     # Marked in the zip only; the file on disk serves the
                     # authoring host and must stay unmarked.
                     data = mark_published(data.decode("utf-8")).encode("utf-8")
-                    if icon:
-                        data = set_icon(data.decode("utf-8"), icon).encode("utf-8")
+                    if tour.icon:
+                        data = set_icon(data.decode("utf-8"), tour.icon).encode("utf-8")
+                    if tour.title:
+                        data = set_title(data.decode("utf-8"), tour.title).encode("utf-8")
                 _add(zf, path, arc, data)
         for path in sorted(session_path.rglob("*")):
             if path.is_file() and not path.name.startswith("."):

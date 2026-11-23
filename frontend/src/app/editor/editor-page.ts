@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
+import { Title } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { Autosave } from './autosave';
 import { CloseDialog } from './close-dialog';
@@ -73,7 +74,20 @@ export class EditorPage {
   protected readonly recoveryKey = signal<string | null>(null);
 
   constructor() {
+    this.bindTitle();
     void this.init();
+  }
+
+  /** The tab names the tour and says it is the editor, so a preview tab
+   * open beside it can be told apart. Put back on leaving the editor. */
+  private bindTitle(): void {
+    const title = inject(Title);
+    const original = title.getTitle();
+    effect(() => {
+      const name = this.store.draft()?.title;
+      if (this.open()) title.setTitle(name ? `${name} - Toursprout (editing)` : 'Toursprout (editing)');
+    });
+    inject(DestroyRef).onDestroy(() => title.setTitle(original));
   }
 
   private async init(): Promise<void> {
