@@ -1,4 +1,4 @@
-# clio-wired
+# Toursprout
 
 A prototype for a digital-humanities framework that tells historical walking
 tours over real street-level imagery. This proof of concept is a six-stop tour
